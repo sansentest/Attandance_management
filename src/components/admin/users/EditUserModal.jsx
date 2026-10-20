@@ -1,0 +1,305 @@
+import { useState, useEffect, useRef } from 'react';
+import { Edit, X, Save, Loader2, ChevronDown, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity, Camera } from 'lucide-react';
+import SearchableDropdown from '../../common/SearchableDropdown';
+
+export default function EditUserModal({ isOpen, onClose, onSave, classOptions, userData }) {
+  const roleOptions = [
+    { id: 'monitor', label: 'អ្នកត្រួតពិនិត្យ (Monitor)' },
+    { id: 'admin', label: 'អ្នកគ្រប់គ្រង (Admin)' }
+  ];
+  
+  const statusOptions = [
+    { id: 'active', label: 'ដំណើរការ (Active)' },
+    { id: 'inactive', label: 'ផ្អាក (Inactive)' }
+  ];
+  
+  const filteredClassOptions = classOptions ? classOptions.filter(c => c.id !== 'ALL') : [];
+  const [user, setUser] = useState(userData || {
+    name: '',
+    username: '',
+    password: '',
+    role: 'monitor',
+    class: '10A',
+    status: 'active',
+    image: null
+  });
+  const [imagePreview, setImagePreview] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (userData) {
+      setUser(userData);
+      // If user data comes with an image URL, set it
+      if (userData.image && typeof userData.image === 'string') {
+        setImagePreview(userData.image);
+      } else {
+        setImagePreview(null);
+      }
+    }
+  }, [userData]);
+
+  if (!isOpen && !showSuccessAlert) return null;
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setUser({ ...user, image: file });
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleRemoveImage = (e) => {
+    e.stopPropagation();
+    setUser({ ...user, image: null });
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSave = () => {
+    setIsSaving(true);
+    // Simulate API call
+    setTimeout(() => {
+      setIsSaving(false);
+      setShowSuccessAlert(true);
+      if (onSave) onSave(user);
+      
+      setTimeout(() => {
+        setShowSuccessAlert(false);
+        onClose();
+      }, 2000);
+    }, 1000);
+  };
+
+  return (
+    <>
+      {isOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="px-6 py-6 border-b border-slate-100 flex items-start justify-between bg-white shrink-0 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-amber-500/10 to-transparent rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+              <div className="flex items-start gap-3 relative z-10 group cursor-default">
+                <div className="flex items-center justify-center text-amber-500 mt-1 group-hover:animate-bounce transition-all">
+                  <Edit size={28} strokeWidth={2.5} />
+                </div>
+                <div className="flex flex-col pt-0.5">
+                  <h3 className="text-[18px] font-black text-slate-800 tracking-tight">កែប្រែព័ត៌មានអ្នកប្រើប្រាស់</h3>
+                  <p className="text-[13px] font-medium text-slate-500 mt-1">ផ្លាស់ប្តូរព័ត៌មានគណនីខាងក្រោម</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => !isSaving && onClose()}
+                disabled={isSaving}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors z-10 mt-1"
+              >
+                <X size={18} strokeWidth={2.5} />
+              </button>
+            </div>
+            
+            {/* Modal Body */}
+            <div className="p-6 sm:p-8 flex flex-col gap-6 overflow-y-auto custom-scrollbar bg-slate-50/30">
+
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Name */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
+                    ឈ្មោះអ្នកប្រើប្រាស់ <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <User size={16} className="text-slate-400 group-focus-within:text-amber-500 transition-colors" />
+                    </div>
+                    <input 
+                      type="text"
+                      value={user.name}
+                      onChange={(e) => setUser({...user, name: e.target.value})}
+                      placeholder="ឧ. San Vandy"
+                      className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
+                    />
+                  </div>
+                </div>
+
+                {/* Username */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
+                    ឈ្មោះគណនី (Username) <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <AtSign size={16} className="text-slate-400 group-focus-within:text-amber-500 transition-colors" />
+                    </div>
+                    <input 
+                      type="text"
+                      value={user.username}
+                      onChange={(e) => setUser({...user, username: e.target.value})}
+                      placeholder="ឧ. vandy12A"
+                      className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Password */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
+                    ពាក្យសម្ងាត់ថ្មី <span className="text-[11px] font-medium text-slate-400 px-1.5 py-0.5 bg-slate-100 rounded-md">ស្រេចចិត្ត</span>
+                  </label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <Lock size={16} className="text-slate-400 group-focus-within:text-amber-500 transition-colors" />
+                    </div>
+                    <input 
+                      type="password"
+                      value={user.password || ''}
+                      onChange={(e) => setUser({...user, password: e.target.value})}
+                      placeholder="ទុកទទេបើមិនចង់ប្តូរ"
+                      className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
+                    />
+                  </div>
+                </div>
+
+                {/* Role */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
+                    តួនាទី <span className="text-rose-500">*</span>
+                  </label>
+                  <SearchableDropdown
+                    value={user.role}
+                    onChange={(val) => setUser({...user, role: val})}
+                    options={roleOptions}
+                    placeholder="ជ្រើសរើសតួនាទី"
+                    icon={Shield}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {/* Class */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
+                    ថ្នាក់បន្ទុក 
+                    {user.role === 'admin' 
+                      ? <span className="text-[11px] font-medium text-slate-400 px-1.5 py-0.5 bg-slate-100 rounded-md">មិនតម្រូវ</span> 
+                      : <span className="text-rose-500">*</span>}
+                  </label>
+                  <SearchableDropdown
+                    value={user.class}
+                    onChange={(val) => setUser({...user, class: val})}
+                    options={filteredClassOptions}
+                    placeholder="ជ្រើសរើសថ្នាក់"
+                    icon={BookOpen}
+                    disabled={user.role === 'admin'}
+                  />
+                </div>
+
+                {/* Status */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
+                    ស្ថានភាព <span className="text-rose-500">*</span>
+                  </label>
+                  <SearchableDropdown
+                    value={user.status}
+                    onChange={(val) => setUser({...user, status: val})}
+                    options={statusOptions}
+                    placeholder="ជ្រើសរើសស្ថានភាព"
+                    icon={Activity}
+                  />
+                </div>
+              </div>
+
+              {/* Profile Image Upload */}
+              <div className="flex flex-col items-center justify-center mt-2">
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="relative w-24 h-24 rounded-full bg-white flex items-center justify-center cursor-pointer hover:bg-indigo-50/50 transition-all group overflow-hidden shadow-sm"
+                >
+                  {/* Spinning Dashed Border */}
+                  <div className="absolute inset-0 rounded-full border-[2.5px] border-dashed border-indigo-400/80 animate-[spin_6s_linear_infinite] group-hover:border-indigo-500 z-10 pointer-events-none"></div>
+                  
+                  {imagePreview ? (
+                    <>
+                      <img src={imagePreview} alt="Profile preview" className="w-full h-full object-cover relative z-0" />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
+                        <Camera size={20} className="text-white" />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1.5 text-slate-400 group-hover:text-indigo-500 transition-colors z-0">
+                      <Camera size={24} strokeWidth={1.5} />
+                      <span className="text-[10px] font-medium">រូបថត</span>
+                    </div>
+                  )}
+                  
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleImageChange} 
+                    accept="image/*" 
+                    className="hidden" 
+                  />
+                </div>
+                {imagePreview && (
+                  <button 
+                    onClick={handleRemoveImage}
+                    className="mt-4 text-[12px] font-medium text-rose-500 hover:text-rose-600 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1.5"
+                  >
+                    <X size={14} strokeWidth={2.5} /> លុបរូបថត
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col-reverse sm:flex-row items-center justify-end gap-3 shrink-0">
+              <button 
+                onClick={() => onClose()}
+                disabled={isSaving}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-[13px] text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                បោះបង់
+              </button>
+              <button 
+                onClick={handleSave}
+                disabled={isSaving}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-2.5 rounded-xl font-bold text-[13px] text-white bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-[0_4px_12px_rgba(245,158,11,0.25)] hover:shadow-[0_6px_16px_rgba(245,158,11,0.35)] hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 size={16} strokeWidth={3} className="animate-spin" />
+                    <span>កំពុងកែប្រែ...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} strokeWidth={2.5} />
+                    <span>បញ្ជាក់ការកែប្រែ</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Alert Notification */}
+      {showSuccessAlert && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top-10 fade-in duration-300 zoom-in-95">
+          <div className="bg-white px-6 py-3.5 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-emerald-100 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
+              <CheckCircle size={18} strokeWidth={2.5} />
+            </div>
+            <div>
+              <p className="text-[14px] font-bold text-slate-800">កែប្រែបានជោគជ័យ!</p>
+              <p className="text-[12px] font-medium text-slate-500">ព័ត៌មានគណនីត្រូវបានកែប្រែរួចរាល់។</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

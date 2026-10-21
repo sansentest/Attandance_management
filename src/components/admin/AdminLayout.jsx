@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, User, ChevronDown, Users, Bot, BookOpen, Mail, ShieldAlert, Database, Edit, GraduationCap } from 'lucide-react'
+import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, User, ChevronDown, Users, Bot, BookOpen, Mail, ShieldAlert, Database, Edit, GraduationCap, Calendar } from 'lucide-react'
 import AdminDashboard from './dashboard/AdminDashboard'
 import AdminStudentAttendance from './attendance/AdminStudentAttendance'
 import AdminStudentTracking from './tracking/AdminStudentTracking'
@@ -7,6 +7,7 @@ import AdminSettings from './settings/AdminSettings'
 import AdminUsers from './users/AdminUsers'
 import AdminTelegramBot from './telegram/AdminTelegramBot'
 import AdminAcademic from './academic/AdminAcademic'
+import AdminTimetable from './academic/AdminTimetable'
 import AdminProfile from './profile/AdminProfile'
 import AdminInvitationLetters from './invitation/AdminInvitationLetters'
 import AdminStudents from './students/AdminStudents'
@@ -15,7 +16,14 @@ export default function AdminLayout({ session, onLogout }) {
   const [activePage, setActivePage] = useState('dashboard')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
-  const [attendanceMenuOpen, setAttendanceMenuOpen] = useState(false)
+  const [openGroups, setOpenGroups] = useState({
+    attendance_group: true,
+    academic_group: true
+  })
+
+  const toggleGroup = (groupId) => {
+    setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }))
+  }
 
   const handleLogout = () => {
     localStorage.removeItem('session')
@@ -28,10 +36,13 @@ export default function AdminLayout({ session, onLogout }) {
       case 'student_attendance': return <AdminStudentAttendance />
       case 'student_tracking': return <AdminStudentTracking onNavigate={setActivePage} />
       case 'invitation-letters': return <AdminInvitationLetters />
-      case 'students': return <AdminStudents />
+      case 'students': return <AdminStudents onNavigate={setActivePage} />
+      case 'classes': return <AdminAcademic initialTab="classes" />
+      case 'subjects': return <AdminAcademic initialTab="subjects" />
+      case 'academic': return <AdminAcademic initialTab="classes" />
+      case 'timetable': return <AdminTimetable />
       case 'users': return <AdminUsers />
       case 'telegram': return <AdminTelegramBot />
-      case 'academic': return <AdminAcademic />
       case 'settings': return <AdminSettings />
       case 'profile': return <AdminProfile />
       default: return <AdminDashboard />
@@ -42,18 +53,27 @@ export default function AdminLayout({ session, onLogout }) {
     { id: 'dashboard', label: 'ផ្ទាំងគ្រប់គ្រងទូទៅ', icon: LayoutDashboard },
     { 
       id: 'attendance_group', 
-      label: 'Attendance', 
+      label: 'វត្តមាន', 
       icon: FileText,
       subItems: [
         { id: 'student_attendance', label: 'អវត្តមានសិស្ស' },
-        { id: 'student_tracking', label: 'តាមដានអវត្តមានសិស្ស' }
+        { id: 'student_tracking',   label: 'តាមដានវិន័យសិស្ស' },
+        { id: 'invitation-letters', label: 'លិខិតកោះហៅ' }
       ]
     },
-    { id: 'invitation-letters', label: 'លិខិតកោះហៅ', icon: Mail },
-    { id: 'students', label: 'បញ្ជីសិស្ស', icon: GraduationCap },
+    {
+      id: 'academic_group',
+      label: 'ការគ្រប់គ្រងការសិក្សា',
+      icon: GraduationCap,
+      subItems: [
+        { id: 'students',  label: 'បញ្ជីសិស្ស' },
+        { id: 'classes',   label: 'ថ្នាក់រៀន' },
+        { id: 'subjects',  label: 'មុខវិជ្ជា' },
+        { id: 'timetable', label: 'កាលវិភាគ' }
+      ]
+    },
     { id: 'users', label: 'អ្នកប្រើប្រាស់', icon: Users },
     { id: 'telegram', label: 'Telegram Bot', icon: Bot },
-    { id: 'academic', label: 'ថ្នាក់ & មុខវិជ្ជា', icon: BookOpen },
     { id: 'settings', label: 'ការកំណត់', icon: Settings },
   ]
 
@@ -92,7 +112,7 @@ export default function AdminLayout({ session, onLogout }) {
               return (
                 <div key={item.id} className="flex flex-col">
                   <button
-                    onClick={() => setAttendanceMenuOpen(!attendanceMenuOpen)}
+                    onClick={() => toggleGroup(item.id)}
                     className={`flex items-center justify-between px-4 py-3 rounded-xl text-[13px] font-bold transition-all w-full text-left group
                       ${isGroupActive 
                         ? 'text-indigo-700 bg-indigo-50/50' 
@@ -103,11 +123,11 @@ export default function AdminLayout({ session, onLogout }) {
                       <Icon size={18} strokeWidth={isGroupActive ? 2.5 : 2} className={isGroupActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-500'} />
                       {item.label}
                     </div>
-                    <ChevronDown size={16} className={`transition-transform duration-300 text-slate-400 group-hover:text-slate-600 ${attendanceMenuOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={16} className={`transition-transform duration-300 text-slate-400 group-hover:text-slate-600 ${openGroups[item.id] ? 'rotate-180' : ''}`} />
                   </button>
                   
                   {/* Collapsible Sub-menu */}
-                  <div className={`overflow-hidden transition-all duration-300 ${attendanceMenuOpen ? 'max-h-40 mt-1 opacity-100' : 'max-h-0 opacity-0'}`}>
+                  <div className={`overflow-hidden transition-all duration-300 ${openGroups[item.id] ? 'max-h-80 mt-1 opacity-100' : 'max-h-0 opacity-0'}`}>
                     <div className="flex flex-col gap-1 ml-6 pl-4 border-l-2 border-slate-100/80 py-1">
                       {item.subItems.map(sub => {
                         const isSubActive = activePage === sub.id
@@ -201,7 +221,7 @@ export default function AdminLayout({ session, onLogout }) {
                   return (
                     <div key={item.id} className="flex flex-col">
                       <button
-                        onClick={() => setAttendanceMenuOpen(!attendanceMenuOpen)}
+                        onClick={() => toggleGroup(item.id)}
                         className={`flex items-center justify-between px-4 py-3 rounded-xl text-[13px] font-bold transition-all w-full text-left group
                           ${isGroupActive 
                             ? 'text-indigo-700 bg-indigo-50/50' 
@@ -212,10 +232,10 @@ export default function AdminLayout({ session, onLogout }) {
                           <Icon size={18} strokeWidth={isGroupActive ? 2.5 : 2} className={isGroupActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-500'} />
                           {item.label}
                         </div>
-                        <ChevronDown size={16} className={`transition-transform duration-300 text-slate-400 group-hover:text-slate-600 ${attendanceMenuOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown size={16} className={`transition-transform duration-300 text-slate-400 group-hover:text-slate-600 ${openGroups[item.id] ? 'rotate-180' : ''}`} />
                       </button>
                       
-                      <div className={`overflow-hidden transition-all duration-300 ${attendanceMenuOpen ? 'max-h-40 mt-1 opacity-100' : 'max-h-0 opacity-0'}`}>
+                      <div className={`overflow-hidden transition-all duration-300 ${openGroups[item.id] ? 'max-h-80 mt-1 opacity-100' : 'max-h-0 opacity-0'}`}>
                         <div className="flex flex-col gap-1 ml-6 pl-4 border-l-2 border-slate-100/80 py-1">
                           {item.subItems.map(sub => {
                             const isSubActive = activePage === sub.id

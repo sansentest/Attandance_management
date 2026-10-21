@@ -1,356 +1,456 @@
-import { useState } from 'react'
-import { ChevronLeft, Phone, User, Calendar, ShieldAlert, CheckCircle2, AlertTriangle, FileText, RotateCcw, MessageSquare, Plus, BookOpen, Clock, Activity, Download, Trash2 } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import {
+  ArrowLeft, Phone, Calendar, ShieldAlert, CheckCircle2,
+  AlertTriangle, FileText, Download, ChevronDown, FileCode, FileImage,
+  Mail, BookOpen, Clock, Search, ChevronLeft, ChevronRight, PhoneCall,
+  Users
+} from 'lucide-react'
+import { SearchableDropdown } from '../attendance/AdminStudentAttendance'
+
+const MOCK_SUBJECTS_TEACHERS = [
+  { subject: 'គណិតវិទ្យា',       teacher: 'អ្នកគ្រូ សុខា',   time: '08:00 - 09:30' },
+  { subject: 'រូបវិទ្យា',          teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00' },
+  { subject: 'គីមីវិទ្យា',         teacher: 'អ្នកគ្រូ នីតា',   time: '02:00 - 03:30' },
+  { subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '08:00 - 09:30' },
+  { subject: 'ជីវវិទ្យា',          teacher: 'លោកគ្រូ ចាន់ថន', time: '09:30 - 11:00' },
+  { subject: 'ប្រវត្តិវិទ្យា',       teacher: 'អ្នកគ្រូ ម៉ារី',   time: '02:00 - 03:30' },
+]
+
+const MOCK_REASONS_LEAVE = ['ឈឺក្បាល', 'ទៅស្រុកជាមួយឪពុកម្តាយ', 'ឈឺក្រពះ', 'មានធុរៈគ្រួសារ']
+const MOCK_REASONS_ABSENT = ['គ្មានច្បាប់', 'គេចម៉ោង', 'មិនបានជូនដំណឹង', 'គ្មានមូលហេតុ']
+
+function generateDisciplineRecords(student) {
+  if (student.records && student.records.length > 0) return student.records
+  const records = []
+  const total = (student.absent || 0) + (student.leave || 0)
+  const leaveCount = student.leave || 0
+
+  let d = new Date(2026, 6, 15) // July 15, 2026
+  for (let i = 0; i < total; i++) {
+    const isLeave = i < leaveCount
+    const sub = MOCK_SUBJECTS_TEACHERS[i % MOCK_SUBJECTS_TEACHERS.length]
+    const dateStr = d.toISOString().split('T')[0]
+    records.push({
+      id: i + 1,
+      date: dateStr,
+      subject: sub.subject,
+      teacher: sub.teacher,
+      time: sub.time,
+      status: isLeave ? 'LEAVE' : 'ABSENT',
+      reason: isLeave
+        ? MOCK_REASONS_LEAVE[i % MOCK_REASONS_LEAVE.length]
+        : MOCK_REASONS_ABSENT[i % MOCK_REASONS_ABSENT.length]
+    })
+    d.setDate(d.getDate() - (2 + (i % 4)))
+  }
+  return records
+}
+
+function getStatusBadge(status) {
+  if (status === 'CRITICAL') {
+    return {
+      label: 'ត្រូវហៅអាណាព្យាបាល',
+      color: 'rose',
+      badge: 'bg-rose-50 text-rose-600 border-rose-100',
+      dot: 'bg-rose-500',
+      pulse: true,
+      icon: PhoneCall
+    }
+  }
+  if (status === 'WARNING') {
+    return {
+      label: 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន',
+      color: 'amber',
+      badge: 'bg-amber-50 text-amber-600 border-amber-100',
+      dot: 'bg-amber-500',
+      pulse: false,
+      icon: AlertTriangle
+    }
+  }
+  return {
+    label: 'ធម្មតា',
+    color: 'emerald',
+    badge: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+    dot: 'bg-emerald-500',
+    pulse: false,
+    icon: CheckCircle2
+  }
+}
 
 export default function AdminStudentTrackingDetail({ student, onBack, threshold, status, onNavigate }) {
-  const [remark, setRemark] = useState('')
-  const [remarksList, setRemarksList] = useState([
-    { id: 1, date: '2026-06-25', time: '09:30 AM', text: 'បានទូរស័ព្ទទៅម្តាយសិស្ស គាត់ថានឹងមកជួបនាយកនៅថ្ងៃច័ន្ទ។', author: 'Admin រតនា', role: 'នាយករង' },
-    { id: 2, date: '2026-06-20', time: '14:15 PM', text: 'សិស្សមានអាការៈឈឺក្បាលញឹកញាប់ បានអនុញ្ញាតឱ្យទៅផ្ទះមុនម៉ោង។', author: 'គ្រូ សុខ', role: 'គ្រូបន្ទុកថ្នាក់' }
-  ])
+  const [detailSearch, setDetailSearch]         = useState('')
+  const [detailSubject, setDetailSubject]       = useState('ALL')
+  const [detailStatus,  setDetailStatus]        = useState('ALL')
+  const [detailMonth,   setDetailMonth]         = useState('ALL')
+  const [detailPage, setDetailPage]             = useState(1)
+  const [detailExportOpen, setDetailExportOpen] = useState(false)
+  const detailExportRef = useRef(null)
+  const itemsPerPage = 10
 
-  const historyData = [
-    { id: 1, date: '2026-07-01', day: 'ពុធ', subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សុខ', reason: '', type: 'ABSENT' },
-    { id: 2, date: '2026-06-28', day: 'អាទិត្យ', subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', reason: 'ឈឺផ្តាសាយ', type: 'LEAVE' },
-    { id: 3, date: '2026-06-25', day: 'ព្រហស្បតិ៍', subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ វ៉ាន់', reason: '', type: 'ABSENT' },
-    { id: 4, date: '2026-06-15', day: 'ច័ន្ទ', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'អ្នកគ្រូ ចន្ថា', reason: '', type: 'ABSENT' },
+  const allRecords = useMemo(() => generateDisciplineRecords(student), [student])
+  const statusInfo = getStatusBadge(status)
+  const percent = Math.min(100, Math.round(((student.absent || 0) / (threshold || 40)) * 100))
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (detailExportRef.current && !detailExportRef.current.contains(e.target)) {
+        setDetailExportOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleDetailExport = (type) => {
+    alert(`Exporting ${student.name}'s discipline history as ${type}... (Mock)`)
+    setDetailExportOpen(false)
+  }
+
+  // Build unique subject options from records
+  const subjectOpts = [
+    { id: 'ALL', label: 'គ្រប់មុខវិជ្ជា' },
+    ...([...new Set(allRecords.map(r => r.subject))].map(s => ({ id: s, label: s })))
   ]
 
-  const handleAddRemark = () => {
-    if (!remark.trim()) return
-    const now = new Date();
-    setRemarksList([
-      { 
-        id: Date.now(), 
-        date: now.toISOString().split('T')[0], 
-        time: now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), 
-        text: remark, 
-        author: 'Admin Current',
-        role: 'អ្នកគ្រប់គ្រង'
-      },
-      ...remarksList
-    ])
-    setRemark('')
+  const statusOpts = [
+    { id: 'ALL', label: 'គ្រប់ស្ថានភាព' },
+    { id: 'ABSENT', label: 'គ្មានច្បាប់' },
+    { id: 'LEAVE',  label: 'មានច្បាប់' },
+  ]
+
+  const monthOpts = [
+    { id: 'ALL', label: 'គ្រប់ខែ' },
+    { id: '01', label: 'មករា (Jan)' }, { id: '02', label: 'កុម្ភៈ (Feb)' },
+    { id: '03', label: 'មីនា (Mar)' }, { id: '04', label: 'មេសា (Apr)' },
+    { id: '05', label: 'ឧសភា (May)' }, { id: '06', label: 'មិថុនា (Jun)' },
+    { id: '07', label: 'កក្កដា (Jul)' }, { id: '08', label: 'សីហា (Aug)' },
+    { id: '09', label: 'កញ្ញា (Sep)' }, { id: '10', label: 'តុលា (Oct)' },
+    { id: '11', label: 'វិច្ឆិកា (Nov)' }, { id: '12', label: 'ធ្នូ (Dec)' },
+  ]
+
+  // Filter records
+  let filtered = allRecords
+  if (detailSubject !== 'ALL') filtered = filtered.filter(r => r.subject === detailSubject)
+  if (detailStatus  !== 'ALL') filtered = filtered.filter(r => r.status  === detailStatus)
+  if (detailMonth   !== 'ALL') filtered = filtered.filter(r => r.date.split('-')[1] === detailMonth)
+  if (detailSearch.trim()) {
+    const q = detailSearch.toLowerCase()
+    filtered = filtered.filter(r =>
+      r.subject.toLowerCase().includes(q) ||
+      r.teacher?.toLowerCase().includes(q) ||
+      r.reason.toLowerCase().includes(q)
+    )
   }
 
-  const getInitials = (name) => {
-    if (!name) return 'S';
-    const parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
-    }
-    return parts[0].substring(0, 2).toUpperCase();
-  }
-
-  const handleDeleteRemark = (id) => {
-    if (confirm('តើអ្នកពិតជាចង់លុបកំណត់ត្រានេះមែនទេ?')) {
-      setRemarksList(remarksList.filter(item => item.id !== id))
-    }
-  }
-
-  const handleExport = () => {
-    alert(`កំពុងរៀបចំឯកសារ (Export) សម្រាប់សិស្ស ${student.name}...`)
-  }
-
-  const getStatusProps = () => {
-    if (status === 'CRITICAL') return { 
-      bg: 'bg-red-50', 
-      text: 'text-red-600',
-      border: 'border-red-200',
-      spinBorder: 'border-t-red-400',
-      icon: <ShieldAlert size={18} />,
-      badgeIcon: <ShieldAlert size={14} className="text-white" />,
-      label: 'ត្រូវកោះហៅអាណាព្យាបាល',
-      progressBg: 'bg-red-500',
-      avatarGradient: 'from-red-500 to-rose-600'
-    }
-    if (status === 'WARNING') return { 
-      bg: 'bg-amber-50', 
-      text: 'text-amber-600',
-      border: 'border-amber-200',
-      spinBorder: 'border-t-amber-400',
-      icon: <AlertTriangle size={18} />,
-      badgeIcon: <AlertTriangle size={14} className="text-white" />,
-      label: 'កម្រិតប្រុងប្រយ័ត្ន',
-      progressBg: 'bg-amber-500',
-      avatarGradient: 'from-amber-400 to-orange-500'
-    }
-    return { 
-      bg: 'bg-blue-50', 
-      text: 'text-blue-600',
-      border: 'border-blue-200',
-      spinBorder: 'border-t-blue-400',
-      icon: <CheckCircle2 size={18} />,
-      badgeIcon: <CheckCircle2 size={14} className="text-white" />,
-      label: 'ធម្មតា',
-      progressBg: 'bg-blue-500',
-      avatarGradient: 'from-blue-500 to-indigo-600'
-    }
-  }
-
-  const statusProps = getStatusProps()
-  const progressPercentage = Math.min(100, (student.absent / threshold) * 100)
+  const totalDetailPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage))
+  const paginatedRecords = filtered.slice((detailPage - 1) * itemsPerPage, detailPage * itemsPerPage)
 
   return (
-    <div className="flex flex-col w-full pb-12 animate-in fade-in duration-300 bg-[#F8FAFC] min-h-screen">
-      
-      {/* Top Header - White Background */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-7xl mx-auto w-full px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <button 
-              onClick={onBack}
-              className="w-10 h-10 rounded-full flex items-center justify-center text-blue-600 hover:bg-blue-50 transition-colors"
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full pb-10">
+
+      {/* Top Header: Back Button, Breadcrumb & Main Actions */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-2 text-slate-600 hover:text-indigo-600 font-bold text-[13px] bg-white border border-slate-200 rounded-xl px-4 py-2.5 hover:border-indigo-200 hover:bg-indigo-50 transition-all shadow-sm group"
+          >
+            <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
+            ត្រឡប់ក្រោយ
+          </button>
+        </div>
+
+        {/* Action Button: Invitation Letter */}
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+          {status === 'CRITICAL' && onNavigate && (
+            <button
+              onClick={() => {
+                localStorage.setItem('printStudent', JSON.stringify(student))
+                onNavigate('invitation-letters')
+              }}
+              className="flex items-center gap-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
             >
-              <ChevronLeft size={24} strokeWidth={2.5} />
+              <Mail size={15} strokeWidth={2.5} />
+              <span>រៀបចំលិខិតកោះហៅ</span>
             </button>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800 tracking-tight">ព័ត៌មានលម្អិតសិស្ស</h1>
-              <div className="flex items-center gap-2 mt-0.5 text-[13px] text-slate-500 font-medium">
-                <span className="text-blue-600 font-bold">{student.id}</span>
-                <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                <span>ថ្នាក់ {student.class}</span>
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-3">
-             {status === 'CRITICAL' && (
-                <button className="flex items-center gap-2 text-[13px] font-bold text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg hover:bg-emerald-100 transition-colors border border-emerald-100">
-                  <RotateCcw size={16} strokeWidth={2.5} />
-                  ដោះស្រាយរួច
-                </button>
-              )}
-             <button 
-               onClick={handleExport}
-               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-bold transition-all shadow-md hover:shadow-lg"
-             >
-               <Download size={16} strokeWidth={2.5} />
-               នាំចេញ (Export)
-             </button>
-          </div>
+          )}
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto w-full px-6 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
-        {/* Left Column */}
-        <div className="flex flex-col gap-6 lg:col-span-4">
-          
-          {/* Animated Profile Card */}
-          <div className="bg-white rounded-2xl p-6 border-t-4 border-t-blue-500 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col items-center text-center relative overflow-hidden group">
-            {/* Background accent animation */}
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-50 rounded-full group-hover:scale-150 transition-transform duration-700 -z-10"></div>
-            
-            {/* Professional Enterprise Profile Avatar */}
-            <div className="relative mb-6 z-10 flex justify-center">
-              {/* Clean Standard Avatar */}
-              <div className="w-28 h-28 rounded-full bg-slate-50 border-[1.5px] border-slate-200 shadow-sm flex items-center justify-center relative overflow-hidden z-10">
-                <User size={56} className="text-slate-400" strokeWidth={1.5} />
-              </div>
-              
-              {/* Professional Status Dot */}
-              <div className="absolute bottom-2 right-1 w-6 h-6 rounded-full bg-white flex items-center justify-center shadow-sm border border-slate-100 z-20">
-                <div className={`w-4 h-4 rounded-full ${statusProps.progressBg}`}></div>
-              </div>
-            </div>
-            
-            <h2 className="text-2xl font-bold text-slate-800 mb-3 relative z-10">{student.name}</h2>
-            
-            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-[13px] font-bold ${statusProps.bg} ${statusProps.text} ${statusProps.border} border mb-6 relative z-10`}>
-              {statusProps.icon}
-              {statusProps.label}
-            </div>
+      {/* ── Stats Cards (4 Cards) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
 
-            <div className="w-full h-[1px] bg-slate-100 mb-6 relative z-10"></div>
-
-            <div className="w-full flex flex-col gap-4 text-left relative z-10">
-              <div className="flex justify-between items-center">
-                <span className="text-[13px] font-medium text-slate-500">លេខទូរស័ព្ទម្តាយ</span>
-                <span className="text-[14px] font-bold text-slate-700">012 345 678</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[13px] font-medium text-slate-500">កម្រិតវិន័យ (អត់ច្បាប់)</span>
-                <span className="text-[14px] font-bold text-red-600">{threshold} ដង</span>
-              </div>
+        {/* Card 1: Student & Parent Info */}
+        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-indigo-100 flex flex-col justify-between relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-indigo-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
+          <div className="relative z-10 flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-xl shadow-md flex-shrink-0">
+              {student.name.charAt(0)}
             </div>
-
-            <button 
-              onClick={() => {
-                if (onNavigate) {
-                  localStorage.setItem('printStudent', JSON.stringify(student));
-                  onNavigate('invitation-letters');
-                } else {
-                  console.error('onNavigate is not defined');
-                  alert('មុខងារបង្វែរទំព័រមិនដំណើរការទេ (onNavigate is undefined)');
-                }
-              }}
-              className="w-full mt-6 relative overflow-hidden flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white text-[14px] font-bold transition-colors shadow-sm border border-blue-100 z-10"
-            >
-              <FileText size={18} />
-              រៀបចំលិខិតកោះហៅ
-            </button>
-          </div>
-
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-red-200 transition-colors">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-8 h-8 rounded-full bg-red-50 text-red-500 flex items-center justify-center">
-                  <Activity size={16} />
-                </div>
-              </div>
-              <h4 className="text-3xl font-bold text-slate-800 mb-1">{student.absent}</h4>
-              <p className="text-[13px] font-medium text-slate-500">អត់ច្បាប់សរុប</p>
-              
-              {/* Progress Line */}
-              <div className="mt-4 w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                <div className={`h-full rounded-full ${statusProps.progressBg}`} style={{ width: `${progressPercentage}%` }}></div>
-              </div>
-            </div>
-            
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-blue-200 transition-colors">
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
-                  <FileText size={16} />
-                </div>
-              </div>
-              <h4 className="text-3xl font-bold text-slate-800 mb-1">{student.leave}</h4>
-              <p className="text-[13px] font-medium text-slate-500">មានច្បាប់សរុប</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column */}
-        <div className="flex flex-col gap-6 lg:col-span-8">
-          
-          {/* Remarks Section */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                <MessageSquare size={16} strokeWidth={2.5} />
-              </div>
-              <h3 className="text-[16px] font-bold text-slate-800">
-                កត់ត្រាចំណាត់ការ
-              </h3>
-            </div>
-            
-            <div className="p-6 bg-white border-b border-slate-100 flex gap-3">
-              <input 
-                type="text" 
-                value={remark}
-                onChange={e => setRemark(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddRemark()}
-                placeholder="វាយបញ្ចូលកំណត់ចំណាំថ្មី..."
-                className="flex-1 bg-white border border-slate-300 text-slate-800 py-2.5 px-4 rounded-xl text-[14px] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 placeholder:text-slate-400"
-              />
-              <button 
-                onClick={handleAddRemark}
-                disabled={!remark.trim()}
-                className="bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white px-6 rounded-xl text-[14px] font-bold transition-colors flex items-center gap-2 shadow-sm"
-              >
-                រក្សាទុក
-              </button>
-            </div>
-
-            <div className="p-6 pt-2 flex flex-col gap-0 relative bg-white max-h-[300px] overflow-y-auto">
-              {remarksList.length === 0 ? (
-                <p className="text-sm text-slate-500 text-center py-4">មិនទាន់មានកំណត់ត្រាឡើយ។</p>
-              ) : (
-                <>
-                  <div className="absolute left-[39px] top-6 bottom-4 w-[2px] bg-blue-50"></div>
-                  {remarksList.map((item, index) => (
-                    <div key={item.id} className="relative pl-14 py-4 group">
-                      <div className="absolute left-[35px] top-[22px] w-2.5 h-2.5 rounded-full bg-blue-500 ring-4 ring-white z-10 group-hover:scale-125 transition-transform"></div>
-                      <div className="bg-slate-50/80 hover:bg-slate-50 rounded-xl p-4 border border-slate-100 transition-colors relative">
-                        {/* Delete Button (always visible) */}
-                        <button 
-                          onClick={() => handleDeleteRemark(item.id)}
-                          className="absolute top-4 right-4 text-red-400 hover:text-red-600 hover:bg-red-100 p-1.5 rounded-lg transition-all bg-red-50 opacity-100"
-                          title="លុបកំណត់ត្រា"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                        
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2 pr-8">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[14px] font-bold text-blue-900">{item.author}</span>
-                            <span className="text-[11px] font-medium text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded-md">{item.role}</span>
-                          </div>
-                          <span className="text-[12px] font-medium text-slate-400 flex items-center gap-1.5 bg-white px-2 py-1 rounded-md border border-slate-100">
-                            <Clock size={12} /> {item.date} {item.time}
-                          </span>
-                        </div>
-                        <p className="text-[14px] text-slate-600 leading-relaxed pr-6">{item.text}</p>
-                      </div>
-                    </div>
-                  ))}
-                </>
+            <div className="min-w-0">
+              <p className="text-[15px] font-black text-slate-800 leading-tight truncate">{student.name}</p>
+              <p className="text-[12px] font-bold text-slate-400 mt-0.5">
+                #{student.id} • ថ្នាក់ {student.class}
+              </p>
+              {student.parentPhone && (
+                <a
+                  href={`tel:${student.parentPhone}`}
+                  className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1.5 mt-1"
+                  title="ចុចដើម្បីហៅទូរស័ព្ទ"
+                >
+                  <Phone size={11} className="text-slate-400" />
+                  <span>{student.parentPhone}</span>
+                </a>
               )}
             </div>
           </div>
-
-          {/* History Table */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600">
-                <Calendar size={16} strokeWidth={2.5} />
-              </div>
-              <h3 className="text-[16px] font-bold text-slate-800">
-                ប្រវត្តិអវត្តមានលម្អិត
-              </h3>
+          <div className="mt-4 pt-3 border-t border-slate-100 relative z-10 flex items-center justify-between">
+            <span className="text-[11px] font-bold text-slate-400">ស្ថានភាពវិន័យ</span>
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${statusInfo.badge}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot} ${statusInfo.pulse ? 'animate-pulse' : ''} inline-block`} />
+              {statusInfo.label}
             </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-white text-[12px] font-bold text-slate-400 border-b border-slate-200">
-                    <th className="py-4 px-6 font-medium">កាលបរិច្ឆេទ</th>
-                    <th className="py-4 px-6 font-medium">មុខវិជ្ជា/ម៉ោង</th>
-                    <th className="py-4 px-6 font-medium">គ្រូបង្រៀន</th>
-                    <th className="py-4 px-6 font-medium text-center">ស្ថានភាព</th>
-                  </tr>
-                </thead>
-                <tbody className="text-[14px]">
-                  {historyData.map((row) => (
-                    <tr key={row.id} className="border-b border-slate-50 hover:bg-slate-50/80 transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <span className="font-bold text-slate-700">{row.date}</span>
-                          <span className="text-[12px] text-blue-600 font-bold bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100">{row.day}</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-2 text-slate-700">
-                          <BookOpen size={14} className="text-slate-400" />
-                          {row.subject}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 text-slate-600 font-medium">
-                        {row.teacher}
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        {row.type === 'ABSENT' ? (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-red-50 text-red-600 border border-red-100">
-                            អត់ច្បាប់
-                          </span>
-                        ) : (
-                          <span className="inline-flex flex-col items-center gap-0.5">
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                              មានច្បាប់
-                            </span>
-                            <span className="text-[11px] text-slate-500 font-medium">{row.reason}</span>
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          </div>
+        </div>
+
+        {/* Card 2: គ្មានច្បាប់ & កម្រិតវិន័យ */}
+        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-rose-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
+          <div className="flex items-center gap-3 mb-2 relative z-10">
+            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center">
+              <ShieldAlert size={18} strokeWidth={2.5} />
+            </div>
+            <div className="text-[13px] font-bold text-slate-500">គ្មានច្បាប់ (ល្មើសវិន័យ)</div>
+          </div>
+          <div className="flex items-baseline gap-1 relative z-10">
+            <span className="text-3xl font-black text-rose-500">{student.absent}</span>
+            <span className="text-[13px] font-bold text-slate-400">/ {threshold} ម៉ោង</span>
+          </div>
+          {/* Progress Bar */}
+          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2 relative z-10">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                status === 'CRITICAL' ? 'bg-rose-500' : status === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500'
+              }`}
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+          <div className="text-[11px] font-medium text-slate-400 mt-1 relative z-10">
+            ឈានដល់ {percent}% នៃកម្រិតកំណត់
+          </div>
+        </div>
+
+        {/* Card 3: មានច្បាប់ */}
+        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-amber-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
+          <div className="flex items-center gap-3 mb-3 relative z-10">
+            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center">
+              <FileText size={18} strokeWidth={2.5} />
+            </div>
+            <div className="text-[13px] font-bold text-slate-500">មានច្បាប់</div>
+          </div>
+          <div className="text-3xl font-black text-amber-500 relative z-10">{student.leave}</div>
+          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ដង</div>
+        </div>
+
+        {/* Card 4: អវត្តមានសរុប */}
+        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
+          <div className="flex items-center gap-3 mb-3 relative z-10">
+            <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
+              <Users size={18} strokeWidth={2.5} />
+            </div>
+            <div className="text-[13px] font-bold text-slate-500">អវត្តមានសរុប</div>
+          </div>
+          <div className="text-3xl font-black text-slate-800 relative z-10">
+            {(student.absent || 0) + (student.leave || 0)}
+          </div>
+          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ដង</div>
+        </div>
+
+      </div>
+
+      {/* ── Absence History Table Card ── */}
+      <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
+
+        {/* Toolbar */}
+        <div className="p-5 border-b border-slate-100 bg-slate-50/30 flex flex-col gap-4">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 w-full">
+            {/* Title */}
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <Calendar size={15} className="text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-[14px] font-black text-slate-800">ប្រវត្តិអវត្តមានដែលឈានដល់កម្រិតវិន័យ</p>
+                <p className="text-[11px] font-medium text-slate-400">
+                  {filtered.length === allRecords.length
+                    ? `សរុប ${allRecords.length} កំណត់ត្រា`
+                    : `បង្ហាញ ${filtered.length} / ${allRecords.length} កំណត់ត្រា`}
+                </p>
+              </div>
+            </div>
+
+            {/* Actions: Search & Export */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+              {/* Search */}
+              <div className="relative w-full sm:w-[260px] lg:w-[280px] group">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <input
+                  type="text"
+                  placeholder="ស្វែងរកមុខវិជ្ជា គ្រូ មូលហេតុ..."
+                  className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-8 pr-4 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm"
+                  value={detailSearch}
+                  onChange={e => { setDetailSearch(e.target.value); setDetailPage(1) }}
+                />
+              </div>
+
+              {/* Export */}
+              <div className="relative w-full sm:w-auto" ref={detailExportRef}>
+                <button
+                  onClick={() => setDetailExportOpen(!detailExportOpen)}
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full sm:w-auto"
+                >
+                  <Download size={15} strokeWidth={2.5} />
+                  <span>នាំចេញ (Export)</span>
+                  <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-1 ${detailExportOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {detailExportOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2">
+                    <button onClick={() => handleDetailExport('PDF')}   className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileText  size={16} className="text-rose-500    group-hover:scale-110 transition-transform" /> Export as PDF</button>
+                    <button onClick={() => handleDetailExport('Excel')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileCode  size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" /> Export as Excel</button>
+                    <button onClick={() => handleDetailExport('Word')}  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileImage size={16} className="text-blue-500   group-hover:scale-110 transition-transform" /> Export as Word</button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
+          {/* Filters */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
+            <SearchableDropdown options={subjectOpts} value={detailSubject} onChange={v => { setDetailSubject(v); setDetailPage(1) }} placeholder="ជ្រើសរើសមុខវិជ្ជា" icon={BookOpen} />
+            <SearchableDropdown options={statusOpts}  value={detailStatus}  onChange={v => { setDetailStatus(v);  setDetailPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" />
+            <SearchableDropdown options={monthOpts}   value={detailMonth}   onChange={v => { setDetailMonth(v);   setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
+          </div>
         </div>
 
+        {/* Table */}
+        <div className="w-full overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse min-w-[820px]">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50">
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider w-12">#</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider min-w-[130px]">កាលបរិច្ឆេទ</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">មុខវិជ្ជា</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">គ្រូបង្រៀន</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider min-w-[140px]">ម៉ោងសិក្សា</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">មូលហេតុ</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">ស្ថានភាព</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {paginatedRecords.map((rec, idx) => (
+                <tr key={idx} className="hover:bg-slate-50/80 transition-colors group">
+                  <td className="py-3.5 px-5">
+                    <span className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-[11px] font-bold text-slate-500">
+                      {(detailPage - 1) * itemsPerPage + idx + 1}
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-5">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={13} className="text-slate-400 flex-shrink-0" />
+                      <span className="text-[13px] font-bold text-slate-700">{rec.date}</span>
+                    </div>
+                  </td>
+                  <td className="py-3.5 px-5">
+                    <div className="flex items-center gap-2">
+                      <BookOpen size={13} className="text-indigo-400 flex-shrink-0" />
+                      <span className="text-[13px] font-bold text-indigo-600">{rec.subject}</span>
+                    </div>
+                  </td>
+                  <td className="py-3.5 px-5">
+                    <span className="text-[12px] font-medium text-slate-600">{rec.teacher || '—'}</span>
+                  </td>
+                  <td className="py-3.5 px-5">
+                    <div className="flex items-center gap-2">
+                      <Clock size={13} className="text-slate-400 flex-shrink-0" />
+                      <span className="text-[12px] font-medium text-slate-600">{rec.time}</span>
+                    </div>
+                  </td>
+                  <td className="py-3.5 px-5">
+                    <span className="text-[12px] font-medium text-slate-600">{rec.reason}</span>
+                  </td>
+                  <td className="py-3.5 px-5 text-right">
+                    {rec.status === 'ABSENT' ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-600 border border-rose-100">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse inline-block" />
+                        គ្មានច្បាប់
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
+                        មានច្បាប់
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan="7" className="py-20 text-center">
+                    <div className="flex flex-col items-center justify-center text-slate-400">
+                      <div className="w-14 h-14 rounded-full bg-slate-50 flex items-center justify-center mb-3">
+                        <Search size={24} className="text-slate-300" />
+                      </div>
+                      <span className="font-bold text-slate-700 text-[14px]">មិនមានទិន្នន័យត្រូវគ្នាទេ</span>
+                      <span className="text-[12px] text-slate-400 mt-1">សូមសាកល្បង Filter ផ្សេង</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+          <span className="text-[12px] font-medium text-slate-400">
+            {filtered.length > 0
+              ? `បង្ហាញ ${(detailPage - 1) * itemsPerPage + 1}–${Math.min(detailPage * itemsPerPage, filtered.length)} នៃ ${filtered.length} កំណត់ត្រា`
+              : '0 កំណត់ត្រា'}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setDetailPage(p => Math.max(1, p - 1))}
+              disabled={detailPage === 1}
+              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
+                detailPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <ChevronLeft size={18} />
+            </button>
+            {[...Array(totalDetailPages)].map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setDetailPage(i + 1)}
+                className={`w-8 h-8 rounded-full font-bold text-[13px] flex items-center justify-center transition-all ${
+                  detailPage === i + 1 ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+            <button
+              onClick={() => setDetailPage(p => Math.min(totalDetailPages, p + 1))}
+              disabled={detailPage === totalDetailPages}
+              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
+                detailPage === totalDetailPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )

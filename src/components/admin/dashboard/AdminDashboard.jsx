@@ -4,70 +4,34 @@ import { Users, AlertCircle, FileText, TrendingUp, CalendarDays, BarChart3, PieC
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 export default function AdminDashboard() {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_dashboard_cache')
+      if (cached) return JSON.parse(cached)
+    } catch (e) {}
+    return null
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_dashboard_cache')
+      return !cached
+    } catch (e) {
+      return true
+    }
+  })
 
   useEffect(() => {
     const loadData = async () => {
-      setLoading(true)
-      const res = await api('reports.allClasses')
-      if (res.success) {
-        const summaries = res.data.summaries
-        const totalPresent = summaries.reduce((acc, curr) => acc + curr.present, 0)
-        const totalAbsent = summaries.reduce((acc, curr) => acc + curr.absent, 0)
-        const totalLeave = summaries.reduce((acc, curr) => acc + curr.leave, 0)
-        const totalStudents = totalPresent + totalAbsent + totalLeave
-        const globalRate = Math.round((totalPresent / totalStudents) * 100) || 0
-
-        // 1. Weekly Trend (Area Chart)
-        const weeklyTrend = [
-          { date: 'ច័ន្ទ', absent: 5 },
-          { date: 'អង្គារ', absent: 8 },
-          { date: 'ពុធ', absent: 3 },
-          { date: 'ព្រហ', absent: 10 },
-          { date: 'សុក្រ', absent: 4 },
-        ]
-
-        // 2. Monthly Trend (Bar Chart)
-        const monthlyTrend = [
-          { month: 'មករា', absent: 25 },
-          { month: 'កុម្ភៈ', absent: 30 },
-          { month: 'មីនា', absent: 15 },
-          { month: 'មេសា', absent: 10 },
-          { month: 'ឧសភា', absent: 45 },
-          { month: 'មិថុនា', absent: 20 },
-        ]
-
-        // 3. Grade Trend (Pie Chart)
-        const gradeTrend = [
-          { name: 'ថ្នាក់ទី១០', absent: 15, fill: '#8b5cf6' }, // Violet
-          { name: 'ថ្នាក់ទី១១', absent: 20, fill: '#3b82f6' }, // Blue
-          { name: 'ថ្នាក់ទី១២', absent: 35, fill: '#f43f5e' }, // Rose
-        ]
-
-        // 4. Class Trend (Horizontal Bar Chart)
-        const classTrend = [
-          { name: '12A', absent: 12 },
-          { name: '12B', absent: 8 },
-          { name: '12C', absent: 15 },
-          { name: '11A', absent: 5 },
-          { name: '11B', absent: 15 },
-          { name: '10A', absent: 10 },
-          { name: '10B', absent: 5 },
-        ]
-
-        setData({
-          totalStudents,
-          totalAbsent,
-          totalLeave,
-          globalRate,
-          weeklyTrend,
-          monthlyTrend,
-          gradeTrend,
-          classTrend
-        })
+      try {
+        const res = await api('admin.dashboardStats')
+        if (res && res.success && res.data) {
+          setData(res.data)
+        }
+      } catch (err) {
+        console.error('Failed to load admin dashboard stats:', err)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     }
     loadData()
   }, [])

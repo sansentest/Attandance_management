@@ -1,16 +1,18 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Search, Plus, User, Edit, Trash2, GraduationCap, ChevronLeft, ChevronRight,
   ChevronsRight, CheckCircle2, FileSpreadsheet, Upload, Download, X, Save,
-  AlertTriangle, Phone, Calendar, Users, Eye, CheckCircle, ArrowRight, Sparkles, Lock, Check
+  AlertTriangle, Phone, Calendar, Users, Eye, CheckCircle, ArrowRight, Sparkles, Lock, Check,
+  RefreshCw, ChevronDown, FileText, FileCode, FileImage
 } from 'lucide-react'
 import SearchableDropdown from '../../common/SearchableDropdown'
+import { api } from '../../../utils/api'
 
 // Function to generate the next unique student ID based on existing students
 function getNextStudentId(studentList) {
   let maxNum = 0
   studentList.forEach(s => {
-    const match = s.id?.match(/(\d+)/)
+    const match = (s.id || s.studentId || '')?.match(/(\d+)/)
     if (match) {
       const num = parseInt(match[1], 10)
       if (num > maxNum) maxNum = num
@@ -20,33 +22,251 @@ function getNextStudentId(studentList) {
   return `S-${String(nextNum).padStart(3, '0')}`
 }
 
-// Sample initial students data
-const INITIAL_STUDENTS = [
-  { id: 'S-001', name: 'សាន វ៉ាន់ឌី', gender: 'M', class: '12A', dob: '2005-02-14', phone: '012 345 678', parentName: 'សាន វិបុល',   parentPhone: '012 345 678', status: 'active' },
-  { id: 'S-002', name: 'សុខ មាន',     gender: 'M', class: '11B', dob: '2006-05-20', phone: '098 765 432', parentName: 'សុខ សារ៉ាត',  parentPhone: '098 765 432', status: 'active' },
-  { id: 'S-003', name: 'កែវ រចនា',   gender: 'F', class: '10A', dob: '2007-11-05', phone: '011 222 333', parentName: 'កែវ សុផល',    parentPhone: '011 222 333', status: 'active' },
-  { id: 'S-004', name: 'ចាន់ ស្រីនី', gender: 'F', class: '12A', dob: '2005-08-10', phone: '010 444 555', parentName: 'ចាន់ វណ្ណា',   parentPhone: '010 444 555', status: 'active' },
-  { id: 'S-005', name: 'មាស សំណាង',  gender: 'M', class: '11A', dob: '2006-01-25', phone: '017 666 777', parentName: 'មាស ផល្លា',   parentPhone: '017 666 777', status: 'suspended' },
-  { id: 'S-006', name: 'លី លីហ្សា',   gender: 'F', class: '12B', dob: '2005-12-12', phone: '093 888 999', parentName: 'លី សេងហុង',  parentPhone: '093 888 999', status: 'transferred' },
-]
+// Function to generate batch unique student IDs sequentially to prevent duplicates
+function generateBatchStudentIds(existingList, count) {
+  let maxNum = 0
+  existingList.forEach(s => {
+    const match = (s.id || s.studentId || '')?.match(/(\d+)/)
+    if (match) {
+      const num = parseInt(match[1], 10)
+      if (num > maxNum) maxNum = num
+    }
+  })
 
-// Mock template data for Excel preview
-const MOCK_EXCEL_DATA = [
-  { id: 'S-007', name: 'ហ៊ឹម ចាន់ណា', gender: 'F', class: '12A', dob: '2005-06-18', phone: '012 998 877', parentName: 'ហ៊ឹម វិចិត្រ', parentPhone: '012 334 455', status: 'active' },
-  { id: 'S-008', name: 'ឡេង វឌ្ឍនា',  gender: 'M', class: '11B', dob: '2006-09-22', phone: '097 554 433', parentName: 'ឡេង ភិរុណ',  parentPhone: '097 112 233', status: 'active' },
-  { id: 'S-009', name: 'ជា ធារ៉ា',    gender: 'F', class: '10A', dob: '2007-04-12', phone: '088 667 788', parentName: 'ជា គឹមសួរ',  parentPhone: '088 990 011', status: 'active' },
-]
+  const ids = []
+  for (let i = 1; i <= count; i++) {
+    ids.push(`S-${String(maxNum + i).padStart(3, '0')}`)
+  }
+  return ids
+}
+
+// Robust CSV parser supporting Khmer text, quotes, commas, tabs, semicolons, and UTF-8
+function parseCSV(text) {
+  const cleaned = text.replace(/^\uFEFF/, '').trim()
+  if (!cleaned) return []
+
+  const lines = cleaned.split(/\r\n|\n|\r/).filter(line => line.trim().length > 0)
+  if (lines.length < 2) return [] // Need at least header + 1 data row
+
+  const parseLine = (line) => {
+    let delimiter = ','
+    if (line.includes('\t') && !line.includes(',')) delimiter = '\t'
+    else if (line.includes(';') && !line.includes(',')) delimiter = ';'
+
+    const result = []
+    let current = ''
+    let inQuotes = false
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          inQuotes = !inQuotes
+        }
+      } else if (char === delimiter && !inQuotes) {
+        result.push(current.trim())
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    result.push(current.trim())
+    return result.map(col => col.replace(/^["']|["']$/g, '').trim())
+  }
+
+  const rawHeaders = parseLine(lines[0])
+  const headers = rawHeaders.map(h => h.toLowerCase())
+
+  let nameIdx = headers.findIndex(h => h.includes('ឈ្មោះ') || h.includes('name'))
+  let genderIdx = headers.findIndex(h => h.includes('ភេទ') || h.includes('gender') || h.includes('sex'))
+  let classIdx = headers.findIndex(h => h.includes('ថ្នាក់') || h.includes('class') || h.includes('grade'))
+  let dobIdx = headers.findIndex(h => h.includes('កំណើត') || h.includes('dob') || h.includes('birth'))
+  let phoneIdx = headers.findIndex(h => (h.includes('ទូរស័ព្ទ') && !h.includes('អាណាព្យាបាល')) || h.includes('phone'))
+  let parentNameIdx = headers.findIndex(h => h.includes('អាណាព្យាបាល') && !h.includes('ទូរស័ព្ទ'))
+  let parentPhoneIdx = headers.findIndex(h => h.includes('អាណាព្យាបាល') && h.includes('ទូរស័ព្ទ'))
+  let statusIdx = headers.findIndex(h => h.includes('ស្ថានភាព') || h.includes('status'))
+
+  // Fallback defaults for column positions if headers didn't match keywords
+  if (nameIdx === -1 && rawHeaders.length >= 2) nameIdx = 1
+  if (genderIdx === -1 && rawHeaders.length >= 3) genderIdx = 2
+  if (classIdx === -1 && rawHeaders.length >= 4) classIdx = 3
+  if (dobIdx === -1 && rawHeaders.length >= 5) dobIdx = 4
+  if (phoneIdx === -1 && rawHeaders.length >= 6) phoneIdx = 5
+  if (parentNameIdx === -1 && rawHeaders.length >= 7) parentNameIdx = 6
+  if (parentPhoneIdx === -1 && rawHeaders.length >= 8) parentPhoneIdx = 7
+
+  const parsed = []
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseLine(lines[i])
+    if (cols.length === 0 || cols.every(c => !c)) continue
+
+    const name = (nameIdx >= 0 && cols[nameIdx]) ? cols[nameIdx] : ''
+    if (!name) continue // Skip rows without name
+
+    const rawGender = (genderIdx >= 0 && cols[genderIdx]) ? cols[genderIdx] : 'M'
+    const gender = (rawGender === 'ស្រី' || rawGender.toLowerCase() === 'f' || rawGender.toLowerCase() === 'female') ? 'F' : 'M'
+    const className = (classIdx >= 0 && cols[classIdx]) ? cols[classIdx].trim() : '12A'
+    const dob = (dobIdx >= 0 && cols[dobIdx]) ? cols[dobIdx] : ''
+    const phone = (phoneIdx >= 0 && cols[phoneIdx]) ? cols[phoneIdx] : ''
+    const parentName = (parentNameIdx >= 0 && cols[parentNameIdx]) ? cols[parentNameIdx] : ''
+    const parentPhone = (parentPhoneIdx >= 0 && cols[parentPhoneIdx]) ? cols[parentPhoneIdx] : ''
+    const rawStatus = (statusIdx >= 0 && cols[statusIdx]) ? cols[statusIdx].toLowerCase() : 'active'
+    const status = (rawStatus.includes('ផ្អាក') || rawStatus === 'suspended') ? 'suspended'
+      : (rawStatus.includes('ប្តូរ') || rawStatus === 'transferred') ? 'transferred' : 'active'
+
+    parsed.push({
+      name,
+      gender,
+      class: className,
+      className,
+      dob,
+      phone,
+      parentName,
+      parentPhone,
+      status
+    })
+  }
+
+  return parsed
+}
 
 export default function AdminStudents({ onNavigate }) {
-  const [students, setStudents] = useState(INITIAL_STUDENTS)
+  const [students, setStudents] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_students_cache')
+      if (cached !== null) {
+        return JSON.parse(cached)
+      }
+    } catch (e) {}
+    return []
+  })
+  const [loading, setLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  // Fetch students from Firebase & cache on mount
+  const fetchStudents = async (showLoading = false) => {
+    if (showLoading) setLoading(true)
+    setIsRefreshing(true)
+    try {
+      const res = await api('students.getAll')
+      if (res && res.success && Array.isArray(res.data)) {
+        setStudents(res.data)
+      }
+    } catch (err) {
+      console.error('Failed to load students:', err)
+    } finally {
+      setLoading(false)
+      setIsRefreshing(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchStudents(false)
+  }, [])
+
+  // Live attendance records for dynamic student stats
+  const [attendanceRecords, setAttendanceRecords] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_attendance_records') || localStorage.getItem('school_attendance_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch (e) {}
+    return []
+  })
+
+  useEffect(() => {
+    api('attendance.getAll').then(res => {
+      if (res && res.success && Array.isArray(res.data)) {
+        setAttendanceRecords(res.data)
+      }
+    }).catch(() => {})
+  }, [])
+
+  const getStudentAttendanceStats = (student) => {
+    if (!student) {
+      return { absentHours: 0, leaveHours: 0, totalHours: 0, rate: 100, label: 'គ្មានអវត្តមាន (100%)', badgeColor: 'emerald' }
+    }
+    const sId = String(student.id || student.studentId || '').toLowerCase().trim()
+    const sName = String(student.name || '').toLowerCase().trim()
+
+    const recs = attendanceRecords.filter(r => {
+      const rId = String(r.studentId || r.id || '').toLowerCase().trim()
+      const rName = String(r.name || '').toLowerCase().trim()
+      return (sId && rId === sId) || (sName && rName === sName)
+    })
+
+    let absentHours = 0
+    let leaveHours = 0
+
+    recs.forEach(r => {
+      const hrs = Number(r.hours) || 1
+      if (r.status === 'LEAVE') {
+        leaveHours += hrs
+      } else {
+        absentHours += hrs
+      }
+    })
+
+    const totalAbsent = absentHours + leaveHours
+    let rate = 100
+    if (absentHours > 0) {
+      rate = Math.max(0, 100 - Math.round(absentHours * 1.5))
+    }
+
+    let label = 'វត្តមានល្អ ១០០%'
+    let badgeColor = 'emerald'
+
+    if (totalAbsent === 0) {
+      label = 'វត្តមានល្អ ១០០%'
+      badgeColor = 'emerald'
+    } else if (absentHours >= 20) {
+      label = `កម្រិតគ្រោះថ្នាក់ (${rate}%)`
+      badgeColor = 'rose'
+    } else if (absentHours >= 10) {
+      label = `ប្រុងប្រយ័ត្ន (${rate}%)`
+      badgeColor = 'amber'
+    } else {
+      label = `វត្តមានធម្មតា (${rate}%)`
+      badgeColor = 'emerald'
+    }
+
+    return {
+      absentHours,
+      leaveHours,
+      totalHours: absentHours + leaveHours,
+      totalDays: recs.length,
+      rate,
+      label,
+      badgeColor
+    }
+  }
 
   // Filters
   const [filterClass, setFilterClass]   = useState('ALL')
   const [filterGender, setFilterGender] = useState('ALL')
   const [filterStatus, setFilterStatus] = useState('ALL')
+
+  // Export Dropdown State
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) {
+        setExportOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Batch Selection
   const [selectedStudentIds, setSelectedStudentIds] = useState([])
@@ -80,14 +300,30 @@ export default function AdminStudents({ onNavigate }) {
 
   const fileInputRef = useRef(null)
 
-  const classOptions = [
-    { id: 'ALL', label: 'គ្រប់ថ្នាក់' },
-    { id: '12A', label: 'ថ្នាក់ 12A' },
-    { id: '12B', label: 'ថ្នាក់ 12B' },
-    { id: '11A', label: 'ថ្នាក់ 11A' },
-    { id: '11B', label: 'ថ្នាក់ 11B' },
-    { id: '10A', label: 'ថ្នាក់ 10A' },
-  ]
+  const [classOptions, setClassOptions] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_classes_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }, ...parsed.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))]
+        }
+      }
+    } catch (e) {}
+    return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }]
+  })
+
+  useEffect(() => {
+    api('academic.getClasses').then(res => {
+      if (res && res.success && Array.isArray(res.data)) {
+        if (res.data.length > 0) {
+          setClassOptions([{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }, ...res.data.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))])
+        } else {
+          setClassOptions([{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }])
+        }
+      }
+    }).catch(() => {})
+  }, [])
 
   const genderOptions = [
     { id: 'ALL', label: 'គ្រប់ភេទ' },
@@ -167,11 +403,12 @@ export default function AdminStudents({ onNavigate }) {
   // ── Open Add Modal ──
   const handleOpenAdd = () => {
     const autoId = getNextStudentId(students)
+    const available = classOptions.filter(c => c.id !== 'ALL')
     setFormData({
       id: autoId,
       name: '',
       gender: 'M',
-      class: '12A',
+      class: available.length > 0 ? available[0].id : '',
       dob: '2006-01-01',
       phone: '',
       parentName: '',
@@ -183,11 +420,12 @@ export default function AdminStudents({ onNavigate }) {
 
   // ── Open Edit Modal ──
   const handleOpenEdit = (student) => {
+    const available = classOptions.filter(c => c.id !== 'ALL')
     setFormData({
       id: student.id,
       name: student.name,
       gender: student.gender || 'M',
-      class: student.class || '12A',
+      class: student.class || (available.length > 0 ? available[0].id : ''),
       dob: student.dob || '',
       phone: student.phone || '',
       parentName: student.parentName || '',
@@ -198,7 +436,7 @@ export default function AdminStudents({ onNavigate }) {
   }
 
   // ── Save Add/Edit ──
-  const handleSaveStudent = (e) => {
+  const handleSaveStudent = async (e) => {
     e.preventDefault()
     if (!formData.name.trim() || !formData.id.trim()) return
 
@@ -207,68 +445,142 @@ export default function AdminStudents({ onNavigate }) {
       return
     }
 
+    const payload = {
+      ...formData,
+      studentId: formData.id,
+      className: formData.class
+    }
+
     if (addEditModal.mode === 'add') {
-      const newStudent = { ...formData }
-      setStudents([newStudent, ...students])
+      setStudents([payload, ...students])
       showToast(`បានបន្ថែមសិស្ស "${formData.name}" (ID: ${formData.id}) ដោយជោគជ័យ`)
     } else {
-      setStudents(students.map(s => s.id === addEditModal.studentId ? { ...formData } : s))
+      setStudents(students.map(s => s.id === addEditModal.studentId ? payload : s))
       showToast(`បានកែសម្រួលព័ត៌មានសិស្ស "${formData.name}" ដោយជោគជ័យ`)
     }
     setAddEditModal({ open: false, mode: 'add', studentId: null })
+
+    // Sync to Cloud Firebase & cache
+    try {
+      await api('students.save', { student: payload })
+    } catch (err) {
+      console.error('Firebase save error:', err)
+    }
   }
 
   // ── Confirm Delete ──
-  const handleExecuteDelete = () => {
+  const handleExecuteDelete = async () => {
     if (!deleteModal.student) return
-    setStudents(students.filter(s => s.id !== deleteModal.student.id))
-    showToast(`បានលុបសិស្ស "${deleteModal.student.name}" ដោយជោគជ័យ`)
+    const target = deleteModal.student
+    setStudents(students.filter(s => s.id !== target.id))
+    showToast(`បានលុបសិស្ស "${target.name}" ដោយជោគជ័យ`)
     setDeleteModal({ open: false, student: null })
+
+    // Sync to Cloud Firebase & cache
+    try {
+      await api('students.delete', { studentId: target.id, className: target.class })
+    } catch (err) {
+      console.error('Firebase delete error:', err)
+    }
   }
 
   // ── Excel Import Handlers ──
   const handleSelectExcelFile = (e) => {
     const file = e.target.files?.[0]
-    if (file) {
-      setImportModal({
-        open: true,
-        fileName: file.name,
-        parsedData: MOCK_EXCEL_DATA,
-        isUploaded: true
-      })
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const text = evt.target.result
+        const rows = parseCSV(text)
+        if (rows.length === 0) {
+          showToast('ឯកសារមិនមានទិន្នន័យ ឬខុសទម្រង់! សូមទាញយកឯកសារគំរូ។')
+          return
+        }
+
+        // Auto-Generate unique sequential IDs for all rows to guarantee no duplicates
+        const generatedIds = generateBatchStudentIds(students, rows.length)
+        const finalRows = rows.map((r, idx) => ({
+          ...r,
+          id: generatedIds[idx],
+          studentId: generatedIds[idx],
+          className: r.class
+        }))
+
+        setImportModal({
+          open: true,
+          fileName: file.name,
+          parsedData: finalRows,
+          isUploaded: true
+        })
+      } catch (err) {
+        console.error('File parsing error:', err)
+        showToast('មានបញ្ហាក្នុងការអានឯកសារ!')
+      }
     }
+    reader.onerror = () => {
+      showToast('បរាជ័យក្នុងការបើកឯកសារ!')
+    }
+    reader.readAsText(file, 'UTF-8')
+    e.target.value = ''
   }
 
   const handleLoadDemoExcel = () => {
+    const demoRows = [
+      { name: 'ហ៊ឹម ចាន់ណា', gender: 'F', class: '12A', dob: '2005-06-18', phone: '012 998 877', parentName: 'ហ៊ឹម វិចិត្រ', parentPhone: '012 334 455', status: 'active' },
+      { name: 'ឡេង វឌ្ឍនា',  gender: 'M', class: '11B', dob: '2006-09-22', phone: '097 554 433', parentName: 'ឡេង ភិរុណ',  parentPhone: '097 112 233', status: 'active' },
+      { name: 'ជា ធារ៉ា',    gender: 'F', class: '10A', dob: '2007-04-12', phone: '088 667 788', parentName: 'ជា គឹមសួរ',  parentPhone: '088 990 011', status: 'active' },
+    ]
+    const generatedIds = generateBatchStudentIds(students, demoRows.length)
+    const finalDemo = demoRows.map((r, idx) => ({
+      ...r,
+      id: generatedIds[idx],
+      studentId: generatedIds[idx],
+      className: r.class
+    }))
+
     setImportModal({
       open: true,
-      fileName: 'បញ្ជីសិស្ស_ឆ្នាំសិក្សា២០២៦.xlsx',
-      parsedData: MOCK_EXCEL_DATA,
+      fileName: 'បញ្ជីសិស្ស_គំរូសាកល្បង.csv',
+      parsedData: finalDemo,
       isUploaded: true
     })
   }
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (importModal.parsedData.length === 0) return
-    // Auto-resolve any ID conflicts during Excel import
-    let currentList = [...students]
-    const newImported = importModal.parsedData.map(item => {
-      let finalId = item.id
-      if (currentList.some(s => s.id.toLowerCase() === finalId.toLowerCase())) {
-        finalId = getNextStudentId(currentList)
+
+    // Always Auto-Generate sequential unique IDs based on current state to guarantee no duplicates
+    const generatedIds = generateBatchStudentIds(students, importModal.parsedData.length)
+    const newImported = importModal.parsedData.map((item, idx) => {
+      const finalId = generatedIds[idx]
+      const cls = item.class || item.className || '12A'
+      return {
+        ...item,
+        id: finalId,
+        studentId: finalId,
+        class: cls,
+        className: cls
       }
-      const studentWithId = { ...item, id: finalId }
-      currentList.push(studentWithId)
-      return studentWithId
     })
 
+    const currentList = [...students, ...newImported]
     setStudents(currentList)
-    showToast(`បាននាំចូលសិស្សចំនួន ${newImported.length} នាក់ពី Excel ដោយជោគជ័យ!`)
+    showToast(`បាននាំចូលសិស្សចំនួន ${newImported.length} នាក់ដោយជោគជ័យ (បង្កើតកូដ ${newImported[0].id} ដល់ ${newImported[newImported.length - 1].id})!`)
     setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })
+
+    // Sync to Cloud Firebase & cache
+    try {
+      await api('students.import', { students: newImported })
+    } catch (err) {
+      console.error('Firebase import error:', err)
+    }
   }
 
-  // ── 1. Export to Excel/CSV ──
-  const handleExportExcel = (selectedOnly = false) => {
+  // ── 1. Export (Excel, Word, PDF) ──
+  const handleExport = (type, selectedOnly = false) => {
+    setExportOpen(false)
     const dataToExport = selectedOnly && selectedStudentIds.length > 0
       ? students.filter(s => selectedStudentIds.includes(s.id))
       : filteredStudents
@@ -278,39 +590,408 @@ export default function AdminStudents({ onNavigate }) {
       return
     }
 
-    const headers = ['លេខកូដ', 'ឈ្មោះសិស្ស', 'ភេទ', 'ថ្នាក់', 'ថ្ងៃខែឆ្នាំកំណើត', 'លេខទូរស័ព្ទសិស្ស', 'ឈ្មោះអាណាព្យាបាល', 'លេខទូរស័ព្ទអាណាព្យាបាល', 'ស្ថានភាព']
-    const rows = dataToExport.map(s => [
-      `"${s.id}"`,
-      `"${s.name}"`,
-      `"${s.gender === 'F' ? 'ស្រី' : 'ប្រុស'}"`,
-      `"${s.class}"`,
-      `"${s.dob || ''}"`,
-      `"${s.phone || ''}"`,
-      `"${s.parentName || ''}"`,
-      `"${s.parentPhone || ''}"`,
-      `"${s.status === 'active' ? 'កំពុងសិក្សា' : s.status === 'suspended' ? 'ផ្អាកការសិក្សា' : 'ប្តូរសាលា'}"`
-    ])
+    if (type === 'Excel') {
+      const headers = ['ល.រ', 'លេខកូដ', 'ឈ្មោះសិស្ស', 'ភេទ', 'ថ្នាក់', 'ថ្ងៃខែឆ្នាំកំណើត', 'លេខទូរស័ព្ទសិស្ស', 'ឈ្មោះអាណាព្យាបាល', 'លេខទូរស័ព្ទអាណាព្យាបាល', 'ស្ថានភាព']
+      const rows = dataToExport.map((s, idx) => [
+        `"${idx + 1}"`,
+        `"${s.id || s.studentId || ''}"`,
+        `"${s.name || ''}"`,
+        `"${s.gender === 'F' ? 'ស្រី' : 'ប្រុស'}"`,
+        `"${s.class || s.className || ''}"`,
+        `"${s.dob || ''}"`,
+        `"${s.phone || ''}"`,
+        `"${s.parentName || ''}"`,
+        `"${s.parentPhone || ''}"`,
+        `"${s.status === 'active' ? 'កំពុងសិក្សា' : s.status === 'suspended' ? 'ផ្អាកការសិក្សា' : 'ប្តូរសាលា'}"`
+      ])
 
-    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.setAttribute('href', url)
-    link.setAttribute('download', `បញ្ជីសិស្ស_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `បញ្ជីសិស្ស_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
 
-    showToast(`បានទាញយកបញ្ជីសិស្ស (${dataToExport.length} នាក់) ជាឯកសារ Excel ដោយជោគជ័យ`)
+      showToast(`បានទាញយកបញ្ជីសិស្ស (${dataToExport.length} នាក់) ជាឯកសារ Excel ដោយជោគជ័យ`)
+    } else if (type === 'Word') {
+      const htmlContent = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+  <meta charset='utf-8'>
+  <title>បញ្ជីរាយនាមសិស្ស - វិទ្យាល័យអង្គរកា</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 1.5cm;
+    }
+    body {
+      font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif;
+      font-size: 11pt;
+      color: #1e293b;
+      line-height: 1.5;
+    }
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    .header-table td {
+      border: none;
+      padding: 4px;
+    }
+    .kingdom-title {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Khmer OS', serif;
+      font-size: 12pt;
+      font-weight: bold;
+      color: #1e3a8a;
+      text-align: center;
+    }
+    .motto-title {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Khmer OS', serif;
+      font-size: 11pt;
+      color: #1e3a8a;
+      text-align: center;
+    }
+    .doc-title {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Khmer OS', serif;
+      font-size: 15pt;
+      font-weight: bold;
+      color: #0f172a;
+      text-align: center;
+      margin: 15px 0 5px 0;
+    }
+    .doc-subtitle {
+      text-align: center;
+      font-size: 10pt;
+      color: #64748b;
+      margin-bottom: 15px;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 10pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #94a3b8;
+      padding: 6px 8px;
+    }
+    table.data-table th {
+      background-color: #f1f5f9;
+      font-weight: bold;
+      text-align: center;
+      color: #1e293b;
+    }
+    .text-center { text-align: center; }
+    .footer-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 30px;
+    }
+    .footer-table td {
+      border: none;
+      text-align: center;
+      font-size: 10pt;
+    }
+  </style>
+</head>
+<body>
+  <table class="header-table">
+    <tr>
+      <td style="width: 50%; vertical-align: top;">
+        <strong>ក្រសួងអប់រំ យុវជន និងកីឡា</strong><br>
+        <strong>មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ</strong><br>
+        <strong>វិទ្យាល័យអង្គរកា</strong>
+      </td>
+      <td style="width: 50%; vertical-align: top;">
+        <div class="kingdom-title">ព្រះរាជាណាចក្រកម្ពុជា</div>
+        <div class="motto-title">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="doc-title">បញ្ជីរាយនាមសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបចំនួន៖ ${dataToExport.length} នាក់</div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 35px;">ល.រ</th>
+        <th style="width: 75px;">លេខកូដ</th>
+        <th>គោត្តនាម-នាម</th>
+        <th style="width: 50px;">ភេទ</th>
+        <th style="width: 55px;">ថ្នាក់</th>
+        <th style="width: 85px;">ថ្ងៃខែឆ្នាំកំណើត</th>
+        <th style="width: 95px;">លេខទូរស័ព្ទ</th>
+        <th>ឈ្មោះអាណាព្យាបាល</th>
+        <th style="width: 95px;">ទូរស័ព្ទអាណាព្យាបាល</th>
+        <th style="width: 80px;">ស្ថានភាព</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${dataToExport.map((s, idx) => `
+        <tr>
+          <td class="text-center">${idx + 1}</td>
+          <td class="text-center" style="font-weight: bold;">${s.id || s.studentId || ''}</td>
+          <td style="font-weight: bold;">${s.name || ''}</td>
+          <td class="text-center">${s.gender === 'F' ? 'ស្រី' : 'ប្រុស'}</td>
+          <td class="text-center" style="font-weight: bold;">${s.class || s.className || ''}</td>
+          <td class="text-center">${s.dob || '-'}</td>
+          <td class="text-center">${s.phone || '-'}</td>
+          <td>${s.parentName || '-'}</td>
+          <td class="text-center">${s.parentPhone || '-'}</td>
+          <td class="text-center">${s.status === 'active' ? 'កំពុងសិក្សា' : s.status === 'suspended' ? 'ផ្អាកការសិក្សា' : 'ប្តូរសាលា'}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <table class="footer-table">
+    <tr>
+      <td style="width: 50%; vertical-align: top;">
+        <br>
+        <strong>បានឃើញ និងឯកភាព</strong><br>
+        នាយកវិទ្យាល័យអង្គរកា
+      </td>
+      <td style="width: 50%; vertical-align: top;">
+        ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
+        <strong>អ្នករៀបចំបញ្ជី</strong>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `បញ្ជីសិស្ស_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.doc`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      showToast(`បានទាញយកបញ្ជីសិស្ស (${dataToExport.length} នាក់) ជាឯកសារ Word (.doc) ដោយជោគជ័យ`)
+    } else {
+      // PDF Export via high-fidelity print window
+      const printWindow = window.open('', '_blank', 'width=1100,height=850')
+      if (!printWindow) {
+        window.print()
+        return
+      }
+      printWindow.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>បញ្ជីរាយនាមសិស្ស - វិទ្យាល័យអង្គរកា</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Moul&display=swap');
+    @page {
+      size: A4 landscape;
+      margin: 1.2cm;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Kantumruy Pro', 'Khmer OS Siemreap', sans-serif;
+      color: #1e293b;
+      margin: 0;
+      padding: 20px;
+      background: #fff;
+      font-size: 11px;
+    }
+    .header-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+    .school-title {
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.6;
+      color: #1e293b;
+    }
+    .kingdom-box {
+      text-align: center;
+    }
+    .kingdom {
+      font-family: 'Moul', 'Khmer OS Muol Light', serif;
+      font-size: 13px;
+      color: #1e3a8a;
+    }
+    .motto {
+      font-family: 'Moul', 'Khmer OS Muol Light', serif;
+      font-size: 11px;
+      color: #1e3a8a;
+      margin-top: 4px;
+    }
+    .doc-title {
+      text-align: center;
+      margin: 10px 0 4px 0;
+      font-family: 'Moul', 'Khmer OS Muol Light', serif;
+      font-size: 16px;
+      color: #0f172a;
+    }
+    .doc-subtitle {
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 18px;
+      font-weight: 500;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+    }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f8fafc;
+      font-weight: 700;
+      color: #334155;
+      text-align: center;
+    }
+    tr:nth-child(even) {
+      background-color: #fdfdfd;
+    }
+    .text-center { text-align: center; }
+    .badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .status-active { color: #166534; background: #dcfce7; }
+    .status-suspended { color: #991b1b; background: #fee2e2; }
+    .status-transferred { color: #92400e; background: #fef3c7; }
+    .footer-sign {
+      margin-top: 35px;
+      display: flex;
+      justify-content: space-between;
+      text-align: center;
+      font-size: 11px;
+      page-break-inside: avoid;
+    }
+    .sign-col {
+      width: 240px;
+    }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom: 15px; padding: 10px; background: #f1f5f9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+    <span style="font-weight: 600;">មើលគំរូមុនពេលបោះពុម្ព ឬរក្សាទុកជា PDF (Print / Save as PDF)</span>
+    <button onclick="window.print()" style="padding: 6px 14px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">បោះពុម្ព / រក្សាទុកជា PDF</button>
+  </div>
+
+  <div class="header-grid">
+    <div class="school-title">
+      ក្រសួងអប់រំ យុវជន និងកីឡា<br>
+      មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ<br>
+      វិទ្យាល័យអង្គរកា
+    </div>
+    <div class="kingdom-box">
+      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
+      <div class="motto">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
+    </div>
+  </div>
+
+  <div class="doc-title">បញ្ជីរាយនាមសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបចំនួន៖ ${dataToExport.length} នាក់</div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 35px;">ល.រ</th>
+        <th style="width: 75px;">លេខកូដ</th>
+        <th>គោត្តនាម-នាម</th>
+        <th style="width: 45px;">ភេទ</th>
+        <th style="width: 50px;">ថ្នាក់</th>
+        <th style="width: 85px;">ថ្ងៃខែឆ្នាំកំណើត</th>
+        <th style="width: 95px;">លេខទូរស័ព្ទ</th>
+        <th>ឈ្មោះអាណាព្យាបាល</th>
+        <th style="width: 95px;">ទូរស័ព្ទអាណាព្យាបាល</th>
+        <th style="width: 80px;">ស្ថានភាព</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${dataToExport.map((s, idx) => `
+        <tr>
+          <td class="text-center">${idx + 1}</td>
+          <td class="text-center" style="font-weight:700;">${s.id || s.studentId || ''}</td>
+          <td style="font-weight:600;">${s.name || ''}</td>
+          <td class="text-center">${s.gender === 'F' ? 'ស្រី' : 'ប្រុស'}</td>
+          <td class="text-center" style="font-weight:700;">${s.class || s.className || ''}</td>
+          <td class="text-center">${s.dob || '-'}</td>
+          <td class="text-center">${s.phone || '-'}</td>
+          <td>${s.parentName || '-'}</td>
+          <td class="text-center">${s.parentPhone || '-'}</td>
+          <td class="text-center">
+            <span class="badge ${s.status === 'active' ? 'status-active' : s.status === 'suspended' ? 'status-suspended' : 'status-transferred'}">
+              ${s.status === 'active' ? 'កំពុងសិក្សា' : s.status === 'suspended' ? 'ផ្អាកការសិក្សា' : 'ប្តូរសាលា'}
+            </span>
+          </td>
+        </tr>
+      `).join('')}
+    </tbody>
+  </table>
+
+  <div class="footer-sign">
+    <div class="sign-col">
+      <br>
+      <strong>បានឃើញ និងឯកភាព</strong><br>
+      នាយកវិទ្យាល័យអង្គរកា
+    </div>
+    <div class="sign-col">
+      ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
+      <strong>អ្នករៀបចំបញ្ជី</strong>
+    </div>
+  </div>
+</body>
+</html>
+`)
+      printWindow.document.close()
+      setTimeout(() => {
+        printWindow.print()
+      }, 400)
+      showToast(`បានបើកផ្ទាំងបោះពុម្ពបញ្ជីសិស្ស (${dataToExport.length} នាក់) សម្រាប់ Save as PDF`)
+    }
+  }
+
+  const handleExportExcel = (selectedOnly = false) => {
+    handleExport('Excel', selectedOnly)
   }
 
   // ── 2. Download Excel Template ──
   const handleDownloadTemplate = () => {
-    const headers = ['លេខកូដ', 'ឈ្មោះសិស្ស', 'ភេទ', 'ថ្នាក់', 'ថ្ងៃខែឆ្នាំកំណើត', 'លេខទូរស័ព្ទសិស្ស', 'ឈ្មោះអាណាព្យាបាល', 'លេខទូរស័ព្ទអាណាព្យាបាល', 'ស្ថានភាព']
+    const headers = ['លេខកូដ (ទុកទទេ - ប្រព័ន្ធបង្កើតអូតូ)', 'ឈ្មោះសិស្ស', 'ភេទ', 'ថ្នាក់', 'ថ្ងៃខែឆ្នាំកំណើត', 'លេខទូរស័ព្ទសិស្ស', 'ឈ្មោះអាណាព្យាបាល', 'លេខទូរស័ព្ទអាណាព្យាបាល', 'ស្ថានភាព']
     const sampleRows = [
-      ['"S-011"', '"ហេង ពិសិដ្ឋ"', '"M"', '"12A"', '"2005-03-15"', '"012 345 678"', '"ហេង វិបុល"', '"012 345 678"', '"active"'],
-      ['"S-012"', '"សួស ធីតា"', '"F"', '"12B"', '"2005-07-20"', '"098 765 432"', '"សួស ផល្លា"', '"098 765 432"', '"active"']
+      ['""', '"ហេង ពិសិដ្ឋ"', '"ប្រុស"', '"12A"', '"2005-03-15"', '"012 345 678"', '"ហេង វិបុល"', '"012 345 678"', '"active"'],
+      ['""', '"សួស ធីតា"', '"ស្រី"', '"12B"', '"2005-07-20"', '"098 765 432"', '"សួស ផល្លា"', '"098 765 432"', '"active"'],
+      ['""', '"កែវ រតនៈ"', '"ប្រុស"', '"12A"', '"2005-11-02"', '"011 223 344"', '"កែវ សារុន"', '"011 223 344"', '"active"']
     ]
     const csvContent = '\uFEFF' + [headers.join(','), ...sampleRows.map(r => r.join(','))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -323,7 +1004,7 @@ export default function AdminStudents({ onNavigate }) {
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
 
-    showToast('បានទាញយកឯកសារគំរូ (.csv) ដោយជោគជ័យ')
+    showToast('បានទាញយកឯកសារគំរូ (.csv) ដោយជោគជ័យ (លេខកូដទុកទទេ)')
   }
 
   // ── 4. Batch Selection Handlers ──
@@ -346,18 +1027,35 @@ export default function AdminStudents({ onNavigate }) {
     }
   }
 
-  const handleBatchChangeStatus = (newStatus) => {
+  const handleBatchChangeStatus = async (newStatus) => {
     if (selectedStudentIds.length === 0) return
-    setStudents(students.map(s => selectedStudentIds.includes(s.id) ? { ...s, status: newStatus } : s))
+    const updated = students.map(s => selectedStudentIds.includes(s.id) ? { ...s, status: newStatus } : s)
+    setStudents(updated)
     const statusLabel = newStatus === 'active' ? 'កំពុងសិក្សា' : newStatus === 'suspended' ? 'ផ្អាកការសិក្សា' : 'ប្តូរសាលា'
     showToast(`បានប្តូរស្ថានភាពសិស្ស ${selectedStudentIds.length} នាក់ ទៅ "${statusLabel}"`)
+
+    // Sync to Cloud Firebase & cache
+    try {
+      const changed = updated.filter(s => selectedStudentIds.includes(s.id))
+      await api('students.import', { students: changed })
+    } catch (err) {
+      console.error('Batch status update error:', err)
+    }
   }
 
-  const handleConfirmBatchDelete = () => {
-    setStudents(students.filter(s => !selectedStudentIds.includes(s.id)))
-    showToast(`បានលុបសិស្សចំនួន ${selectedStudentIds.length} នាក់ចេញពីប្រព័ន្ធ`)
+  const handleConfirmBatchDelete = async () => {
+    const idsToDelete = [...selectedStudentIds]
+    setStudents(students.filter(s => !idsToDelete.includes(s.id)))
+    showToast(`បានលុបសិស្សចំនួន ${idsToDelete.length} នាក់ចេញពីប្រព័ន្ធ`)
     setSelectedStudentIds([])
     setBatchDeleteModal(false)
+
+    // Sync to Cloud Firebase & cache
+    try {
+      await api('students.deleteMultiple', { studentIds: idsToDelete })
+    } catch (err) {
+      console.error('Firebase batch delete error:', err)
+    }
   }
 
   return (
@@ -454,16 +1152,59 @@ export default function AdminStudents({ onNavigate }) {
 
             {/* Action Buttons: Export, Import Excel & Add Student */}
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full lg:w-auto">
-              {/* Export to Excel */}
+              {/* Live Sync / Refresh from Firebase */}
               <button
                 type="button"
-                onClick={() => handleExportExcel(false)}
-                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 w-full sm:w-auto"
-                title="ទាញយកបញ្ជីសិស្សជាឯកសារ Excel (.csv)"
+                onClick={() => fetchStudents(false)}
+                disabled={isRefreshing}
+                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 w-full sm:w-auto disabled:opacity-60"
+                title="ទាញយកទិន្នន័យផ្ទាល់ពី Cloud Firebase"
               >
-                <Download size={15} strokeWidth={2.2} className="text-slate-600" />
-                <span>នាំចេញជា Excel</span>
+                <RefreshCw size={15} strokeWidth={2.2} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
               </button>
+
+              {/* Export Dropdown */}
+              <div className="relative w-full sm:w-auto" ref={exportRef}>
+                <button
+                  type="button"
+                  onClick={() => setExportOpen(!exportOpen)}
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full sm:w-auto cursor-pointer"
+                  title="នាំចេញបញ្ជីសិស្សជា PDF, Excel ឬ Word"
+                >
+                  <Download size={15} strokeWidth={2.5} />
+                  <span>នាំចេញ (Export)</span>
+                  <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-0.5 ${exportOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {exportOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2">
+                    <button
+                      type="button"
+                      onClick={() => handleExport('PDF', false)}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileText size={16} className="text-rose-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExport('Excel', false)}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileCode size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as Excel</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExport('Word', false)}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileImage size={16} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as Word</span>
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {/* Import Excel Button */}
               <button
@@ -850,11 +1591,13 @@ export default function AdminStudents({ onNavigate }) {
                     onChange={e => setFormData({ ...formData, class: e.target.value })}
                     className="w-full bg-white border border-slate-200 text-slate-800 py-2 px-3 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
                   >
-                    <option value="12A">ថ្នាក់ 12A</option>
-                    <option value="12B">ថ្នាក់ 12B</option>
-                    <option value="11A">ថ្នាក់ 11A</option>
-                    <option value="11B">ថ្នាក់ 11B</option>
-                    <option value="10A">ថ្នាក់ 10A</option>
+                    {classOptions.filter(c => c.id !== 'ALL').length === 0 ? (
+                      <option value="">-- សូមបញ្ចូលថ្នាក់ជាមុនសិន --</option>
+                    ) : (
+                      classOptions.filter(c => c.id !== 'ALL').map(c => (
+                        <option key={c.id} value={c.id}>{c.label}</option>
+                      ))
+                    )}
                   </select>
                 </div>
               </div>
@@ -1021,13 +1764,13 @@ export default function AdminStudents({ onNavigate }) {
                   </div>
                   <div>
                     <p className="text-[13px] font-bold text-slate-700">ទាញយកឯកសារគំរូ (Template)</p>
-                    <p className="text-[11px] text-slate-400">ទាញយកឯកសារគំរូសម្រាប់បំពេញទិន្នន័យសិស្សឱ្យត្រូវទម្រង់</p>
+                    <p className="text-[11px] text-slate-400">ទាញយកឯកសារគំរូសម្រាប់បំពេញទិន្នន័យសិស្ស (ជួរឈរលេខកូដអាចទុកទទេបាន)</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={handleDownloadTemplate}
-                  className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-200 text-[12px] font-bold shadow-xs transition-all whitespace-nowrap"
+                  className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-200 text-[12px] font-bold shadow-xs transition-all whitespace-nowrap cursor-pointer"
                 >
                   ទាញយកគំរូ (.csv)
                 </button>
@@ -1039,7 +1782,7 @@ export default function AdminStudents({ onNavigate }) {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleSelectExcelFile}
-                  accept=".xlsx, .xls, .csv"
+                  accept=".xlsx, .xls, .csv, text/csv, application/vnd.ms-excel"
                   className="hidden"
                 />
 
@@ -1054,7 +1797,7 @@ export default function AdminStudents({ onNavigate }) {
                     {importModal.fileName ? importModal.fileName : 'ចុចដើម្បីជ្រើសរើសឯកសារ ឬអូសទម្លាក់ទីនេះ'}
                   </p>
                   <p className="text-[12px] text-slate-400 mt-1">
-                    ឯកសារ Excel (.xlsx, .xls) ឬ CSV មិនលើសពី 10MB
+                    ឯកសារ CSV ឬ Excel (.csv, .xlsx, .xls)
                   </p>
                 </div>
 
@@ -1063,7 +1806,7 @@ export default function AdminStudents({ onNavigate }) {
                   <button
                     type="button"
                     onClick={handleLoadDemoExcel}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 flex items-center gap-1"
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 flex items-center gap-1 cursor-pointer"
                   >
                     <span>ចុចទីនេះដើម្បីសាកល្បងផ្ទុកទិន្នន័យគំរូ 3 នាក់ភ្លាមៗ</span>
                     <ArrowRight size={11} />
@@ -1086,11 +1829,17 @@ export default function AdminStudents({ onNavigate }) {
                     </span>
                   </div>
 
+                  {/* Auto-ID Banner */}
+                  <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl px-3.5 py-2 text-[12px] text-indigo-800 flex items-center gap-2 shadow-2xs">
+                    <Sparkles size={14} className="text-indigo-600 shrink-0" />
+                    <span>ប្រព័ន្ធបាន <strong>Auto-Generate លេខកូដសិស្ស</strong> ដោយស្វ័យប្រវត្តិតាមលំដាប់ ដើម្បីធានាថាមិនមានការស្ទួនលេខកូដគ្នាឡើយ។</span>
+                  </div>
+
                   <div className="border border-slate-200/80 rounded-xl overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
                     <table className="w-full text-left border-collapse text-[12px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-bold">
-                          <th className="py-2.5 px-3">ID</th>
+                          <th className="py-2.5 px-3">លេខកូដ (Auto-ID)</th>
                           <th className="py-2.5 px-3">ឈ្មោះ</th>
                           <th className="py-2.5 px-3">ភេទ</th>
                           <th className="py-2.5 px-3">ថ្នាក់</th>
@@ -1101,12 +1850,18 @@ export default function AdminStudents({ onNavigate }) {
                       <tbody className="divide-y divide-slate-100 text-slate-700">
                         {importModal.parsedData.map((row, i) => (
                           <tr key={i} className="hover:bg-slate-50/50">
-                            <td className="py-2 px-3 font-mono font-bold text-indigo-600">{row.id}</td>
+                            <td className="py-2 px-3 font-mono font-bold">
+                              <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 rounded-md text-[11px]">
+                                {row.id}
+                              </span>
+                            </td>
                             <td className="py-2 px-3 font-bold">{row.name}</td>
                             <td className="py-2 px-3">{row.gender === 'F' ? 'ស្រី' : 'ប្រុស'}</td>
                             <td className="py-2 px-3">{row.class}</td>
-                            <td className="py-2 px-3 text-slate-500">{row.phone}</td>
-                            <td className="py-2 px-3 text-slate-500">{row.parentName} ({row.parentPhone})</td>
+                            <td className="py-2 px-3 text-slate-500">{row.phone || '-'}</td>
+                            <td className="py-2 px-3 text-slate-500">
+                              {row.parentName ? `${row.parentName} ${row.parentPhone ? `(${row.parentPhone})` : ''}` : '-'}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1344,31 +2099,46 @@ export default function AdminStudents({ onNavigate }) {
               </div>
 
               {/* Attendance & Discipline Highlights */}
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-indigo-100/60">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[12px] font-black text-slate-700 flex items-center gap-1.5">
-                    <GraduationCap size={15} className="text-indigo-600" />
-                    <span>ស្ថានភាពវត្តមាន & វិន័យ</span>
-                  </span>
-                  <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                    វត្តមានល្អ 96%
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
-                    <span className="block text-[11px] text-slate-400 font-bold">វត្តមាន</span>
-                    <span className="text-[14px] font-black text-emerald-600">32 ម៉ោង</span>
+              {(() => {
+                const stats = getStudentAttendanceStats(profileModal.student)
+                return (
+                  <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/30 border border-indigo-100/60">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-[12px] font-black text-slate-700 flex items-center gap-1.5">
+                        <GraduationCap size={15} className="text-indigo-600" />
+                        <span>ស្ថានភាពវត្តមាន & វិន័យ</span>
+                      </span>
+                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                        stats.badgeColor === 'rose'
+                          ? 'text-rose-600 bg-rose-50 border-rose-200'
+                          : stats.badgeColor === 'amber'
+                          ? 'text-amber-600 bg-amber-50 border-amber-200'
+                          : 'text-emerald-600 bg-emerald-50 border-emerald-100'
+                      }`}>
+                        {stats.label}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                        <span className="block text-[11px] text-slate-400 font-bold">វត្តមានទូទៅ</span>
+                        <span className="text-[14px] font-black text-emerald-600">{stats.rate}%</span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                        <span className="block text-[11px] text-slate-400 font-bold">ច្បាប់សរុប</span>
+                        <span className={`text-[14px] font-black ${stats.leaveHours > 0 ? 'text-amber-500' : 'text-slate-600'}`}>
+                          {stats.leaveHours} ម៉ោង
+                        </span>
+                      </div>
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
+                        <span className="block text-[11px] text-slate-400 font-bold">អវត្តមានសរុប</span>
+                        <span className={`text-[14px] font-black ${stats.absentHours > 0 ? 'text-rose-500' : 'text-slate-600'}`}>
+                          {stats.absentHours} ម៉ោង
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
-                    <span className="block text-[11px] text-slate-400 font-bold">ច្បាប់</span>
-                    <span className="text-[14px] font-black text-amber-500">2 ម៉ោង</span>
-                  </div>
-                  <div className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-xs">
-                    <span className="block text-[11px] text-slate-400 font-bold">អវត្តមាន</span>
-                    <span className="text-[14px] font-black text-rose-500">1 ម៉ោង</span>
-                  </div>
-                </div>
-              </div>
+                )
+              })()}
             </div>
 
             {/* Footer */}

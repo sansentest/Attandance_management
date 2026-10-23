@@ -2,31 +2,50 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Search, AlertTriangle, Settings, PhoneCall, ShieldAlert, CheckCircle2,
   User, ChevronLeft, ChevronRight, X, Save, Users, Calendar, Download,
-  ChevronDown, FileText, FileCode, FileImage, Mail, Phone, Eye
+  ChevronDown, FileText, FileCode, FileImage, Mail, Phone, Eye, RefreshCw, Clock
 } from 'lucide-react'
 import { SearchableDropdown } from '../attendance/AdminStudentAttendance'
 import AdminStudentTrackingDetail from './AdminStudentTrackingDetail'
+import { api } from '../../../utils/api'
 
 export default function AdminStudentTracking({ onNavigate }) {
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_discipline_cache')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch (e) {}
+    return []
+  })
+  const [loading, setLoading] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_discipline_cache')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) return false
+      }
+    } catch (e) {}
+    return true
+  })
   const [searchQuery, setSearchQuery] = useState('')
   const [filterClass, setFilterClass] = useState('ALL')
-  const [filterStatus, setFilterStatus] = useState('ALL')
+  const [filterStatus, setFilterStatus] = useState('HAS_ABSENCE')
   const [currentPage, setCurrentPage] = useState(1)
 
   // Selected Student for Detail View
   const [selectedStudent, setSelectedStudent] = useState(null)
 
-  // Threshold Settings Modal State
+  // Threshold Settings Modal State (School rule: 20 days maximum)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [thresholds, setThresholds] = useState({
-    '7-9': 50,
-    '10-12': 40
+    '7-9': 20,
+    '10-12': 20
   })
   const [tempThresholds, setTempThresholds] = useState({
-    '7-9': 50,
-    '10-12': 40
+    '7-9': 20,
+    '10-12': 20
   })
 
   // Export Modal State
@@ -48,6 +67,12 @@ export default function AdminStudentTracking({ onNavigate }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved)
+        // Auto-migrate legacy 40/50 thresholds to the official school rule 20
+        if (parsed['10-12'] === 40 || parsed['7-9'] === 50) {
+          parsed['10-12'] = 20
+          parsed['7-9'] = 20
+          localStorage.setItem('disciplineThresholds', JSON.stringify(parsed))
+        }
         setThresholds(parsed)
         setTempThresholds(parsed)
       } catch (e) {
@@ -56,37 +81,64 @@ export default function AdminStudentTracking({ onNavigate }) {
     }
   }, [])
 
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const fetchTrackingData = async (showLoading = true) => {
+    if (showLoading) setLoading(true)
+    setIsRefreshing(true)
+    try {
+      const res = await api('discipline.getTracking')
+      if (res && res.success && Array.isArray(res.data)) {
+        setData(res.data)
+      }
+    } catch (err) {
+      console.error('Failed to fetch discipline tracking data:', err)
+    } finally {
+      setLoading(false)
+      setIsRefreshing(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTrackingData(data.length === 0)
+  }, [])
+
+  const [academicClasses, setAcademicClasses] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_classes_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) return parsed.map(c => c.name)
+      }
+    } catch (e) {}
+    return []
+  })
+
+  useEffect(() => {
+    api('academic.getClasses').then(res => {
+      if (res && res.success && Array.isArray(res.data)) {
+        setAcademicClasses(res.data.map(c => c.name))
+      }
+    }).catch(() => {})
+  }, [])
+
+  const availableClasses = Array.from(new Set([
+    ...academicClasses,
+    ...data.map(d => d.class).filter(Boolean)
+  ])).sort()
+
   const classOptions = [
     { id: 'ALL', label: 'គ្រប់ថ្នាក់' },
-    { id: '7A', label: 'ថ្នាក់ 7A' },
-    { id: '8B', label: 'ថ្នាក់ 8B' },
-    { id: '9A', label: 'ថ្នាក់ 9A' },
-    { id: '11A', label: 'ថ្នាក់ 11A' },
-    { id: '12A', label: 'ថ្នាក់ 12A' },
-    { id: '12B', label: 'ថ្នាក់ 12B' },
+    ...availableClasses.map(c => ({ id: c, label: `ថ្នាក់ ${c}` }))
   ]
 
   const statusFilterOptions = [
-    { id: 'ALL', label: 'គ្រប់ស្ថានភាព' },
-    { id: 'CRITICAL', label: 'ត្រូវហៅអាណាព្យាបាល' },
-    { id: 'WARNING', label: 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន' },
-    { id: 'NORMAL', label: 'ធម្មតា' },
+    { id: 'HAS_ABSENCE', label: 'សិស្សមានអវត្តមាន (លំនាំដើម)' },
+    { id: 'CRITICAL', label: 'ត្រូវហៅអាណាព្យាបាល (Critical)' },
+    { id: 'WARNING', label: 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន (Warning)' },
+    { id: 'NORMAL', label: 'ធម្មតា (Normal)' },
+    { id: 'ALL', label: 'សិស្សទាំងអស់ (All Students)' },
   ]
-
-  useEffect(() => {
-    // Mock Data with realistic student info and parent contact
-    setTimeout(() => {
-      setData([
-        { id: '001', studentId: 'STU-001', name: 'សាន វ៉ាន់ឌី', class: '12A', leave: 1, absent: 38, parentPhone: '012 345 678' },
-        { id: '002', studentId: 'STU-002', name: 'ចាន់ វុទ្ធី', class: '12B', leave: 3, absent: 40, parentPhone: '098 765 432' },
-        { id: '003', studentId: 'STU-003', name: 'កែវ រដ្ឋា', class: '11A', leave: 0, absent: 42, parentPhone: '077 112 233' },
-        { id: '004', studentId: 'STU-004', name: 'សេង ហុង', class: '7A', leave: 2, absent: 10, parentPhone: '088 998 877' },
-        { id: '005', studentId: 'STU-005', name: 'ម៉ៅ ស្រីនាថ', class: '8B', leave: 0, absent: 49, parentPhone: '010 445 566' },
-        { id: '006', studentId: 'STU-006', name: 'ឌីណា រិទ្ធី', class: '9A', leave: 1, absent: 51, parentPhone: '096 332 211' },
-      ])
-      setLoading(false)
-    }, 350)
-  }, [])
 
   // Derived Logic for Status
   const getThreshold = (className) => {
@@ -96,7 +148,7 @@ export default function AdminStudentTracking({ onNavigate }) {
       if (grade >= 7 && grade <= 9) return thresholds['7-9']
       if (grade >= 10 && grade <= 12) return thresholds['10-12']
     }
-    return 40 // default fallback
+    return 20 // default fallback (គោលការណ៍សាលា ២០ ថ្ងៃ/ដង)
   }
 
   const getStudentStatus = (student) => {
@@ -111,7 +163,9 @@ export default function AdminStudentTracking({ onNavigate }) {
   if (filterClass !== 'ALL') {
     filteredData = filteredData.filter(d => d.class === filterClass)
   }
-  if (filterStatus !== 'ALL') {
+  if (filterStatus === 'HAS_ABSENCE') {
+    filteredData = filteredData.filter(d => (Number(d.absent) || 0) > 0 || (Number(d.leave) || 0) > 0)
+  } else if (filterStatus !== 'ALL') {
     filteredData = filteredData.filter(d => getStudentStatus(d) === filterStatus)
   }
   if (searchQuery.trim()) {
@@ -130,6 +184,7 @@ export default function AdminStudentTracking({ onNavigate }) {
   const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   // Stats
+  const totalWithAbsence = data.filter(d => (Number(d.absent) || 0) > 0 || (Number(d.leave) || 0) > 0).length
   const totalCritical = data.filter(d => getStudentStatus(d) === 'CRITICAL').length
   const totalWarning = data.filter(d => getStudentStatus(d) === 'WARNING').length
 
@@ -145,7 +200,37 @@ export default function AdminStudentTracking({ onNavigate }) {
   }
 
   const handleExport = (type) => {
-    alert(`នាំចេញទិន្នន័យតាមដានវិន័យសិស្សជា ${type}... (Mock Function)`)
+    if (type === 'Excel') {
+      const headers = ['អត្តលេខ', 'ឈ្មោះសិស្ស', 'ថ្នាក់', 'មានច្បាប់ (ថ្ងៃ)', 'គ្មានច្បាប់ (ថ្ងៃ)', 'សរុបខកខាន (ម៉ោង)', 'ស្ថានភាព', 'លេខទូរស័ព្ទអាណាព្យាបាល']
+      const rows = filteredData.map(d => {
+        const st = getStudentStatus(d)
+        const stLabel = st === 'CRITICAL' ? 'ត្រូវហៅអាណាព្យាបាល' : st === 'WARNING' ? 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន' : 'ធម្មតា'
+        const totalHrs = d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0))
+        return [
+          `"${d.studentId || d.id}"`,
+          `"${d.name}"`,
+          `"${d.class}"`,
+          `"${d.leave || 0}"`,
+          `"${d.absent || 0}"`,
+          `"${totalHrs}"`,
+          `"${stLabel}"`,
+          `"${d.parentPhone || ''}"`
+        ]
+      })
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `បញ្ជីតាមដានវិន័យសិស្ស_${new Date().toISOString().slice(0, 10)}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } else {
+      window.print()
+    }
     setExportOpen(false)
   }
 
@@ -228,6 +313,18 @@ export default function AdminStudentTracking({ onNavigate }) {
 
             {/* Right: Settings & Export Buttons */}
             <div className="flex items-center gap-2.5 w-full lg:w-auto">
+
+              {/* Live Sync / Refresh from Firebase */}
+              <button
+                type="button"
+                onClick={() => fetchTrackingData(false)}
+                disabled={isRefreshing}
+                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 disabled:opacity-60"
+                title="ទាញយកទិន្នន័យវត្តមានផ្ទាល់ពី Cloud Firebase"
+              >
+                <RefreshCw size={15} strokeWidth={2.2} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
+              </button>
 
               {/* Threshold Settings Button */}
               <button
@@ -315,8 +412,9 @@ export default function AdminStudentTracking({ onNavigate }) {
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider min-w-[190px]">ឈ្មោះសិស្ស</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">ថ្នាក់</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider min-w-[160px]">លេខអាណាព្យាបាល</th>
-                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">មានច្បាប់</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">មានច្បាប់ (ថ្ងៃ)</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center min-w-[170px]">គ្មានច្បាប់ & កម្រិតវិន័យ</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center min-w-[125px]">សរុប (ម៉ោង)</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">ស្ថានភាព</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center min-w-[190px]">សកម្មភាព</th>
               </tr>
@@ -326,6 +424,7 @@ export default function AdminStudentTracking({ onNavigate }) {
                 const status = getStudentStatus(student)
                 const limit = getThreshold(student.class)
                 const percent = Math.min(100, Math.round((student.absent / limit) * 100))
+                const totalHrs = student.totalHours !== undefined ? student.totalHours : ((student.absentHours || student.absent || 0) + (student.leaveHours || student.leave || 0))
 
                 return (
                   <tr key={student.id} className="hover:bg-slate-50/80 transition-colors group">
@@ -371,7 +470,7 @@ export default function AdminStudentTracking({ onNavigate }) {
                     {/* Leave */}
                     <td className="py-4 px-5 text-center">
                       <span className="font-bold text-[12px] text-amber-600">
-                        {student.leave}
+                        {student.leave} <span className="text-[10px] font-normal text-slate-400">ថ្ងៃ</span>
                       </span>
                     </td>
 
@@ -382,7 +481,7 @@ export default function AdminStudentTracking({ onNavigate }) {
                           <span className={`text-[15px] font-black ${status === 'CRITICAL' ? 'text-rose-600' : status === 'WARNING' ? 'text-amber-600' : 'text-slate-800'}`}>
                             {student.absent}
                           </span>
-                          <span className="text-[11px] text-slate-400 font-bold">/ {limit} ម៉ោង</span>
+                          <span className="text-[11px] text-slate-400 font-bold">/ {limit} ថ្ងៃ</span>
                         </div>
                         {/* Mini Progress Bar */}
                         <div className="w-28 h-1 bg-slate-100 rounded-full overflow-hidden mt-1.5">
@@ -394,6 +493,15 @@ export default function AdminStudentTracking({ onNavigate }) {
                         </div>
 
                       </div>
+                    </td>
+
+                    {/* Total Hours */}
+                    <td className="py-4 px-5 text-center">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50/70 text-indigo-700 font-bold text-[12px] border border-indigo-100/70 font-mono">
+                        <Clock size={12} className="text-indigo-500" />
+                        <span>{totalHrs}</span>
+                        <span className="text-[10px] font-sans font-medium text-indigo-400">ម៉ោង</span>
+                      </span>
                     </td>
 
                     {/* Status Badge */}
@@ -423,8 +531,13 @@ export default function AdminStudentTracking({ onNavigate }) {
                       <div className="flex items-center justify-center gap-2">
                         {status === 'CRITICAL' && onNavigate && (
                           <button
-                            onClick={() => onNavigate('invitation-letters')}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 font-bold text-[12px] rounded-lg  group/btn"
+                            onClick={() => {
+                              try {
+                                localStorage.setItem('printStudent', JSON.stringify(student))
+                              } catch (e) {}
+                              onNavigate('invitation-letters')
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 font-bold text-[12px] rounded-lg group/btn"
                             title="រៀបចំលិខិតកោះហៅ"
                           >
                             <Mail size={13} className="group-hover/btn:scale-110 transition-transform" />
@@ -446,7 +559,7 @@ export default function AdminStudentTracking({ onNavigate }) {
 
               {filteredData.length === 0 && !loading && (
                 <tr>
-                  <td colSpan="8" className="py-24 text-center">
+                  <td colSpan="9" className="py-24 text-center">
                     <div className="flex flex-col items-center justify-center text-slate-400">
                       <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mb-4">
                         <Search size={28} className="text-slate-300" />
@@ -508,7 +621,7 @@ export default function AdminStudentTracking({ onNavigate }) {
                 </div>
                 <div>
                   <h3 className="text-[16px] font-black text-slate-800">កំណត់កម្រិតវិន័យអវត្តមាន</h3>
-                  <p className="text-[12px] font-medium text-slate-400">កំណត់ចំនួនម៉ោងអតិបរមាអនុញ្ញាត</p>
+                  <p className="text-[12px] font-medium text-slate-400">កំណត់ចំនួនថ្ងៃអតិបរមាអនុញ្ញាត (១ ថ្ងៃ = ១ អវត្តមាន)</p>
                 </div>
               </div>
               <button
@@ -533,9 +646,9 @@ export default function AdminStudentTracking({ onNavigate }) {
                     onChange={e => setTempThresholds({ ...tempThresholds, '7-9': Number(e.target.value) })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-4 font-bold text-slate-800 text-[14px] focus:outline-none focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all"
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400">ម៉ោង</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400">ថ្ងៃ</span>
                 </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">បើអវត្តមានលើសចំនួននេះ ប្រព័ន្ធនឹងដាក់ស្ថានភាព «ត្រូវហៅអាណាព្យាបាល»</span>
+                <span className="text-[11px] text-slate-400 mt-1 block">បើអវត្តមានលើសចំនួននេះ (គិតជាថ្ងៃ) ប្រព័ន្ធនឹងដាក់ស្ថានភាព «ត្រូវហៅអាណាព្យាបាល»</span>
               </div>
 
               <div>
@@ -551,9 +664,9 @@ export default function AdminStudentTracking({ onNavigate }) {
                     onChange={e => setTempThresholds({ ...tempThresholds, '10-12': Number(e.target.value) })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-4 font-bold text-slate-800 text-[14px] focus:outline-none focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 transition-all"
                   />
-                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400">ម៉ោង</span>
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400">ថ្ងៃ</span>
                 </div>
-                <span className="text-[11px] text-slate-400 mt-1 block">កម្រិតវិន័យតឹងរឹងសម្រាប់សិស្សវិទ្យាល័យ</span>
+                <span className="text-[11px] text-slate-400 mt-1 block">កម្រិតវិន័យតឹងរឹងសម្រាប់សិស្សវិទ្យាល័យ (គិតជាថ្ងៃ)</span>
               </div>
             </div>
 

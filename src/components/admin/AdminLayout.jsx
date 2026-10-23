@@ -14,6 +14,7 @@ import AdminStudents from './students/AdminStudents'
 
 export default function AdminLayout({ session, onLogout }) {
   const [activePage, setActivePage] = useState('dashboard')
+  const [settingsInitialTab, setSettingsInitialTab] = useState('school')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
   const [openGroups, setOpenGroups] = useState({
@@ -26,6 +27,7 @@ export default function AdminLayout({ session, onLogout }) {
   }
 
   const handleLogout = () => {
+    localStorage.removeItem('att_session')
     localStorage.removeItem('session')
     onLogout()
   }
@@ -43,7 +45,7 @@ export default function AdminLayout({ session, onLogout }) {
       case 'timetable': return <AdminTimetable />
       case 'users': return <AdminUsers />
       case 'telegram': return <AdminTelegramBot />
-      case 'settings': return <AdminSettings />
+      case 'settings': return <AdminSettings initialTab={settingsInitialTab} />
       case 'profile': return <AdminProfile />
       default: return <AdminDashboard />
     }
@@ -67,8 +69,7 @@ export default function AdminLayout({ session, onLogout }) {
       icon: GraduationCap,
       subItems: [
         { id: 'students',  label: 'បញ្ជីសិស្ស' },
-        { id: 'classes',   label: 'ថ្នាក់រៀន' },
-        { id: 'subjects',  label: 'មុខវិជ្ជា' },
+        { id: 'classes',   label: 'ថ្នាក់ និង មុខវិជ្ជា' },
         { id: 'timetable', label: 'កាលវិភាគ' }
       ]
     },
@@ -156,7 +157,10 @@ export default function AdminLayout({ session, onLogout }) {
             return (
               <button
                 key={item.id}
-                onClick={() => setActivePage(item.id)}
+                onClick={() => {
+                  if (item.id === 'settings') setSettingsInitialTab('school');
+                  setActivePage(item.id);
+                }}
                 className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-[13px] font-bold transition-all w-full text-left group
                   ${isActive 
                     ? 'bg-indigo-50 text-indigo-700' 
@@ -264,7 +268,11 @@ export default function AdminLayout({ session, onLogout }) {
                 return (
                   <button
                     key={item.id}
-                    onClick={() => { setActivePage(item.id); setMobileMenuOpen(false); }}
+                    onClick={() => {
+                      if (item.id === 'settings') setSettingsInitialTab('school');
+                      setActivePage(item.id);
+                      setMobileMenuOpen(false);
+                    }}
                     className={`flex items-center gap-3.5 px-4 py-3 rounded-xl text-[13px] font-bold transition-all w-full text-left group
                       ${isActive 
                         ? 'bg-indigo-50 text-indigo-700' 
@@ -321,8 +329,12 @@ export default function AdminLayout({ session, onLogout }) {
             
             {/* Backup Button */}
             <button 
-              onClick={() => alert('មុខងារ Backup កំពុងអភិវឌ្ឍ...')}
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:border-emerald-300 transition-all font-bold text-[12px] shadow-sm hover:shadow"
+              onClick={() => {
+                setSettingsInitialTab('backup');
+                setActivePage('settings');
+              }}
+              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:border-emerald-300 transition-all font-bold text-[12px] shadow-sm hover:shadow cursor-pointer"
+              title="ការបម្រុងទុក និងស្ដារទិន្នន័យ (Cloud Backup & Restore)"
             >
               <Database size={14} strokeWidth={2.5} />
               <span>Backup</span>

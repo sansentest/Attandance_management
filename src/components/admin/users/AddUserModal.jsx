@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { UserPlus, X, Save, Loader2, ChevronDown, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity, Camera } from 'lucide-react';
+import { useState } from 'react';
+import { UserPlus, X, Save, Loader2, ChevronDown, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
 
 export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) {
@@ -19,50 +19,30 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
     username: '',
     password: '',
     role: 'monitor',
-    class: '10A',
-    status: 'active',
-    image: null
+    class: filteredClassOptions[0]?.id || '',
+    status: 'active'
   };
   const [newUser, setNewUser] = useState(initialUserState);
-  const [imagePreview, setImagePreview] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
-  const fileInputRef = useRef(null);
 
   if (!isOpen && !showSuccessAlert) return null;
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setNewUser({ ...newUser, image: file });
-      setImagePreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleRemoveImage = (e) => {
-    e.stopPropagation();
-    setNewUser({ ...newUser, image: null });
-    setImagePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      if (onSave) await onSave(newUser);
       setShowSuccessAlert(true);
-      if (onSave) onSave(newUser);
-      
       setTimeout(() => {
         setShowSuccessAlert(false);
         onClose();
         setNewUser(initialUserState);
-        setImagePreview(null);
-      }, 2000);
-    }, 1000);
+      }, 700);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -137,22 +117,21 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* Password */}
-                <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
                   <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
-                    ពាក្យសម្ងាត់ <span className="text-rose-500">*</span>
+                    ថ្នាក់បន្ទុក 
+                    {newUser.role === 'admin' 
+                      ? <span className="text-[11px] font-medium text-slate-400 px-1.5 py-0.5 bg-slate-100 rounded-md">មិនតម្រូវ</span> 
+                      : <span className="text-rose-500">*</span>}
                   </label>
-                  <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                      <Lock size={16} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                    </div>
-                    <input 
-                      type="password"
-                      value={newUser.password}
-                      onChange={(e) => setNewUser({...newUser, password: e.target.value})}
-                      placeholder="បញ្ចូលពាក្យសម្ងាត់"
-                      className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
-                    />
-                  </div>
+                  <SearchableDropdown
+                    value={newUser.class}
+                    onChange={(val) => setNewUser({...newUser, class: val})}
+                    options={filteredClassOptions}
+                    placeholder="ជ្រើសរើសថ្នាក់"
+                    icon={BookOpen}
+                    disabled={newUser.role === 'admin'}
+                  />
                 </div>
 
                 {/* Role */}
@@ -174,20 +153,22 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
                 {/* Class */}
                 <div className="flex flex-col gap-2">
                   <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
-                    ថ្នាក់បន្ទុក 
-                    {newUser.role === 'admin' 
-                      ? <span className="text-[11px] font-medium text-slate-400 px-1.5 py-0.5 bg-slate-100 rounded-md">មិនតម្រូវ</span> 
-                      : <span className="text-rose-500">*</span>}
+                    ពាក្យសម្ងាត់ <span className="text-rose-500">*</span>
                   </label>
-                  <SearchableDropdown
-                    value={newUser.class}
-                    onChange={(val) => setNewUser({...newUser, class: val})}
-                    options={filteredClassOptions}
-                    placeholder="ជ្រើសរើសថ្នាក់"
-                    icon={BookOpen}
-                    disabled={newUser.role === 'admin'}
-                  />
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                      <Lock size={16} className="text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                    </div>
+                    <input 
+                      type="password"
+                      value={newUser.password}
+                      onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                      placeholder="បញ្ចូលពាក្យសម្ងាត់"
+                      className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
+                    />
+                  </div>
                 </div>
+                
 
                 {/* Status */}
                 <div className="flex flex-col gap-2">
@@ -202,47 +183,6 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
                     icon={Activity}
                   />
                 </div>
-              </div>
-
-              {/* Profile Image Upload */}
-              <div className="flex flex-col items-center justify-center mt-2">
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="relative w-24 h-24 rounded-full bg-white flex items-center justify-center cursor-pointer hover:bg-indigo-50/50 transition-all group overflow-hidden shadow-sm"
-                >
-                  {/* Spinning Dashed Border */}
-                  <div className="absolute inset-0 rounded-full border-[2.5px] border-dashed border-indigo-400/80 animate-[spin_6s_linear_infinite] group-hover:border-indigo-500 z-10 pointer-events-none"></div>
-                  
-                  {imagePreview ? (
-                    <>
-                      <img src={imagePreview} alt="Profile preview" className="w-full h-full object-cover relative z-0" />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                        <Camera size={20} className="text-white" />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1.5 text-slate-400 group-hover:text-indigo-500 transition-colors z-0">
-                      <Camera size={24} strokeWidth={1.5} />
-                      <span className="text-[10px] font-medium">រូបថត</span>
-                    </div>
-                  )}
-                  
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleImageChange} 
-                    accept="image/*" 
-                    className="hidden" 
-                  />
-                </div>
-                {imagePreview && (
-                  <button 
-                    onClick={handleRemoveImage}
-                    className="mt-4 text-[12px] font-medium text-rose-500 hover:text-rose-600 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1.5"
-                  >
-                    <X size={14} strokeWidth={2.5} /> លុបរូបថត
-                  </button>
-                )}
               </div>
             </div>
 

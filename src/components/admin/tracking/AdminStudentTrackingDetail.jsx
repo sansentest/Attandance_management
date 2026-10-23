@@ -89,7 +89,7 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
 
   const allRecords = useMemo(() => generateDisciplineRecords(student), [student])
   const statusInfo = getStatusBadge(status)
-  const percent = Math.min(100, Math.round(((student.absent || 0) / (threshold || 40)) * 100))
+  const percent = Math.min(100, Math.round(((student.absent || 0) / (threshold || 20)) * 100))
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -224,7 +224,7 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
           </div>
           <div className="flex items-baseline gap-1 relative z-10">
             <span className="text-3xl font-black text-rose-500">{student.absent}</span>
-            <span className="text-[13px] font-bold text-slate-400">/ {threshold} ម៉ោង</span>
+            <span className="text-[13px] font-bold text-slate-400">/ {threshold} ថ្ងៃ</span>
           </div>
           {/* Progress Bar */}
           <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2 relative z-10">
@@ -236,7 +236,7 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
             />
           </div>
           <div className="text-[11px] font-medium text-slate-400 mt-1 relative z-10">
-            ឈានដល់ {percent}% នៃកម្រិតកំណត់
+            ឈានដល់ {percent}% នៃកម្រិតកំណត់ (គិតជាថ្ងៃ)
           </div>
         </div>
 
@@ -250,7 +250,7 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
             <div className="text-[13px] font-bold text-slate-500">មានច្បាប់</div>
           </div>
           <div className="text-3xl font-black text-amber-500 relative z-10">{student.leave}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ដង</div>
+          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ថ្ងៃ</div>
         </div>
 
         {/* Card 4: អវត្តមានសរុប */}
@@ -260,12 +260,18 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
             <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
               <Users size={18} strokeWidth={2.5} />
             </div>
-            <div className="text-[13px] font-bold text-slate-500">អវត្តមានសរុប</div>
+            <div className="text-[13px] font-bold text-slate-500">អវត្តមានសរុប (គិតជាថ្ងៃ)</div>
           </div>
-          <div className="text-3xl font-black text-slate-800 relative z-10">
-            {(student.absent || 0) + (student.leave || 0)}
+          <div className="flex items-baseline gap-1.5 relative z-10">
+            <span className="text-3xl font-black text-slate-800">
+              {(student.absent || 0) + (student.leave || 0)}
+            </span>
+            <span className="text-[13px] font-bold text-slate-500">ថ្ងៃ</span>
           </div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ដង</div>
+          <div className="text-[11px] font-medium text-slate-400 mt-1 relative z-10 flex items-center gap-1">
+            <Clock size={12} className="text-indigo-500" />
+            <span>ស្មើនឹង {student.totalHours !== undefined ? student.totalHours : ((student.absentHours || student.absent || 0) + (student.leaveHours || student.leave || 0))} ម៉ោងសិក្សា</span>
+          </div>
         </div>
 
       </div>

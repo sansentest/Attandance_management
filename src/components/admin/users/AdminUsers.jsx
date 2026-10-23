@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Plus, Shield, User, Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown } from 'lucide-react'
+import { Search, Plus, Shield, User, Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown, CheckCircle, RefreshCw, CheckCircle2, Loader2 } from 'lucide-react'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
-
 import SearchableDropdown from '../../common/SearchableDropdown'
+import { api } from '../../../utils/api'
 
 export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -13,17 +13,36 @@ export default function AdminUsers() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
+  const [deleteModal, setDeleteModal] = useState({ open: false, user: null })
 
-  const handleAddUserSave = (newUser) => {
-    // In a real app, you would save this to the backend
-    console.log("New user to add:", newUser);
+  // Loading & Toast States
+  const [isLoading, setIsLoading] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [toast, setToast] = useState(null)
+
+  const showToast = (message) => {
+    setToast(message)
+    setTimeout(() => setToast(null), 3000)
   }
 
-  const handleEditUserSave = (updatedUser) => {
-    // In a real app, you would save this to the backend
-    console.log("Updated user:", updatedUser);
-  }
-  
+  // Users Data with cached state
+  const [users, setUsers] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_users_cache')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      }
+    } catch (e) {}
+    return [
+      { id: 'USR-001', name: 'San Vandy', username: 'vandy12A', role: 'monitor', class: '12A', status: 'active', lastLogin: '2026-06-30' },
+      { id: 'USR-002', name: 'Sok Mean', username: 'mean11B', role: 'monitor', class: '11B', status: 'active', lastLogin: '2026-06-29' },
+      { id: 'USR-003', name: 'Admin Chhen', username: 'admin_sys', role: 'admin', class: '-', status: 'active', lastLogin: '2026-07-01' },
+      { id: 'USR-004', name: 'Keo Rotha', username: 'rotha10A', role: 'monitor', class: '10A', status: 'inactive', lastLogin: '2026-05-15' },
+      { id: 'USR-005', name: 'Somnang', username: 'somnang1', role: 'monitor', class: '11A', status: 'active', lastLogin: '2026-06-20' },
+    ]
+  })
+
   // Custom Filter States
   const [filterRole, setFilterRole] = useState('ALL')
   const [filterClass, setFilterClass] = useState('ALL')
@@ -35,14 +54,126 @@ export default function AdminUsers() {
     { id: 'monitor', label: 'អ្នកត្រួតពិនិត្យ (Monitor)' }
   ]
   
-  const classOptions = [
-    { id: 'ALL', label: 'គ្រប់ថ្នាក់' },
-    { id: '12A', label: 'ថ្នាក់ 12A' },
-    { id: '12B', label: 'ថ្នាក់ 12B' },
-    { id: '11A', label: 'ថ្នាក់ 11A' },
-    { id: '11B', label: 'ថ្នាក់ 11B' },
-    { id: '10A', label: 'ថ្នាក់ 10A' },
-  ]
+  const [classOptions, setClassOptions] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_classes_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return [
+            { id: 'ALL', label: 'គ្រប់ថ្នាក់' },
+            ...parsed.map(c => {
+              const cleanName = c.name.replace('ថ្នាក់ ', '').trim()
+              return {
+                id: cleanName,
+                label: c.name.startsWith('ថ្នាក់') ? c.name : `ថ្នាក់ ${c.name}`
+              }
+            })
+          ]
+        }
+      }
+    } catch (e) {}
+    return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }]
+  })
+
+  const fetchUsersData = async (initial = false) => {
+    if (initial) setIsLoading(true)
+    setIsRefreshing(true)
+    try {
+      const [resUsers, resClasses] = await Promise.all([
+        api('users.getAll'),
+        api('academic.getClasses')
+      ])
+
+      if (resUsers?.success && Array.isArray(resUsers.data)) {
+        setUsers(resUsers.data)
+      }
+
+      if (resClasses?.success && Array.isArray(resClasses.data)) {
+        const dynamicClassOpts = [
+          { id: 'ALL', label: 'គ្រប់ថ្នាក់' },
+          ...resClasses.data.map(c => {
+            const cleanName = c.name.replace('ថ្នាក់ ', '').trim()
+            return {
+              id: cleanName,
+              label: c.name.startsWith('ថ្នាក់') ? c.name : `ថ្នាក់ ${c.name}`
+            }
+          })
+        ]
+        setClassOptions(dynamicClassOpts)
+      }
+
+      if (!initial) {
+        showToast('បានធ្វើបច្ចុប្បន្នភាពទិន្នន័យពី Firebase')
+      }
+    } catch (err) {
+      console.error('Fetch users error:', err)
+      if (!initial) {
+        showToast('មិនអាចទាញទិន្នន័យថ្មីបានទេ')
+      }
+    } finally {
+      setIsRefreshing(false)
+      if (initial) setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchUsersData(false)
+  }, [])
+
+  const handleAddUserSave = async (newUser) => {
+    const userWithId = {
+      id: `USR-${String(users.length + 1).padStart(3, '0')}`,
+      lastLogin: 'មិនទាន់ចូលប្រើ',
+      ...newUser
+    }
+    try {
+      const res = await api('users.save', { user: userWithId })
+      if (res?.success) {
+        setUsers(prev => [userWithId, ...prev])
+        showToast(`បានបន្ថែមអ្នកប្រើប្រាស់ "${userWithId.name}" ដោយជោគជ័យ`)
+      } else {
+        showToast('មានបញ្ហាក្នុងការបន្ថែមអ្នកប្រើប្រាស់')
+      }
+    } catch (e) {
+      console.error('Add user error:', e)
+      showToast('មានបញ្ហាក្នុងការបន្ថែមអ្នកប្រើប្រាស់')
+    }
+  }
+
+  const handleEditUserSave = async (updatedUser) => {
+    try {
+      const res = await api('users.save', { user: updatedUser })
+      if (res?.success) {
+        setUsers(prev => prev.map(u => u.id === updatedUser.id ? { ...u, ...updatedUser } : u))
+        showToast(`បានកែសម្រួលគណនី "${updatedUser.name}" ដោយជោគជ័យ`)
+      } else {
+        showToast('មានបញ្ហាក្នុងការកែប្រែគណនី')
+      }
+    } catch (e) {
+      console.error('Edit user error:', e)
+      showToast('មានបញ្ហាក្នុងការកែប្រែគណនី')
+    }
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteModal.user) return
+    const targetUser = deleteModal.user
+    try {
+      const res = await api('users.delete', { userId: targetUser.id })
+      if (res?.success) {
+        setUsers(prev => prev.filter(u => u.id !== targetUser.id))
+        showToast(`បានលុបគណនី "${targetUser.name}"`)
+      } else {
+        showToast('មិនអាចលុបគណនីបានទេ')
+      }
+    } catch (e) {
+      console.error('Delete user error:', e)
+      showToast('មានបញ្ហាក្នុងការលុបគណនី')
+    } finally {
+      setDeleteModal({ open: false, user: null })
+    }
+  }
   
   const statusOptions = [
     { id: 'ALL', label: 'គ្រប់ស្ថានភាព' },
@@ -50,15 +181,6 @@ export default function AdminUsers() {
     { id: 'inactive', label: 'ផ្អាក' },
   ]
   
-  // Mock Users Data
-  const [users] = useState([
-    { id: 'USR-001', name: 'San Vandy', username: 'vandy12A', role: 'monitor', class: '12A', status: 'active', lastLogin: '2026-06-30' },
-    { id: 'USR-002', name: 'Sok Mean', username: 'mean11B', role: 'monitor', class: '11B', status: 'active', lastLogin: '2026-06-29' },
-    { id: 'USR-003', name: 'Admin Chhen', username: 'admin_sys', role: 'admin', class: '-', status: 'active', lastLogin: '2026-07-01' },
-    { id: 'USR-004', name: 'Keo Rotha', username: 'rotha10A', role: 'monitor', class: '10A', status: 'inactive', lastLogin: '2026-05-15' },
-    { id: 'USR-005', name: 'Somnang', username: 'somnang1', role: 'monitor', class: '11A', status: 'active', lastLogin: '2026-06-20' },
-  ])
-
   // Filter Data
   let filteredUsers = users
   
@@ -93,14 +215,25 @@ export default function AdminUsers() {
   const paginatedData = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   const totalRecords = filteredUsers.length
+  const totalActive = filteredUsers.filter(u => u.status === 'active').length
   const totalAdmins = filteredUsers.filter(u => u.role === 'admin').length
   const totalMonitors = filteredUsers.filter(u => u.role === 'monitor').length
 
   return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full pb-10">
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full pb-10 relative">
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900/95 backdrop-blur text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-3 text-[13px] font-bold border border-slate-700/50 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+            <CheckCircle2 size={15} />
+          </div>
+          <span>{toast}</span>
+        </div>
+      )}
       
-      {/* Top Stats - Clean Premium Style matching Reports */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6 w-full">
+      {/* Top Stats - 4 Balanced Premium Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 w-full">
         {/* Total Data Card */}
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
@@ -111,6 +244,18 @@ export default function AdminUsers() {
             <div className="text-[14px] font-bold text-slate-500">គណនីសរុប</div>
           </div>
           <div className="text-3xl font-black text-slate-800 relative z-10">{totalRecords}</div>
+        </div>
+
+        {/* Active Users Card */}
+        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-emerald-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
+          <div className="flex items-center gap-3 mb-4 relative z-10">
+            <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center">
+              <CheckCircle size={20} strokeWidth={2.5} />
+            </div>
+            <div className="text-[14px] font-bold text-slate-500">កំពុងដំណើរការ</div>
+          </div>
+          <div className="text-3xl font-black text-emerald-500 relative z-10">{totalActive}</div>
         </div>
         
         {/* Total Admins Card */}
@@ -187,11 +332,22 @@ export default function AdminUsers() {
               </div>
             </div>
 
-            {/* Add User Button */}
-            <div className="w-full lg:w-auto flex-shrink-0">
+            {/* Action Buttons: Refresh & Add User */}
+            <div className="w-full lg:w-auto flex items-center gap-2.5 flex-shrink-0">
+              <button 
+                type="button"
+                onClick={() => fetchUsersData(false)}
+                disabled={isRefreshing}
+                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 shrink-0 disabled:opacity-50"
+                title="ទាញទិន្នន័យថ្មីពី Cloud Firestore"
+              >
+                <RefreshCw size={15} strokeWidth={2.5} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>ទាញទិន្នន័យថ្មី</span>
+              </button>
+
               <button 
                 onClick={() => setIsAddModalOpen(true)}
-                className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-6 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full lg:w-auto"
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5"
               >
                 <Plus size={15} strokeWidth={2.5} />
                 <span>បន្ថែមអ្នកប្រើប្រាស់</span>
@@ -283,7 +439,12 @@ export default function AdminUsers() {
                       >
                         <Edit size={14} strokeWidth={2.5} />
                       </button>
-                      <button className="flex items-center justify-center w-8 h-8 bg-rose-50 border border-rose-100 text-rose-600 hover:bg-rose-100 hover:border-rose-200 rounded-lg shadow-sm hover:shadow hover:-translate-y-0.5 transition-all duration-200">
+                      <button 
+                        type="button"
+                        onClick={() => setDeleteModal({ open: true, user })}
+                        className="flex items-center justify-center w-8 h-8 bg-rose-50 border border-rose-100 text-rose-600 hover:bg-rose-100 hover:border-rose-200 rounded-lg shadow-sm hover:shadow hover:-translate-y-0.5 transition-all duration-200"
+                        title="លុបអ្នកប្រើប្រាស់"
+                      >
                         <Trash2 size={14} strokeWidth={2.5} />
                       </button>
                     </div>
@@ -395,6 +556,41 @@ export default function AdminUsers() {
           classOptions={classOptions} 
           userData={editingUser}
         />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.open && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden p-6 animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
+              <Trash2 size={24} />
+            </div>
+            <h3 className="text-[16px] font-black text-slate-800">
+              បញ្ជាក់ការលុបអ្នកប្រើប្រាស់
+            </h3>
+            <p className="text-[13px] text-slate-500 mt-2 leading-relaxed">
+              តើអ្នកពិតជាចង់លុបគណនី <span className="font-bold text-slate-800">"{deleteModal.user?.name}"</span> (@<span className="font-mono text-slate-700 font-bold">{deleteModal.user?.username}</span>) ចេញពីប្រព័ន្ធមែនទេ? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានឡើយ។
+            </p>
+
+            <div className="flex items-center justify-end gap-3 mt-6">
+              <button
+                type="button"
+                onClick={() => setDeleteModal({ open: false, user: null })}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-[13px] font-bold transition-all"
+              >
+                បោះបង់
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+              >
+                <Trash2 size={15} />
+                <span>យល់ព្រមលុប</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

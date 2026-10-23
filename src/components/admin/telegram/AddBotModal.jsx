@@ -2,21 +2,24 @@ import { useState, useEffect } from 'react';
 import { Bot, X, Save, Loader2, CheckCircle, MessageCircle, BookOpen, Activity, Hash, Globe } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
 
-export default function AddBotModal({ isOpen, onClose, onSave, classOptions }) {
+export default function AddBotModal({ isOpen, onClose, onSave, classOptions, globalTokens = [] }) {
   const statusOptions = [
     { id: 'active', label: 'ដំណើរការ (Active)' },
     { id: 'inactive', label: 'ផ្អាក (Inactive)' }
   ];
   
-  const globalTokenOptions = [
-    { id: 'global_1', label: 'Bot សាលាកណ្តាល (Active)', isActive: true },
-    { id: 'global_2', label: 'Bot បណ្ណាល័យ', isActive: false }
-  ];
+  const globalTokenOptions = globalTokens && globalTokens.length > 0
+    ? globalTokens.map(t => ({ id: t.id, label: `${t.name}${t.isActive ? ' (Active)' : ''}`, isActive: t.isActive }))
+    : [
+        { id: 'gt_1', label: 'Bot សាលាកណ្តាល (Active)', isActive: true },
+        { id: 'gt_2', label: 'Bot បណ្ណាល័យ', isActive: false }
+      ];
   
   const filteredClassOptions = classOptions ? classOptions.filter(c => c.id !== 'ALL') : [];
   
   const initialBotState = {
-    class: '10A',
+    class: filteredClassOptions[0]?.id || '',
+    name: '',
     token: '',
     chatId: '',
     status: 'active'
@@ -30,35 +33,29 @@ export default function AddBotModal({ isOpen, onClose, onSave, classOptions }) {
   // Auto-select the active global token when modal opens
   useEffect(() => {
     if (isOpen) {
-      const activeGlobal = globalTokenOptions.find(t => t.isActive);
+      const activeGlobal = globalTokenOptions.find(t => t.isActive) || globalTokenOptions[0];
       if (activeGlobal && !newBot.globalTokenId) {
         setNewBot(prev => ({ ...prev, globalTokenId: activeGlobal.id }));
       }
     }
-  }, [isOpen]);
+  }, [isOpen, globalTokens]);
 
   if (!isOpen && !showSuccessAlert) return null;
 
   const handleSave = () => {
-    setIsSaving(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false);
-      setShowSuccessAlert(true);
-      
-      const botToSave = {
-        ...newBot,
-        token: tokenType === 'global' ? 'GLOBAL_TOKEN' : newBot.token
-      };
-      
-      if (onSave) onSave(botToSave);
-      
-      setTimeout(() => {
-        setShowSuccessAlert(false);
-        onClose();
-        setNewBot(initialBotState);
-      }, 2000);
-    }, 1000);
+    if (!newBot.chatId.trim()) return;
+    if (tokenType === 'custom' && !newBot.token.trim()) return;
+
+    const botToSave = {
+      ...newBot,
+      name: newBot.name.trim() || `Bot ថ្នាក់ ${newBot.class}`,
+      token: tokenType === 'global' ? 'GLOBAL_TOKEN' : newBot.token.trim(),
+      chatId: newBot.chatId.trim()
+    };
+    
+    if (onSave) onSave(botToSave);
+    onClose();
+    setNewBot(initialBotState);
   };
 
   return (

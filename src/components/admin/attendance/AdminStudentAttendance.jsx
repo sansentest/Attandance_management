@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import { api } from '../../../utils/api'
 import {
   Download, Search, ChevronDown, AlertCircle, FileText, Calendar,
   FileCode, FileImage, Users, ChevronLeft, ChevronRight, ChevronsRight,
   BookOpen, Clock, Eye, ArrowLeft, ShieldAlert, CheckCircle, XCircle,
-  TrendingUp, Info, Edit, Trash2, X, Save
+  TrendingUp, Info, Edit, Trash2, X, Save, RefreshCw
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────
@@ -86,9 +87,9 @@ export const SearchableDropdown = ({ value, onChange, options, placeholder, icon
 // Mock Data — raw absence records per student
 // ─────────────────────────────────────────────
 const ALL_RECORDS = [
-  // ហ៊ឹម ដារ៉ា — 20 records
+  // ហ៊ឹម ដារ៉ា — (ឧទាហរណ៍ជាក់ស្តែង៖ ថ្ងៃ ២០២៦-០១-០៥ ព្រឹកសុំច្បាប់ តែដល់ម៉ោងបន្ទាប់គេចម៉ោង -> ប្រព័ន្ធរាប់ជា ១ ថ្ងៃអវត្តមានឥតច្បាប់)
   { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-05', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'ឈឺក្បាល',   status: 'LEAVE' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-12', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-05', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
   { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-20', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
   { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-02-03', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '08:00 - 09:30', reason: 'ទៅស្រុក',   status: 'LEAVE' },
   { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-02-10', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
@@ -147,25 +148,80 @@ const ALL_RECORDS = [
 
 // ─────────────────────────────────────────────
 // Derive student summaries from raw records
+// Policy: 1 day = 1 absence count
+// If any period in the day is ABSENT, the day counts as ABSENT (1 ថ្ងៃឥតច្បាប់).
+// Otherwise (all periods LEAVE), the day counts as LEAVE (1 ថ្ងៃមានច្បាប់).
 // ─────────────────────────────────────────────
+export function calculateDailyAttendance(records = []) {
+  const byDate = {}
+  let totalHours = 0
+  let absentHours = 0
+  let leaveHours = 0
+
+  records.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = []
+    byDate[r.date].push(r)
+    const h = Number(r.hours) || Number(r.periods) || 1
+    totalHours += h
+    if (r.status === 'ABSENT') {
+      absentHours += h
+    } else {
+      leaveHours += h
+    }
+  })
+
+  let absentDays = 0
+  let leaveDays = 0
+
+  Object.keys(byDate).forEach(date => {
+    const dayRecords = byDate[date]
+    const hasAbsent = dayRecords.some(r => r.status === 'ABSENT')
+    if (hasAbsent) {
+      absentDays++
+    } else {
+      leaveDays++
+    }
+  })
+
+  return {
+    absent: absentDays,
+    leave: leaveDays,
+    total: absentDays + leaveDays,
+    totalSessions: records.length,
+    totalHours: totalHours,
+    absentHours: absentHours,
+    leaveHours: leaveHours,
+    distinctDatesCount: Object.keys(byDate).length
+  }
+}
+
 function buildStudentSummaries(records) {
   const map = {}
   records.forEach((r, idx) => {
     if (!map[r.studentId]) {
-      map[r.studentId] = { studentId: r.studentId, name: r.name, class: r.class, total: 0, leave: 0, absent: 0, records: [] }
+      map[r.studentId] = { studentId: r.studentId, name: r.name, class: r.class, total: 0, leave: 0, absent: 0, totalHours: 0, totalSessions: 0, records: [] }
     }
-    map[r.studentId].total++
-    if (r.status === 'LEAVE') map[r.studentId].leave++
-    else map[r.studentId].absent++
     map[r.studentId].records.push({
       ...r,
       id: r.id || `${r.studentId}-${idx + 1}-${r.date}-${r.subject}`
     })
   })
+
+  Object.values(map).forEach(student => {
+    const stats = calculateDailyAttendance(student.records)
+    student.total = stats.total
+    student.leave = stats.leave
+    student.absent = stats.absent
+    student.totalSessions = stats.totalSessions
+    student.totalHours = stats.totalHours
+    student.absentHours = stats.absentHours
+    student.leaveHours = stats.leaveHours
+  })
+
   return Object.values(map)
 }
 
-// Status badge logic based on total absences
+// Status badge logic based on total absent days
 function getStatusInfo(total) {
   if (total >= 15) return { label: 'គ្រោះថ្នាក់', color: 'rose', icon: ShieldAlert }
   if (total >= 8)  return { label: 'ប្រុងប្រយ័ត្ន', color: 'amber', icon: AlertCircle }
@@ -237,10 +293,12 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
     setDetailExportOpen(false)
   }
 
-  // Dynamic counts for cards and status badge
-  const totalCount = records.length
-  const leaveCount = records.filter(r => r.status === 'LEAVE').length
-  const absentCount = records.filter(r => r.status === 'ABSENT').length
+  // Dynamic counts for cards and status badge (Policy: 1 day = 1 absence)
+  const dailyStats = calculateDailyAttendance(records)
+  const totalCount = dailyStats.total
+  const leaveCount = dailyStats.leave
+  const absentCount = dailyStats.absent
+  const totalSessions = dailyStats.totalSessions
   const statusInfo = getStatusInfo(totalCount)
   const StatusIcon = statusInfo.icon
 
@@ -318,7 +376,7 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
   }
 
   // ── Save Edit ──
-  const handleSaveEdit = (e) => {
+  const handleSaveEdit = async (e) => {
     e.preventDefault()
     if (!editModal.record) return
     const updatedRecords = records.map(r => {
@@ -330,11 +388,22 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
     setRecords(updatedRecords)
     if (onUpdateRecords) onUpdateRecords(updatedRecords)
     setEditModal({ open: false, record: null })
+
+    // Sync to Firestore Cloud / LocalStorage via API
+    try {
+      await api('attendance.updateRecord', {
+        recordId: editModal.record.id,
+        data: editFormData
+      })
+    } catch (err) {
+      console.warn('Update record api error:', err)
+    }
+
     showToast('បានកែសម្រួលកំណត់ត្រាដោយជោគជ័យ')
   }
 
   // ── Confirm Delete Action (Single or Bulk) ──
-  const handleExecuteDelete = () => {
+  const handleExecuteDelete = async () => {
     if (deleteModal.type === 'bulk') {
       const idsToDelete = new Set(selectedIds)
       const newRecords = records.filter(r => !idsToDelete.has(r.id))
@@ -342,6 +411,13 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
       setSelectedIds([])
       if (onUpdateRecords) onUpdateRecords(newRecords)
       showToast(`បានលុប ${deleteModal.count} កំណត់ត្រាដោយជោគជ័យ`)
+
+      // Sync bulk delete to Firestore
+      try {
+        await api('attendance.deleteMultiple', { recordIds: Array.from(idsToDelete) })
+      } catch (err) {
+        console.warn('Delete multiple api error:', err)
+      }
     } else if (deleteModal.type === 'single') {
       const idToDelete = deleteModal.record?.id
       const newRecords = records.filter(r => r.id !== idToDelete)
@@ -349,6 +425,13 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
       setSelectedIds(prev => prev.filter(id => id !== idToDelete))
       if (onUpdateRecords) onUpdateRecords(newRecords)
       showToast('បានលុបកំណត់ត្រាដោយជោគជ័យ')
+
+      // Sync delete to Firestore
+      try {
+        await api('attendance.deleteRecord', { recordId: idToDelete })
+      } catch (err) {
+        console.warn('Delete record api error:', err)
+      }
     }
     setDeleteModal({ open: false, type: null, record: null, count: 0 })
   }
@@ -405,20 +488,25 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
           </div>
         </div>
 
-        {/* Total */}
+        {/* Total Days Missed */}
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
           <div className="flex items-center gap-3 mb-3 relative z-10">
             <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
               <Users size={18} strokeWidth={2.5} />
             </div>
-            <div className="text-[13px] font-bold text-slate-500">អវត្តមានសរុប</div>
+            <div className="text-[13px] font-bold text-slate-500">អវត្តមានសរុប (គិតជាថ្ងៃ)</div>
           </div>
-          <div className="text-3xl font-black text-slate-800 relative z-10">{totalCount}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ដង</div>
+          <div className="flex items-baseline gap-1.5 relative z-10">
+            <span className="text-3xl font-black text-slate-800">{totalCount}</span>
+            <span className="text-[13px] font-bold text-slate-500">ថ្ងៃ</span>
+          </div>
+          <div className="text-[11px] font-medium text-slate-400 mt-1 relative z-10">
+            ស្មើនឹង {totalSessions} ម៉ោងសិក្សា
+          </div>
         </div>
 
-        {/* Leave */}
+        {/* Leave Days */}
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-amber-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
           <div className="flex items-center gap-3 mb-3 relative z-10">
@@ -427,21 +515,27 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
             </div>
             <div className="text-[13px] font-bold text-slate-500">មានច្បាប់</div>
           </div>
-          <div className="text-3xl font-black text-amber-500 relative z-10">{leaveCount}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ដង</div>
+          <div className="flex items-baseline gap-1.5 relative z-10">
+            <span className="text-3xl font-black text-amber-500">{leaveCount}</span>
+            <span className="text-[13px] font-bold text-amber-600/70">ថ្ងៃ</span>
+          </div>
+          <div className="text-[11px] font-medium text-slate-400 mt-1 relative z-10">មានការសុំអនុញ្ញាតត្រឹមត្រូវ</div>
         </div>
 
-        {/* Absent */}
+        {/* Absent Days */}
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-rose-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
           <div className="flex items-center gap-3 mb-3 relative z-10">
             <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center">
               <AlertCircle size={18} strokeWidth={2.5} />
             </div>
-            <div className="text-[13px] font-bold text-slate-500">គ្មានច្បាប់</div>
+            <div className="text-[13px] font-bold text-slate-500">គ្មានច្បាប់ (ល្មើសវិន័យ)</div>
           </div>
-          <div className="text-3xl font-black text-rose-500 relative z-10">{absentCount}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ដង</div>
+          <div className="flex items-baseline gap-1.5 relative z-10">
+            <span className="text-3xl font-black text-rose-500">{absentCount}</span>
+            <span className="text-[13px] font-bold text-rose-600/70">ថ្ងៃ</span>
+          </div>
+          <div className="text-[11px] font-medium text-slate-400 mt-1 relative z-10">គិតជាថ្ងៃសម្រាប់តាមដានវិន័យ</div>
         </div>
 
       </div>
@@ -891,8 +985,17 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
 // Main Component
 // ─────────────────────────────────────────────
 export default function AdminStudentAttendance() {
-  const [summaries, setSummaries] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [summaries, setSummaries] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_attendance_cache')
+      if (cached) {
+        const parsed = JSON.parse(cached)
+        if (Array.isArray(parsed) && parsed.length > 0) return buildStudentSummaries(parsed)
+      }
+    } catch (e) {}
+    return []
+  })
+  const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedStudent, setSelectedStudent] = useState(null)
@@ -911,26 +1014,57 @@ export default function AdminStudentAttendance() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  useEffect(() => {
-    setLoading(true)
-    setTimeout(() => {
-      setSummaries(buildStudentSummaries(ALL_RECORDS))
+  const fetchRecords = async (showLoading = false) => {
+    if (showLoading) setLoading(true)
+    try {
+      const res = await api('attendance.getAll')
+      let combinedRecords = []
+      if (res && res.success && Array.isArray(res.data)) {
+        combinedRecords = res.data
+      }
+      setSummaries(buildStudentSummaries(combinedRecords))
+    } catch (e) {
+      console.error('Error reading attendance records:', e)
+      setSummaries([])
+    } finally {
       setLoading(false)
-    }, 350)
+    }
+  }
+
+  useEffect(() => {
+    fetchRecords(false)
   }, [])
 
-  const classOptions = [
-    { id: 'ALL', label: 'គ្រប់ថ្នាក់' },
-    { id: '12A', label: 'ថ្នាក់ 12A' },
-    { id: '12B', label: 'ថ្នាក់ 12B' },
-    { id: '11A', label: 'ថ្នាក់ 11A' },
-  ]
+  const [classOptions, setClassOptions] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_classes_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }, ...parsed.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))]
+        }
+      }
+    } catch (e) {}
+    return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }]
+  })
+
+  useEffect(() => {
+    api('academic.getClasses').then(res => {
+      if (res && res.success && Array.isArray(res.data)) {
+        if (res.data.length > 0) {
+          setClassOptions([{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }, ...res.data.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))])
+        } else {
+          setClassOptions([{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }])
+        }
+      }
+    }).catch(() => {})
+  }, [])
 
   const statusFilterOptions = [
     { id: 'ALL', label: 'គ្រប់ស្ថានភាព' },
-    { id: 'danger',  label: 'គ្រោះថ្នាក់ (≥ 15 ដង)' },
-    { id: 'warning', label: 'ប្រុងប្រយ័ត្ន (8–14 ដង)' },
-    { id: 'normal',  label: 'ធម្មតា (< 8 ដង)' },
+    { id: 'danger',  label: 'គ្រោះថ្នាក់ (≥ 15 ថ្ងៃ)' },
+    { id: 'warning', label: 'ប្រុងប្រយ័ត្ន (8–14 ថ្ងៃ)' },
+    { id: 'normal',  label: 'ធម្មតា (< 8 ថ្ងៃ)' },
   ]
 
   // Filtering
@@ -957,23 +1091,179 @@ export default function AdminStudentAttendance() {
   const dangerCount  = summaries.filter(s => getStatusInfo(s.total).color === 'rose').length
   const warningCount = summaries.filter(s => getStatusInfo(s.total).color === 'amber').length
 
-  const handleExport = (type) => { alert(`Exporting as ${type}... (Mock)`); setExportOpen(false) }
+  const handleExport = (type) => {
+    if (type === 'Excel') {
+      const headers = ['អត្តលេខ', 'ឈ្មោះសិស្ស', 'ថ្នាក់', 'អវត្តមានសរុប (ថ្ងៃ)', 'អវត្តមានសរុប (ម៉ោង)', 'មានច្បាប់ (ថ្ងៃ)', 'គ្មានច្បាប់ (ថ្ងៃ)', 'ស្ថានភាព']
+      const rows = filtered.map(d => {
+        const info = getStatusInfo(d.total)
+        return [
+          `"${d.studentId}"`,
+          `"${d.name}"`,
+          `"${d.class}"`,
+          `"${d.total || 0}"`,
+          `"${d.totalHours !== undefined ? d.totalHours : (d.totalSessions || 0)}"`,
+          `"${d.leave || 0}"`,
+          `"${d.absent || 0}"`,
+          `"${info.label}"`
+        ]
+      })
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `របាយការណ៍អវត្តមានសិស្ស_${new Date().toISOString().slice(0, 10)}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } else if (type === 'Word') {
+      const htmlContent = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+  <meta charset='utf-8'>
+  <title>របាយការណ៍អវត្តមានសិស្ស - វិទ្យាល័យអង្គរកា</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    @page { size: A4 landscape; margin: 1.5cm; }
+    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1e293b; line-height: 1.5; }
+    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .header-table td { border: none; padding: 4px; }
+    .kingdom-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; font-weight: bold; color: #1e3a8a; text-align: center; }
+    .motto-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; color: #1e3a8a; text-align: center; }
+    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 15pt; font-weight: bold; color: #0f172a; text-align: center; margin: 15px 0 5px 0; }
+    .doc-subtitle { text-align: center; font-size: 10pt; color: #64748b; margin-bottom: 15px; }
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+    table.data-table th, table.data-table td { border: 1px solid #94a3b8; padding: 6px 8px; }
+    table.data-table th { background-color: #f1f5f9; font-weight: bold; text-align: center; color: #1e293b; }
+    .text-center { text-align: center; }
+    .footer-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+    .footer-table td { border: none; text-align: center; font-size: 10pt; }
+  </style>
+</head>
+<body>
+  <table class="header-table">
+    <tr>
+      <td style="width: 50%; vertical-align: top;">
+        <strong>ក្រសួងអប់រំ យុវជន និងកីឡា</strong><br>
+        <strong>មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ</strong><br>
+        <strong>វិទ្យាល័យអង្គរកា</strong>
+      </td>
+      <td style="width: 50%; vertical-align: top;">
+        <div class="kingdom-title">ព្រះរាជាណាចក្រកម្ពុជា</div>
+        <div class="motto-title">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="doc-title">របាយការណ៍អវត្តមានសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបចំនួន៖ ${filtered.length} នាក់</div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 40px;">ល.រ</th>
+        <th style="width: 80px;">អត្តលេខ</th>
+        <th>ឈ្មោះសិស្ស</th>
+        <th style="width: 60px;">ថ្នាក់</th>
+        <th style="width: 100px;">អវត្តមានសរុប (ថ្ងៃ)</th>
+        <th style="width: 110px;">អវត្តមានសរុប (ម៉ោង)</th>
+        <th style="width: 85px;">មានច្បាប់</th>
+        <th style="width: 85px;">គ្មានច្បាប់</th>
+        <th style="width: 110px;">ស្ថានភាព</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filtered.map((d, idx) => {
+        const info = getStatusInfo(d.total)
+        return `
+        <tr>
+          <td class="text-center">${idx + 1}</td>
+          <td class="text-center" style="font-weight: bold;">${d.studentId}</td>
+          <td style="font-weight: bold;">${d.name}</td>
+          <td class="text-center" style="font-weight: bold;">${d.class}</td>
+          <td class="text-center">${d.total || 0}</td>
+          <td class="text-center">${d.totalHours !== undefined ? d.totalHours : (d.totalSessions || 0)}</td>
+          <td class="text-center">${d.leave || 0}</td>
+          <td class="text-center">${d.absent || 0}</td>
+          <td class="text-center">${info.label}</td>
+        </tr>
+      `}).join('')}
+    </tbody>
+  </table>
+
+  <table class="footer-table">
+    <tr>
+      <td style="width: 50%; vertical-align: top;">
+        <br>
+        <strong>បានឃើញ និងឯកភាព</strong><br>
+        នាយកវិទ្យាល័យអង្គរកា
+      </td>
+      <td style="width: 50%; vertical-align: top;">
+        ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
+        <strong>អ្នករៀបចំរបាយការណ៍</strong>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `របាយការណ៍អវត្តមានសិស្ស_${new Date().toISOString().slice(0, 10)}.doc`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } else {
+      window.print()
+    }
+    setExportOpen(false)
+  }
 
   const handleUpdateStudentRecords = (studentId, newRecords) => {
-    const leave = newRecords.filter(r => r.status === 'LEAVE').length
-    const absent = newRecords.filter(r => r.status === 'ABSENT').length
-    const total = newRecords.length
+    const stats = calculateDailyAttendance(newRecords)
 
     setSummaries(prev => prev.map(s => {
       if (s.studentId === studentId) {
-        return { ...s, records: newRecords, total, leave, absent }
+        return {
+          ...s,
+          records: newRecords,
+          total: stats.total,
+          leave: stats.leave,
+          absent: stats.absent,
+          totalSessions: stats.totalSessions,
+          totalHours: stats.totalHours,
+          absentHours: stats.absentHours,
+          leaveHours: stats.leaveHours
+        }
       }
       return s
     }))
 
     setSelectedStudent(prev => {
       if (prev && prev.studentId === studentId) {
-        return { ...prev, records: newRecords, total, leave, absent }
+        return {
+          ...prev,
+          records: newRecords,
+          total: stats.total,
+          leave: stats.leave,
+          absent: stats.absent,
+          totalSessions: stats.totalSessions,
+          totalHours: stats.totalHours,
+          absentHours: stats.absentHours,
+          leaveHours: stats.leaveHours
+        }
       }
       return prev
     })
@@ -1018,7 +1308,7 @@ export default function AdminStudentAttendance() {
             <div className="text-[14px] font-bold text-slate-500">ស្ថានភាពគ្រោះថ្នាក់</div>
           </div>
           <div className="text-3xl font-black text-rose-500 relative z-10">{dangerCount}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់ (≥ 15 ដង)</div>
+          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់ (≥ 15 ថ្ងៃ)</div>
         </div>
 
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
@@ -1030,7 +1320,7 @@ export default function AdminStudentAttendance() {
             <div className="text-[14px] font-bold text-slate-500">ស្ថានភាពប្រុងប្រយ័ត្ន</div>
           </div>
           <div className="text-3xl font-black text-amber-500 relative z-10">{warningCount}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់ (8–14 ដង)</div>
+          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់ (8–14 ថ្ងៃ)</div>
         </div>
 
       </div>
@@ -1054,23 +1344,37 @@ export default function AdminStudentAttendance() {
               />
             </div>
 
-            {/* Export */}
-            <div className="relative w-full lg:w-auto" ref={exportRef}>
+            {/* Action Buttons: Refresh & Export */}
+            <div className="flex items-center gap-2.5 w-full lg:w-auto">
               <button
-                onClick={() => setExportOpen(!exportOpen)}
-                className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-6 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full xl:w-auto"
+                type="button"
+                onClick={fetchRecords}
+                disabled={loading}
+                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:border-indigo-200 cursor-pointer disabled:opacity-50"
+                title="ទាញយកទិន្នន័យវត្តមានថ្មីពី Firebase"
               >
-                <Download size={15} strokeWidth={2.5} />
-                <span>នាំចេញ (Export)</span>
-                <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-1 ${exportOpen ? 'rotate-180' : ''}`} />
+                <RefreshCw size={14} className={loading ? 'animate-spin text-indigo-600' : 'text-slate-500'} />
+                <span>{loading ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
               </button>
-              {exportOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2">
-                  <button onClick={() => handleExport('PDF')}   className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileText  size={16} className="text-rose-500    group-hover:scale-110 transition-transform" /> Export as PDF</button>
-                  <button onClick={() => handleExport('Excel')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileCode  size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" /> Export as Excel</button>
-                  <button onClick={() => handleExport('Word')}  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileImage size={16} className="text-blue-500   group-hover:scale-110 transition-transform" /> Export as Word</button>
-                </div>
-              )}
+
+              {/* Export */}
+              <div className="relative w-full lg:w-auto" ref={exportRef}>
+                <button
+                  onClick={() => setExportOpen(!exportOpen)}
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-6 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full xl:w-auto cursor-pointer"
+                >
+                  <Download size={15} strokeWidth={2.5} />
+                  <span>នាំចេញ (Export)</span>
+                  <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-1 ${exportOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {exportOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2">
+                    <button onClick={() => handleExport('PDF')}   className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileText  size={16} className="text-rose-500    group-hover:scale-110 transition-transform" /> Export as PDF</button>
+                    <button onClick={() => handleExport('Excel')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileCode  size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" /> Export as Excel</button>
+                    <button onClick={() => handleExport('Word')}  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileImage size={16} className="text-blue-500   group-hover:scale-110 transition-transform" /> Export as Word</button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1098,11 +1402,12 @@ export default function AdminStudentAttendance() {
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Student ID</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider min-w-[200px]">ឈ្មោះសិស្ស</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">ថ្នាក់</th>
-                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">អវត្តមានសរុប</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">អវត្តមានសរុប (ថ្ងៃ)</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center min-w-[130px]">អវត្តមានសរុប (ម៉ោង)</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">មានច្បាប់</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">គ្មានច្បាប់</th>
                 <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">ស្ថានភាព</th>
-                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">Action</th>
+                <th className="py-4 px-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">សកម្មភាព</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -1139,23 +1444,32 @@ export default function AdminStudentAttendance() {
                       </span>
                     </td>
 
-                    {/* Total */}
+                    {/* Total Days */}
                     <td className="py-4 px-5 text-center">
                       <span className="text-[15px] font-black text-slate-800">{student.total}</span>
-                      <span className="text-[10px] text-slate-400 font-medium ml-1">ដង</span>
+                      <span className="text-[10px] text-slate-400 font-medium ml-1">ថ្ងៃ</span>
+                    </td>
+
+                    {/* Total Hours */}
+                    <td className="py-4 px-5 text-center">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50/70 text-indigo-700 font-bold text-[12px] border border-indigo-100/70 font-mono">
+                        <Clock size={12} className="text-indigo-500" />
+                        <span>{student.totalHours !== undefined ? student.totalHours : (student.totalSessions || 0)}</span>
+                        <span className="text-[10px] font-sans font-medium text-indigo-400">ម៉ោង</span>
+                      </span>
                     </td>
 
                     {/* Leave */}
                     <td className="py-4 px-5 text-center">
                       <span className="inline-flex items-center justify-center gap-1 px-3 py-1 rounded-full bg-amber-50 text-amber-600 font-bold text-[12px] border border-amber-100">
-                        {student.leave}
+                        {student.leave} <span className="text-[10px] font-normal text-amber-500/80">ថ្ងៃ</span>
                       </span>
                     </td>
 
                     {/* Absent */}
                     <td className="py-4 px-5 text-center">
                       <span className="inline-flex items-center justify-center gap-1 px-3 py-1 rounded-full bg-rose-50 text-rose-600 font-bold text-[12px] border border-rose-100">
-                        {student.absent}
+                        {student.absent} <span className="text-[10px] font-normal text-rose-500/80">ថ្ងៃ</span>
                       </span>
                     </td>
 
@@ -1171,10 +1485,10 @@ export default function AdminStudentAttendance() {
                     <td className="py-4 px-5 text-center">
                       <button
                         onClick={() => setSelectedStudent(student)}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white font-bold text-[12px] rounded-lg transition-all hover:shadow-md border border-indigo-100 hover:border-indigo-600 group/btn"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white font-bold text-[12px] rounded-lg transition-all hover:shadow-md border border-indigo-100 hover:border-indigo-600 group/btn cursor-pointer"
                       >
                         <Eye size={13} className="group-hover/btn:scale-110 transition-transform" />
-                        Detail
+                        ព័ត៌មានលម្អិត
                       </button>
                     </td>
                   </tr>
@@ -1182,7 +1496,7 @@ export default function AdminStudentAttendance() {
               })}
               {filtered.length === 0 && !loading && (
                 <tr>
-                  <td colSpan="8" className="py-24 text-center">
+                  <td colSpan="9" className="py-24 text-center">
                     <div className="flex flex-col items-center justify-center text-slate-400">
                       <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center mb-4">
                         <Search size={28} className="text-slate-300" />

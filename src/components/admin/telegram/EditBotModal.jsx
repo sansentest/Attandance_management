@@ -2,28 +2,30 @@ import { useState, useEffect } from 'react';
 import { Edit, X, Save, Loader2, CheckCircle, MessageCircle, BookOpen, Activity, Hash, Globe } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
 
-export default function EditBotModal({ isOpen, onClose, onSave, classOptions, botData }) {
+export default function EditBotModal({ isOpen, onClose, onSave, classOptions, botData, globalTokens = [] }) {
   const statusOptions = [
     { id: 'active', label: 'ដំណើរការ (Active)' },
     { id: 'inactive', label: 'ផ្អាក (Inactive)' }
   ];
   
-  const globalTokenOptions = [
-    { id: 'global_1', label: 'Bot សាលាកណ្តាល (Active)', isActive: true },
-    { id: 'global_2', label: 'Bot បណ្ណាល័យ', isActive: false }
-  ];
+  const globalTokenOptions = globalTokens && globalTokens.length > 0
+    ? globalTokens.map(t => ({ id: t.id, label: `${t.name}${t.isActive ? ' (Active)' : ''}`, isActive: t.isActive }))
+    : [
+        { id: 'gt_1', label: 'Bot សាលាកណ្តាល (Active)', isActive: true },
+        { id: 'gt_2', label: 'Bot បណ្ណាល័យ', isActive: false }
+      ];
   
   const filteredClassOptions = classOptions ? classOptions.filter(c => c.id !== 'ALL') : [];
   
   const [bot, setBot] = useState(botData || {
-    class: '10A',
+    class: filteredClassOptions[0]?.id || '',
+    name: '',
     token: '',
     chatId: '',
     status: 'active'
   });
   
   const [tokenType, setTokenType] = useState(botData && botData.token === 'GLOBAL_TOKEN' ? 'global' : 'custom');
-  
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
 
@@ -37,34 +39,28 @@ export default function EditBotModal({ isOpen, onClose, onSave, classOptions, bo
   // Auto-select the active global token when switching to global token if none is selected
   useEffect(() => {
     if (tokenType === 'global' && !bot.globalTokenId) {
-      const activeGlobal = globalTokenOptions.find(t => t.isActive);
+      const activeGlobal = globalTokenOptions.find(t => t.isActive) || globalTokenOptions[0];
       if (activeGlobal) {
         setBot(prev => ({ ...prev, globalTokenId: activeGlobal.id }));
       }
     }
-  }, [tokenType, bot.globalTokenId]);
+  }, [tokenType, bot.globalTokenId, globalTokens]);
 
   if (!isOpen && !showSuccessAlert) return null;
 
   const handleSave = () => {
-    setIsSaving(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false);
-      setShowSuccessAlert(true);
-      
-      const botToSave = {
-        ...bot,
-        token: tokenType === 'global' ? 'GLOBAL_TOKEN' : bot.token
-      };
-      
-      if (onSave) onSave(botToSave);
-      
-      setTimeout(() => {
-        setShowSuccessAlert(false);
-        onClose();
-      }, 2000);
-    }, 1000);
+    if (!bot.chatId.trim()) return;
+    if (tokenType === 'custom' && !bot.token.trim()) return;
+
+    const botToSave = {
+      ...bot,
+      name: (bot.name || '').trim() || `Bot ថ្នាក់ ${bot.class}`,
+      token: tokenType === 'global' ? 'GLOBAL_TOKEN' : bot.token.trim(),
+      chatId: bot.chatId.trim()
+    };
+    
+    if (onSave) onSave(botToSave);
+    onClose();
   };
 
   return (

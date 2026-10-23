@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Edit, X, Save, Loader2, ChevronDown, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity, Camera } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Edit, X, Save, Loader2, ChevronDown, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
 
 export default function EditUserModal({ isOpen, onClose, onSave, classOptions, userData }) {
@@ -19,59 +19,34 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
     username: '',
     password: '',
     role: 'monitor',
-    class: '10A',
-    status: 'active',
-    image: null
+    class: filteredClassOptions[0]?.id || '',
+    status: 'active'
   });
-  const [imagePreview, setImagePreview] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
-  const fileInputRef = useRef(null);
 
   useEffect(() => {
     if (userData) {
       setUser(userData);
-      // If user data comes with an image URL, set it
-      if (userData.image && typeof userData.image === 'string') {
-        setImagePreview(userData.image);
-      } else {
-        setImagePreview(null);
-      }
     }
   }, [userData]);
 
   if (!isOpen && !showSuccessAlert) return null;
 
-  const handleImageChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setUser({ ...user, image: file });
-      setImagePreview(URL.createObjectURL(file));
-    }
-  };
-
-  const handleRemoveImage = (e) => {
-    e.stopPropagation();
-    setUser({ ...user, image: null });
-    setImagePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      if (onSave) await onSave(user);
       setShowSuccessAlert(true);
-      if (onSave) onSave(user);
-      
       setTimeout(() => {
         setShowSuccessAlert(false);
         onClose();
-      }, 2000);
-    }, 1000);
+      }, 700);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -211,47 +186,6 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
                     icon={Activity}
                   />
                 </div>
-              </div>
-
-              {/* Profile Image Upload */}
-              <div className="flex flex-col items-center justify-center mt-2">
-                <div 
-                  onClick={() => fileInputRef.current?.click()}
-                  className="relative w-24 h-24 rounded-full bg-white flex items-center justify-center cursor-pointer hover:bg-indigo-50/50 transition-all group overflow-hidden shadow-sm"
-                >
-                  {/* Spinning Dashed Border */}
-                  <div className="absolute inset-0 rounded-full border-[2.5px] border-dashed border-indigo-400/80 animate-[spin_6s_linear_infinite] group-hover:border-indigo-500 z-10 pointer-events-none"></div>
-                  
-                  {imagePreview ? (
-                    <>
-                      <img src={imagePreview} alt="Profile preview" className="w-full h-full object-cover relative z-0" />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                        <Camera size={20} className="text-white" />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center gap-1.5 text-slate-400 group-hover:text-indigo-500 transition-colors z-0">
-                      <Camera size={24} strokeWidth={1.5} />
-                      <span className="text-[10px] font-medium">រូបថត</span>
-                    </div>
-                  )}
-                  
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    onChange={handleImageChange} 
-                    accept="image/*" 
-                    className="hidden" 
-                  />
-                </div>
-                {imagePreview && (
-                  <button 
-                    onClick={handleRemoveImage}
-                    className="mt-4 text-[12px] font-medium text-rose-500 hover:text-rose-600 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1.5"
-                  >
-                    <X size={14} strokeWidth={2.5} /> លុបរូបថត
-                  </button>
-                )}
               </div>
             </div>
 

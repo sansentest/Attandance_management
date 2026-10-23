@@ -3,8 +3,84 @@ import {
   BookOpen, Users, Plus, Edit, Trash2, Search, Book, GraduationCap,
   X, Save, Loader2, Download, CheckCircle2, RotateCcw, AlertTriangle,
   ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, FileText, FileCode, User,
-  Upload, FileSpreadsheet, ArrowRight
+  Upload, FileSpreadsheet, ArrowRight, RefreshCw, FileImage, Sparkles
 } from 'lucide-react';
+import { api } from '../../../utils/api';
+
+// Helper to generate sequential IDs for classes
+function generateBatchClassIds(existingList, count) {
+  let maxNum = 0;
+  existingList.forEach(c => {
+    const match = (c.id || '')?.match(/(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum && num < 1000000) maxNum = num;
+    }
+  });
+  const ids = [];
+  for (let i = 1; i <= count; i++) {
+    ids.push(`CLS-${String(maxNum + i).padStart(3, '0')}`);
+  }
+  return ids;
+}
+
+// Helper to generate sequential IDs for subjects
+function generateBatchSubjectIds(existingList, count) {
+  let maxNum = 0;
+  existingList.forEach(s => {
+    const match = (s.id || '')?.match(/(\d+)/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum && num < 1000000) maxNum = num;
+    }
+  });
+  const ids = [];
+  for (let i = 1; i <= count; i++) {
+    ids.push(`SUB-${String(maxNum + i).padStart(3, '0')}`);
+  }
+  return ids;
+}
+
+// Robust CSV parser supporting Khmer Unicode, quotes, commas, tabs, semicolons, and UTF-8 BOM
+function parseCSV(text) {
+  const cleaned = text.replace(/^\uFEFF/, '').trim();
+  if (!cleaned) return [];
+
+  const lines = cleaned.split(/\r\n|\n|\r/).filter(line => line.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const parseLine = (line) => {
+    let delimiter = ',';
+    if (line.includes('\t') && !line.includes(',')) delimiter = '\t';
+    else if (line.includes(';') && !line.includes(',')) delimiter = ';';
+
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"' || char === "'") {
+        inQuotes = !inQuotes;
+      } else if (char === delimiter && !inQuotes) {
+        result.push(current.trim().replace(/^["']|["']$/g, ''));
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim().replace(/^["']|["']$/g, ''));
+    return result;
+  };
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseLine(lines[i]);
+    if (cols.every(c => !c)) continue;
+    rows.push(cols);
+  }
+  return rows;
+}
 
 // ─────────────────────────────────────────────
 // Searchable Dropdown Component (matching AdminStudentAttendance)
@@ -87,28 +163,26 @@ const SearchableDropdown = ({ value, onChange, options, placeholder, icon: Icon 
 export default function AdminAcademic({ initialTab = 'classes' }) {
   const [activeTab, setActiveTab] = useState(initialTab); // 'classes' | 'subjects'
 
-  // Mock Data
-  const [classes, setClasses] = useState([
-    { id: 'c1', name: 'ថ្នាក់ 12A', students: 35, teacher: 'លោកគ្រូ សាន វិបុល' },
-    { id: 'c2', name: 'ថ្នាក់ 12B', students: 32, teacher: 'អ្នកគ្រូ ហេង សុផល' },
-    { id: 'c3', name: 'ថ្នាក់ 11A', students: 40, teacher: 'លោកគ្រូ ចាន់ ណារិន' },
-    { id: 'c4', name: 'ថ្នាក់ 11B', students: 38, teacher: 'អ្នកគ្រូ កែវ សុខា' },
-    { id: 'c5', name: 'ថ្នាក់ 10A', students: 42, teacher: 'លោកគ្រូ ឡុង ពិសិដ្ឋ' },
-    { id: 'c6', name: 'ថ្នាក់ 10B', students: 36, teacher: 'អ្នកគ្រូ ជា ស្រីពៅ' },
-  ]);
+  // Mock Data with Cache
+  const [classes, setClasses] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_classes_cache');
+      if (cached !== null) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {}
+    return [];
+  });
 
-  const [subjects, setSubjects] = useState([
-    { id: 's1', name: 'គណិតវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-    { id: 's2', name: 'រូបវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-    { id: 's3', name: 'គីមីវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-    { id: 's4', name: 'ជីវវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-    { id: 's5', name: 'អក្សរសាស្ត្រខ្មែរ', type: 'សង្គម' },
-    { id: 's6', name: 'ប្រវត្តិវិទ្យា', type: 'សង្គម' },
-    { id: 's7', name: 'ភាសាអង់គ្លេស', type: 'ភាសាបរទេស' },
-    { id: 's8', name: 'ពលរដ្ឋវិទ្យា', type: 'សង្គម' },
-    { id: 's9', name: 'ព័ត៌មានវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-    { id: 's10', name: 'អប់រំកាយ/កីឡា', type: 'ទូទៅ' },
-  ]);
+  const [subjects, setSubjects] = useState(() => {
+    try {
+      const cached = localStorage.getItem('school_subjects_cache');
+      if (cached !== null) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {}
+    return [];
+  });
 
   // Search & Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -133,8 +207,42 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
   const [subjectType, setSubjectType] = useState('វិទ្យាសាស្ត្រ');
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [toast, setToast] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: '', item: null });
+
+  const fetchAcademicData = async (initial = false) => {
+    if (initial) setIsLoading(true);
+    setIsRefreshing(true);
+    try {
+      const [resClasses, resSubjects] = await Promise.all([
+        api('academic.getClasses'),
+        api('academic.getSubjects')
+      ]);
+      if (resClasses?.success && Array.isArray(resClasses.data)) {
+        setClasses(resClasses.data);
+      }
+      if (resSubjects?.success && Array.isArray(resSubjects.data)) {
+        setSubjects(resSubjects.data);
+      }
+      if (!initial) {
+        showToast('បានធ្វើបច្ចុប្បន្នភាពទិន្នន័យពី Firebase');
+      }
+    } catch (err) {
+      console.error('Fetch academic error:', err);
+      if (!initial) {
+        showToast('មិនអាចទាញទិន្នន័យថ្មីបានទេ');
+      }
+    } finally {
+      setIsRefreshing(false);
+      if (initial) setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAcademicData(false);
+  }, []);
 
   useEffect(() => {
     if (initialTab) {
@@ -217,162 +325,442 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
   };
 
   // Save Handlers
-  const handleSaveClass = (e) => {
+  const handleSaveClass = async (e) => {
     e.preventDefault();
     if (!className.trim()) {
       showToast('សូមបញ្ចូលឈ្មោះថ្នាក់រៀន');
       return;
     }
     setIsSaving(true);
-    setTimeout(() => {
-      if (editingItem) {
-        setClasses(classes.map(c => c.id === editingItem.id ? { ...c, name: className.trim(), teacher: classTeacher.trim() } : c));
-        showToast(`បានកែសម្រួលថ្នាក់ "${className.trim()}" ដោយជោគជ័យ`);
+    try {
+      const classPayload = editingItem
+        ? { ...editingItem, name: className.trim(), teacher: classTeacher.trim() }
+        : { id: `c_${Date.now()}`, name: className.trim(), students: 0, teacher: classTeacher.trim() };
+
+      const res = await api('academic.saveClass', { class: classPayload });
+      if (res?.success) {
+        if (editingItem) {
+          setClasses(prev => prev.map(c => c.id === editingItem.id ? { ...c, ...classPayload } : c));
+          showToast(`បានកែសម្រួលថ្នាក់ "${className.trim()}" ដោយជោគជ័យ`);
+        } else {
+          setClasses(prev => [classPayload, ...prev]);
+          showToast(`បានបន្ថែមថ្នាក់ថ្មី "${className.trim()}" ដោយជោគជ័យ`);
+        }
+        handleResetForm();
       } else {
-        const newClass = { id: `c_${Date.now()}`, name: className.trim(), students: 0, teacher: classTeacher.trim() };
-        setClasses([newClass, ...classes]);
-        showToast(`បានបន្ថែមថ្នាក់ថ្មី "${className.trim()}" ដោយជោគជ័យ`);
+        showToast(res?.error || 'មានបញ្ហាក្នុងការរក្សាទុកថ្នាក់');
       }
+    } catch (err) {
+      console.error('Save class error:', err);
+      showToast('មានបញ្ហាក្នុងការរក្សាទុកថ្នាក់');
+    } finally {
       setIsSaving(false);
-      handleResetForm();
-    }, 300);
+    }
   };
 
-  const handleSaveSubject = (e) => {
+  const handleSaveSubject = async (e) => {
     e.preventDefault();
     if (!subjectName.trim()) {
       showToast('សូមបញ្ចូលឈ្មោះមុខវិជ្ជា');
       return;
     }
     setIsSaving(true);
-    setTimeout(() => {
-      if (editingItem) {
-        setSubjects(subjects.map(s => s.id === editingItem.id ? { ...s, name: subjectName.trim(), type: subjectType } : s));
-        showToast(`បានកែសម្រួលមុខវិជ្ជា "${subjectName.trim()}" ដោយជោគជ័យ`);
+    try {
+      const subjectPayload = editingItem
+        ? { ...editingItem, name: subjectName.trim(), type: subjectType }
+        : { id: `s_${Date.now()}`, name: subjectName.trim(), type: subjectType };
+
+      const res = await api('academic.saveSubject', { subject: subjectPayload });
+      if (res?.success) {
+        if (editingItem) {
+          setSubjects(prev => prev.map(s => s.id === editingItem.id ? { ...s, ...subjectPayload } : s));
+          showToast(`បានកែសម្រួលមុខវិជ្ជា "${subjectName.trim()}" ដោយជោគជ័យ`);
+        } else {
+          setSubjects(prev => [subjectPayload, ...prev]);
+          showToast(`បានបន្ថែមមុខវិជ្ជាថ្មី "${subjectName.trim()}" ដោយជោគជ័យ`);
+        }
+        handleResetForm();
       } else {
-        const newSubject = { id: `s_${Date.now()}`, name: subjectName.trim(), type: subjectType };
-        setSubjects([newSubject, ...subjects]);
-        showToast(`បានបន្ថែមមុខវិជ្ជាថ្មី "${subjectName.trim()}" ដោយជោគជ័យ`);
+        showToast(res?.error || 'មានបញ្ហាក្នុងការរក្សាទុកមុខវិជ្ជា');
       }
+    } catch (err) {
+      console.error('Save subject error:', err);
+      showToast('មានបញ្ហាក្នុងការរក្សាទុកមុខវិជ្ជា');
+    } finally {
       setIsSaving(false);
-      handleResetForm();
-    }, 300);
+    }
   };
 
   // Delete Action
-  const handleExecuteDelete = () => {
+  const handleExecuteDelete = async () => {
     if (!deleteConfirm.item) return;
-    if (deleteConfirm.type === 'class') {
-      setClasses(classes.filter(c => c.id !== deleteConfirm.item.id));
-      showToast(`បានលុបថ្នាក់ "${deleteConfirm.item.name}"`);
-      if (editingItem?.id === deleteConfirm.item.id) handleResetForm();
-    } else {
-      setSubjects(subjects.filter(s => s.id !== deleteConfirm.item.id));
-      showToast(`បានលុបមុខវិជ្ជា "${deleteConfirm.item.name}"`);
-      if (editingItem?.id === deleteConfirm.item.id) handleResetForm();
+    try {
+      if (deleteConfirm.type === 'class') {
+        const res = await api('academic.deleteClass', { classId: deleteConfirm.item.id });
+        if (res?.success) {
+          setClasses(prev => prev.filter(c => c.id !== deleteConfirm.item.id));
+          showToast(`បានលុបថ្នាក់ "${deleteConfirm.item.name}"`);
+          if (editingItem?.id === deleteConfirm.item.id) handleResetForm();
+        } else {
+          showToast('មិនអាចលុបថ្នាក់រៀនបានទេ');
+        }
+      } else {
+        const res = await api('academic.deleteSubject', { subjectId: deleteConfirm.item.id });
+        if (res?.success) {
+          setSubjects(prev => prev.filter(s => s.id !== deleteConfirm.item.id));
+          showToast(`បានលុបមុខវិជ្ជា "${deleteConfirm.item.name}"`);
+          if (editingItem?.id === deleteConfirm.item.id) handleResetForm();
+        } else {
+          showToast('មិនអាចលុបមុខវិជ្ជាបានទេ');
+        }
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      showToast('មានបញ្ហាក្នុងការលុប');
+    } finally {
+      setDeleteConfirm({ open: false, type: '', item: null });
     }
-    setDeleteConfirm({ open: false, type: '', item: null });
   };
 
-  // Export matching AdminStudentAttendance
+  // ── Export (Excel, Word, PDF) ──
   const handleExport = (type = 'Excel') => {
     setExportOpen(false);
-    if (activeTab === 'classes') {
-      if (filteredClasses.length === 0) {
-        showToast('មិនមានទិន្នន័យសម្រាប់ទាញយកទេ');
-        return;
+    const isClasses = activeTab === 'classes';
+    const currentDataset = isClasses ? filteredClasses : filteredSubjects;
+
+    if (currentDataset.length === 0) {
+      showToast('មិនមានទិន្នន័យសម្រាប់ទាញយកទេ');
+      return;
+    }
+
+    const title = isClasses ? 'បញ្ជីថ្នាក់រៀន' : 'បញ្ជីមុខវិជ្ជា';
+    const subtitle = isClasses
+      ? `ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបចំនួន៖ ${filteredClasses.length} ថ្នាក់`
+      : `ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបចំនួន៖ ${filteredSubjects.length} មុខវិជ្ជា`;
+
+    if (type === 'Excel') {
+      if (isClasses) {
+        const headers = ['ល.រ', 'កូដថ្នាក់', 'ឈ្មោះថ្នាក់', 'គ្រូបន្ទុកថ្នាក់', 'ចំនួនសិស្ស', 'ស្ថានភាព'];
+        const rows = filteredClasses.map((c, i) => [
+          `"${i + 1}"`,
+          `"${c.id || `CLS-${String(i + 1).padStart(3, '0')}`}"`,
+          `"${c.name}"`,
+          `"${c.teacher || '-'}"`,
+          `"${c.students || 0}"`,
+          `"សកម្ម"`
+        ]);
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `បញ្ជីថ្នាក់រៀន_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast(`បានទាញយកបញ្ជីថ្នាក់រៀន (${filteredClasses.length} ថ្នាក់) ជា Excel ដោយជោគជ័យ`);
+      } else {
+        const headers = ['ល.រ', 'កូដមុខវិជ្ជា', 'ឈ្មោះមុខវិជ្ជា', 'ប្រភេទមុខវិជ្ជា', 'ស្ថានភាព'];
+        const rows = filteredSubjects.map((s, i) => [
+          `"${i + 1}"`,
+          `"${s.id || `SUB-${String(i + 1).padStart(3, '0')}`}"`,
+          `"${s.name}"`,
+          `"${s.type}"`,
+          `"សកម្ម"`
+        ]);
+        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `បញ្ជីមុខវិជ្ជា_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast(`បានទាញយកបញ្ជីមុខវិជ្ជា (${filteredSubjects.length} មុខវិជ្ជា) ជា Excel ដោយជោគជ័យ`);
       }
-      if (type === 'PDF') {
-        window.print();
-        return;
-      }
-      const headers = ['កូដថ្នាក់', 'ឈ្មោះថ្នាក់', 'គ្រូបន្ទុកថ្នាក់', 'ចំនួនសិស្ស', 'ស្ថានភាព'];
-      const rows = filteredClasses.map((c, i) => [
-        `"CLS-${String(i + 1).padStart(3, '0')}"`,
-        `"${c.name}"`,
-        `"${c.teacher || '-'}"`,
-        `"${c.students || 0}"`,
-        `"សកម្ម"`
-      ]);
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    } else if (type === 'Word') {
+      const tableHeaders = isClasses
+        ? `<tr>
+            <th style="width: 40px;">ល.រ</th>
+            <th style="width: 90px;">កូដថ្នាក់</th>
+            <th>ឈ្មោះថ្នាក់</th>
+            <th>គ្រូបន្ទុកថ្នាក់</th>
+            <th style="width: 90px;">ចំនួនសិស្ស</th>
+            <th style="width: 80px;">ស្ថានភាព</th>
+          </tr>`
+        : `<tr>
+            <th style="width: 40px;">ល.រ</th>
+            <th style="width: 100px;">កូដមុខវិជ្ជា</th>
+            <th>ឈ្មោះមុខវិជ្ជា</th>
+            <th style="width: 130px;">ប្រភេទមុខវិជ្ជា</th>
+            <th style="width: 80px;">ស្ថានភាព</th>
+          </tr>`;
+
+      const tableRows = isClasses
+        ? filteredClasses.map((c, i) => `
+          <tr>
+            <td class="text-center">${i + 1}</td>
+            <td class="text-center" style="font-weight: bold;">${c.id || `CLS-${String(i + 1).padStart(3, '0')}`}</td>
+            <td style="font-weight: bold;">${c.name}</td>
+            <td>${c.teacher || '-'}</td>
+            <td class="text-center">${c.students || 0}</td>
+            <td class="text-center">សកម្ម</td>
+          </tr>
+        `).join('')
+        : filteredSubjects.map((s, i) => `
+          <tr>
+            <td class="text-center">${i + 1}</td>
+            <td class="text-center" style="font-weight: bold;">${s.id || `SUB-${String(i + 1).padStart(3, '0')}`}</td>
+            <td style="font-weight: bold;">${s.name}</td>
+            <td class="text-center">${s.type}</td>
+            <td class="text-center">សកម្ម</td>
+          </tr>
+        `).join('');
+
+      const htmlContent = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+  <meta charset='utf-8'>
+  <title>${title} - វិទ្យាល័យអង្គរកា</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    @page { size: A4 portrait; margin: 1.5cm; }
+    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1e293b; line-height: 1.5; }
+    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    .header-table td { border: none; padding: 4px; }
+    .kingdom-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; font-weight: bold; color: #1e3a8a; text-align: center; }
+    .motto-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; color: #1e3a8a; text-align: center; }
+    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 15pt; font-weight: bold; color: #0f172a; text-align: center; margin: 15px 0 5px 0; }
+    .doc-subtitle { text-align: center; font-size: 10pt; color: #64748b; margin-bottom: 15px; }
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+    table.data-table th, table.data-table td { border: 1px solid #94a3b8; padding: 6px 8px; }
+    table.data-table th { background-color: #f1f5f9; font-weight: bold; text-align: center; color: #1e293b; }
+    .text-center { text-align: center; }
+    .footer-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
+    .footer-table td { border: none; text-align: center; font-size: 10pt; }
+  </style>
+</head>
+<body>
+  <table class="header-table">
+    <tr>
+      <td style="width: 50%; vertical-align: top;">
+        <strong>ក្រសួងអប់រំ យុវជន និងកីឡា</strong><br>
+        <strong>មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ</strong><br>
+        <strong>វិទ្យាល័យអង្គរកា</strong>
+      </td>
+      <td style="width: 50%; vertical-align: top;">
+        <div class="kingdom-title">ព្រះរាជាណាចក្រកម្ពុជា</div>
+        <div class="motto-title">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
+      </td>
+    </tr>
+  </table>
+
+  <div class="doc-title">${title}</div>
+  <div class="doc-subtitle">${subtitle}</div>
+
+  <table class="data-table">
+    <thead>${tableHeaders}</thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+
+  <table class="footer-table">
+    <tr>
+      <td style="width: 50%; vertical-align: top;">
+        <br>
+        <strong>បានឃើញ និងឯកភាព</strong><br>
+        នាយកវិទ្យាល័យអង្គរកា
+      </td>
+      <td style="width: 50%; vertical-align: top;">
+        ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
+        <strong>អ្នករៀបចំបញ្ជី</strong>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
-      link.setAttribute('download', `បញ្ជីថ្នាក់រៀន_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `${title}_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.doc`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      showToast(`បានទាញយកបញ្ជីថ្នាក់រៀន (${filteredClasses.length} ថ្នាក់) ជា Excel`);
+      showToast(`បានទាញយក${title} (${currentDataset.length}) ជាឯកសារ Word (.doc) ដោយជោគជ័យ`);
     } else {
-      if (filteredSubjects.length === 0) {
-        showToast('មិនមានទិន្នន័យសម្រាប់ទាញយកទេ');
-        return;
-      }
-      if (type === 'PDF') {
+      // PDF Export via high-fidelity print window
+      const printWindow = window.open('', '_blank', 'width=1000,height=800');
+      if (!printWindow) {
         window.print();
         return;
       }
-      const headers = ['កូដមុខវិជ្ជា', 'ឈ្មោះមុខវិជ្ជា', 'ប្រភេទមុខវិជ្ជា', 'ស្ថានភាព'];
-      const rows = filteredSubjects.map((s, i) => [
-        `"SUB-${String(i + 1).padStart(3, '0')}"`,
-        `"${s.name}"`,
-        `"${s.type}"`,
-        `"សកម្ម"`
-      ]);
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `បញ្ជីមុខវិជ្ជា_${new Date().toISOString().slice(0, 10)}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      showToast(`បានទាញយកបញ្ជីមុខវិជ្ជា (${filteredSubjects.length} មុខវិជ្ជា) ជា Excel`);
+
+      const tableHeaders = isClasses
+        ? `<tr>
+            <th style="width: 40px;">ល.រ</th>
+            <th style="width: 90px;">កូដថ្នាក់</th>
+            <th>ឈ្មោះថ្នាក់</th>
+            <th>គ្រូបន្ទុកថ្នាក់</th>
+            <th style="width: 90px;">ចំនួនសិស្ស</th>
+            <th style="width: 80px;">ស្ថានភាព</th>
+          </tr>`
+        : `<tr>
+            <th style="width: 40px;">ល.រ</th>
+            <th style="width: 100px;">កូដមុខវិជ្ជា</th>
+            <th>ឈ្មោះមុខវិជ្ជា</th>
+            <th style="width: 130px;">ប្រភេទមុខវិជ្ជា</th>
+            <th style="width: 80px;">ស្ថានភាព</th>
+          </tr>`;
+
+      const tableRows = isClasses
+        ? filteredClasses.map((c, i) => `
+          <tr>
+            <td class="text-center">${i + 1}</td>
+            <td class="text-center" style="font-weight: 700;">${c.id || `CLS-${String(i + 1).padStart(3, '0')}`}</td>
+            <td style="font-weight: 600;">${c.name}</td>
+            <td>${c.teacher || '-'}</td>
+            <td class="text-center">${c.students || 0} នាក់</td>
+            <td class="text-center"><span class="badge status-active">សកម្ម</span></td>
+          </tr>
+        `).join('')
+        : filteredSubjects.map((s, i) => `
+          <tr>
+            <td class="text-center">${i + 1}</td>
+            <td class="text-center" style="font-weight: 700;">${s.id || `SUB-${String(i + 1).padStart(3, '0')}`}</td>
+            <td style="font-weight: 600;">${s.name}</td>
+            <td class="text-center">${s.type}</td>
+            <td class="text-center"><span class="badge status-active">សកម្ម</span></td>
+          </tr>
+        `).join('');
+
+      printWindow.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title} - វិទ្យាល័យអង្គរកា</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Moul&display=swap');
+    @page { size: A4 portrait; margin: 1.2cm; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Kantumruy Pro', 'Khmer OS Siemreap', sans-serif; color: #1e293b; margin: 0; padding: 20px; background: #fff; font-size: 12px; }
+    .header-grid { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+    .school-title { font-size: 12px; font-weight: 700; line-height: 1.6; color: #1e293b; }
+    .kingdom-box { text-align: center; }
+    .kingdom { font-family: 'Moul', 'Khmer OS Muol Light', serif; font-size: 13px; color: #1e3a8a; }
+    .motto { font-family: 'Moul', 'Khmer OS Muol Light', serif; font-size: 11px; color: #1e3a8a; margin-top: 4px; }
+    .doc-title { text-align: center; margin: 15px 0 4px 0; font-family: 'Moul', 'Khmer OS Muol Light', serif; font-size: 16px; color: #0f172a; }
+    .doc-subtitle { text-align: center; font-size: 11.5px; color: #64748b; margin-bottom: 20px; font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+    th, td { border: 1px solid #cbd5e1; padding: 7px 10px; text-align: left; }
+    th { background-color: #f8fafc; font-weight: 700; color: #334155; text-align: center; }
+    tr:nth-child(even) { background-color: #fdfdfd; }
+    .text-center { text-align: center; }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 600; }
+    .status-active { color: #166534; background: #dcfce7; }
+    .footer-sign { margin-top: 40px; display: flex; justify-content: space-between; text-align: center; font-size: 11.5px; page-break-inside: avoid; }
+    .sign-col { width: 240px; }
+    @media print { body { padding: 0; } .no-print { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom: 15px; padding: 10px; background: #f1f5f9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+    <span style="font-weight: 600;">មើលគំរូមុនពេលបោះពុម្ព ឬរក្សាទុកជា PDF (Print / Save as PDF)</span>
+    <button onclick="window.print()" style="padding: 6px 14px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">បោះពុម្ព / រក្សាទុកជា PDF</button>
+  </div>
+
+  <div class="header-grid">
+    <div class="school-title">
+      ក្រសួងអប់រំ យុវជន និងកីឡា<br>
+      មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ<br>
+      វិទ្យាល័យអង្គរកា
+    </div>
+    <div class="kingdom-box">
+      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
+      <div class="motto">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
+    </div>
+  </div>
+
+  <div class="doc-title">${title}</div>
+  <div class="doc-subtitle">${subtitle}</div>
+
+  <table>
+    <thead>${tableHeaders}</thead>
+    <tbody>${tableRows}</tbody>
+  </table>
+
+  <div class="footer-sign">
+    <div class="sign-col">
+      <br>
+      <strong>បានឃើញ និងឯកភាព</strong><br>
+      នាយកវិទ្យាល័យអង្គរកា
+    </div>
+    <div class="sign-col">
+      ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
+      <strong>អ្នករៀបចំបញ្ជី</strong>
+    </div>
+  </div>
+</body>
+</html>
+`);
+      printWindow.document.close();
+      setTimeout(() => {
+        printWindow.print();
+      }, 400);
+      showToast(`បានបើកផ្ទាំងបោះពុម្ព${title} (${currentDataset.length}) សម្រាប់ Save as PDF`);
     }
   };
 
-  // ── Import Logic (Excel / CSV) ──
+  // ── Import Logic (Excel / CSV) with Auto-ID ──
   const handleDownloadTemplate = () => {
     if (activeTab === 'classes') {
-      const headers = ['ឈ្មោះថ្នាក់', 'គ្រូបន្ទុកថ្នាក់', 'ចំនួនសិស្ស'];
+      const headers = ['កូដថ្នាក់ (ទុកទទេ - ប្រព័ន្ធបង្កើតអូតូ)', 'ឈ្មោះថ្នាក់', 'គ្រូបន្ទុកថ្នាក់', 'ចំនួនសិស្ស'];
       const sample = [
-        ['ថ្នាក់ 12C', 'លោកគ្រូ សុខ ផល្លា', '36'],
-        ['ថ្នាក់ 11C', 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', '38'],
-        ['ថ្នាក់ 10C', 'លោកគ្រូ ឈុន វឌ្ឍនៈ', '40']
+        ['""', '"12C"', '"លោកគ្រូ សុខ ផល្លា"', '"36"'],
+        ['""', '"11C"', '"អ្នកគ្រូ អ៊ុំ សាវ៉ាន"', '"38"'],
+        ['""', '"10C"', '"លោកគ្រូ ឈុន វឌ្ឍនៈ"', '"40"']
       ];
       const csvContent = '\uFEFF' + [headers.join(','), ...sample.map(r => r.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ទម្រង់គំរូនាំចូលថ្នាក់រៀន.csv`;
+      link.download = `គំរូ_បញ្ចូលថ្នាក់រៀន.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      showToast('បានទាញយកឯកសារគំរូនាំចូលថ្នាក់រៀន');
+      showToast('បានទាញយកឯកសារគំរូនាំចូលថ្នាក់រៀន (.csv) ដោយជោគជ័យ (លេខកូដទុកទទេ)');
     } else {
-      const headers = ['ឈ្មោះមុខវិជ្ជា', 'ប្រភេទមុខវិជ្ជា'];
+      const headers = ['កូដមុខវិជ្ជា (ទុកទទេ - ប្រព័ន្ធបង្កើតអូតូ)', 'ឈ្មោះមុខវិជ្ជា', 'ប្រភេទមុខវិជ្ជា'];
       const sample = [
-        ['សីលធម៌-ពលរដ្ឋ', 'សង្គម'],
-        ['ផែនដីវិទ្យា', 'វិទ្យាសាស្ត្រ'],
-        ['សេដ្ឋកិច្ចវិទ្យា', 'សង្គម']
+        ['""', '"សីលធម៌-ពលរដ្ឋ"', '"សង្គម"'],
+        ['""', '"ផែនដីវិទ្យា"', '"វិទ្យាសាស្ត្រ"'],
+        ['""', '"សេដ្ឋកិច្ចវិទ្យា"', '"សង្គម"']
       ];
       const csvContent = '\uFEFF' + [headers.join(','), ...sample.map(r => r.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `ទម្រង់គំរូនាំចូលមុខវិជ្ជា.csv`;
+      link.download = `គំរូ_បញ្ចូលមុខវិជ្ជា.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      showToast('បានទាញយកឯកសារគំរូនាំចូលមុខវិជ្ជា');
+      showToast('បានទាញយកឯកសារគំរូនាំចូលមុខវិជ្ជា (.csv) ដោយជោគជ័យ (លេខកូដទុកទទេ)');
     }
   };
 
@@ -382,89 +770,164 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const text = event.target?.result;
-      if (typeof text !== 'string') return;
+      try {
+        const text = event.target?.result;
+        if (typeof text !== 'string') return;
 
-      const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-      if (lines.length <= 1) {
-        showToast('ឯកសារគ្មានទិន្នន័យសម្រាប់នាំចូលទេ');
-        return;
-      }
+        const rawRows = parseCSV(text);
+        if (rawRows.length === 0) {
+          showToast('ឯកសារមិនមានទិន្នន័យ ឬខុសទម្រង់! សូមទាញយកឯកសារគំរូ។');
+          return;
+        }
 
-      const dataRows = lines.slice(1);
-      const parsed = [];
-
-      dataRows.forEach((line, idx) => {
-        const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
         if (activeTab === 'classes') {
-          const name = cols[0] || `ថ្នាក់ថ្មី ${idx + 1}`;
-          const teacher = cols[1] || '';
-          const students = parseInt(cols[2], 10) || 0;
-          parsed.push({
-            id: `c_imp_${Date.now()}_${idx}`,
-            name,
-            teacher,
-            students
+          const generatedIds = generateBatchClassIds(classes, rawRows.length);
+          const parsed = rawRows.map((cols, idx) => {
+            let code = '', name = '', teacher = '', students = 0;
+            if (cols.length >= 4) {
+              code = cols[0] || generatedIds[idx];
+              name = cols[1] || `ថ្នាក់ថ្មី ${idx + 1}`;
+              teacher = cols[2] || '';
+              students = parseInt(cols[3], 10) || 0;
+            } else if (cols.length === 3) {
+              code = generatedIds[idx];
+              name = cols[0] || `ថ្នាក់ថ្មី ${idx + 1}`;
+              teacher = cols[1] || '';
+              students = parseInt(cols[2], 10) || 0;
+            } else {
+              code = generatedIds[idx];
+              name = cols[0] || `ថ្នាក់ថ្មី ${idx + 1}`;
+              teacher = cols[1] || '';
+            }
+            return {
+              id: code || generatedIds[idx],
+              name: name.trim(),
+              teacher: teacher.trim(),
+              students: Number(students) || 0
+            };
+          });
+
+          setImportModal({
+            open: true,
+            parsedData: parsed,
+            isUploaded: true,
+            fileName: file.name
           });
         } else {
-          const name = cols[0] || `មុខវិជ្ជាថ្មី ${idx + 1}`;
-          const type = cols[1] || 'វិទ្យាសាស្ត្រ';
-          parsed.push({
-            id: `s_imp_${Date.now()}_${idx}`,
-            name,
-            type
+          const generatedIds = generateBatchSubjectIds(subjects, rawRows.length);
+          const parsed = rawRows.map((cols, idx) => {
+            let code = '', name = '', type = 'វិទ្យាសាស្ត្រ';
+            if (cols.length >= 3) {
+              code = cols[0] || generatedIds[idx];
+              name = cols[1] || `មុខវិជ្ជាថ្មី ${idx + 1}`;
+              type = cols[2] || 'វិទ្យាសាស្ត្រ';
+            } else if (cols.length === 2) {
+              code = generatedIds[idx];
+              name = cols[0] || `មុខវិជ្ជាថ្មី ${idx + 1}`;
+              type = cols[1] || 'វិទ្យាសាស្ត្រ';
+            } else {
+              code = generatedIds[idx];
+              name = cols[0] || `មុខវិជ្ជាថ្មី ${idx + 1}`;
+            }
+            return {
+              id: code || generatedIds[idx],
+              name: name.trim(),
+              type: type.trim()
+            };
+          });
+
+          setImportModal({
+            open: true,
+            parsedData: parsed,
+            isUploaded: true,
+            fileName: file.name
           });
         }
-      });
-
-      setImportModal({
-        open: true,
-        parsedData: parsed,
-        isUploaded: true,
-        fileName: file.name
-      });
+      } catch (err) {
+        console.error('File parsing error:', err);
+        showToast('មានបញ្ហាក្នុងការអានឯកសារ!');
+      }
     };
-    reader.readAsText(file);
+    reader.onerror = () => {
+      showToast('បរាជ័យក្នុងការបើកឯកសារ!');
+    };
+    reader.readAsText(file, 'UTF-8');
     e.target.value = '';
   };
 
   const handleLoadDemoImport = () => {
     if (activeTab === 'classes') {
       const demo = [
-        { id: `c_demo_1_${Date.now()}`, name: 'ថ្នាក់ 12C', teacher: 'លោកគ្រូ សុខ ផល្លា', students: 36 },
-        { id: `c_demo_2_${Date.now()}`, name: 'ថ្នាក់ 11C', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', students: 38 },
-        { id: `c_demo_3_${Date.now()}`, name: 'ថ្នាក់ 10C', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', students: 40 }
+        { name: 'ថ្នាក់ 12C', teacher: 'លោកគ្រូ សុខ ផល្លា', students: 36 },
+        { name: 'ថ្នាក់ 11C', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', students: 38 },
+        { name: 'ថ្នាក់ 10C', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', students: 40 }
       ];
+      const generatedIds = generateBatchClassIds(classes, demo.length);
+      const finalDemo = demo.map((item, idx) => ({
+        ...item,
+        id: generatedIds[idx]
+      }));
       setImportModal({
         open: true,
-        parsedData: demo,
+        parsedData: finalDemo,
         isUploaded: true,
-        fileName: 'demo_classes_sample.csv'
+        fileName: 'បញ្ជីថ្នាក់រៀន_គំរូសាកល្បង.csv'
       });
     } else {
       const demo = [
-        { id: `s_demo_1_${Date.now()}`, name: 'សីលធម៌-ពលរដ្ឋ', type: 'សង្គម' },
-        { id: `s_demo_2_${Date.now()}`, name: 'ផែនដីវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-        { id: `s_demo_3_${Date.now()}`, name: 'សេដ្ឋកិច្ចវិទ្យា', type: 'សង្គម' }
+        { name: 'សីលធម៌-ពលរដ្ឋ', type: 'សង្គម' },
+        { name: 'ផែនដីវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
+        { name: 'សេដ្ឋកិច្ចវិទ្យា', type: 'សង្គម' }
       ];
+      const generatedIds = generateBatchSubjectIds(subjects, demo.length);
+      const finalDemo = demo.map((item, idx) => ({
+        ...item,
+        id: generatedIds[idx]
+      }));
       setImportModal({
         open: true,
-        parsedData: demo,
+        parsedData: finalDemo,
         isUploaded: true,
-        fileName: 'demo_subjects_sample.csv'
+        fileName: 'បញ្ជីមុខវិជ្ជា_គំរូសាកល្បង.csv'
       });
     }
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (!importModal.parsedData || importModal.parsedData.length === 0) return;
 
     if (activeTab === 'classes') {
-      setClasses([...importModal.parsedData, ...classes]);
-      showToast(`បាននាំចូលថ្នាក់រៀនថ្មីចំនួន ${importModal.parsedData.length} ដោយជោគជ័យ!`);
+      const generatedIds = generateBatchClassIds(classes, importModal.parsedData.length);
+      const finalItems = importModal.parsedData.map((item, idx) => ({
+        ...item,
+        id: item.id || generatedIds[idx]
+      }));
+
+      for (const c of finalItems) {
+        try {
+          await api('academic.saveClass', { class: c });
+        } catch (e) {
+          console.warn('Error saving imported class:', e);
+        }
+      }
+      setClasses(prev => [...finalItems, ...prev]);
+      showToast(`បាននាំចូលថ្នាក់រៀនថ្មីចំនួន ${finalItems.length} ដោយជោគជ័យ!`);
     } else {
-      setSubjects([...importModal.parsedData, ...subjects]);
-      showToast(`បាននាំចូលមុខវិជ្ជាថ្មីចំនួន ${importModal.parsedData.length} ដោយជោគជ័យ!`);
+      const generatedIds = generateBatchSubjectIds(subjects, importModal.parsedData.length);
+      const finalItems = importModal.parsedData.map((item, idx) => ({
+        ...item,
+        id: item.id || generatedIds[idx]
+      }));
+
+      for (const s of finalItems) {
+        try {
+          await api('academic.saveSubject', { subject: s });
+        } catch (e) {
+          console.warn('Error saving imported subject:', e);
+        }
+      }
+      setSubjects(prev => [...finalItems, ...prev]);
+      showToast(`បាននាំចូលមុខវិជ្ជាថ្មីចំនួន ${finalItems.length} ដោយជោគជ័យ!`);
     }
 
     setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' });
@@ -592,15 +1055,27 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
             )}
           </div>
 
-          {/* Import Button */}
+          {/* Refresh Button */}
+          <button
+            type="button"
+            onClick={() => fetchAcademicData(false)}
+            disabled={isRefreshing}
+            className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 shrink-0 disabled:opacity-50"
+            title="ទាញទិន្នន័យថ្មីពី Cloud Firestore"
+          >
+            <RefreshCw size={15} strokeWidth={2.5} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">ទាញទិន្នន័យថ្មី</span>
+          </button>
+
+          {/* Import Excel Button */}
           <button
             type="button"
             onClick={() => setImportModal({ open: true, parsedData: [], isUploaded: false, fileName: '' })}
-            className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 shrink-0"
-            title={`នាំចូលទិន្នន័យ${activeTab === 'classes' ? 'ថ្នាក់រៀន' : 'មុខវិជ្ជា'}ពី Excel (.csv, .xlsx)`}
+            className="flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 shrink-0 cursor-pointer"
+            title={`នាំចូល${activeTab === 'classes' ? 'ថ្នាក់រៀន' : 'មុខវិជ្ជា'}ពី Excel (.csv, .xlsx)`}
           >
-            <Upload size={15} strokeWidth={2.5} className="text-emerald-600" />
-            <span>នាំចូល (Import)</span>
+            <FileSpreadsheet size={15} strokeWidth={2.2} className="text-emerald-600" />
+            <span>នាំចូលពី Excel</span>
           </button>
 
           {/* Export Dropdown Button */}
@@ -608,30 +1083,39 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
             <button
               type="button"
               onClick={() => setExportOpen(!exportOpen)}
-              className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow-md hover:-translate-y-0.5"
+              className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
+              title={`នាំចេញ${activeTab === 'classes' ? 'បញ្ជីថ្នាក់រៀន' : 'បញ្ជីមុខវិជ្ជា'}ជា PDF, Excel ឬ Word`}
             >
               <Download size={15} strokeWidth={2.5} />
               <span>នាំចេញ (Export)</span>
-              <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-1 ${exportOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-0.5 ${exportOpen ? 'rotate-180' : ''}`} />
             </button>
 
             {exportOpen && (
               <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
                 <button
                   type="button"
-                  onClick={() => handleExport('Excel')}
-                  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"
+                  onClick={() => handleExport('PDF')}
+                  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
                 >
-                  <FileCode size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" />
-                  <span>Export as Excel (.csv)</span>
+                  <FileText size={16} className="text-rose-500 group-hover:scale-110 transition-transform" />
+                  <span>Export as PDF</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleExport('PDF')}
-                  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"
+                  onClick={() => handleExport('Excel')}
+                  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
                 >
-                  <FileText size={16} className="text-rose-500 group-hover:scale-110 transition-transform" />
-                  <span>Export as PDF (Print)</span>
+                  <FileCode size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" />
+                  <span>Export as Excel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport('Word')}
+                  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                >
+                  <FileImage size={16} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                  <span>Export as Word</span>
                 </button>
               </div>
             )}
@@ -1013,7 +1497,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
       {/* ── Import Modal ── */}
       {importModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-3">
@@ -1037,23 +1521,23 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 flex flex-col gap-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
 
               {/* Step 1: Download Sample Template Card */}
               <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shrink-0 shadow-xs">
-                    <Download size={14} />
+                    <Download size={15} />
                   </div>
                   <div>
                     <p className="text-[13px] font-bold text-slate-700">ទាញយកឯកសារគំរូ (Template)</p>
-                    <p className="text-[11px] text-slate-400">ទាញយកឯកសារគំរូសម្រាប់បំពេញទិន្នន័យឱ្យត្រូវទម្រង់</p>
+                    <p className="text-[11px] text-slate-400">ទាញយកឯកសារគំរូសម្រាប់បំពេញទិន្នន័យ{activeTab === 'classes' ? 'ថ្នាក់រៀន' : 'មុខវិជ្ជា'} (ជួរឈរលេខកូដអាចទុកទទេបាន)</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={handleDownloadTemplate}
-                  className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-200 text-[12px] font-bold shadow-xs transition-all whitespace-nowrap"
+                  className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-indigo-600 hover:border-indigo-200 text-[12px] font-bold shadow-xs transition-all whitespace-nowrap cursor-pointer"
                 >
                   ទាញយកគំរូ (.csv)
                 </button>
@@ -1065,22 +1549,22 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleSelectFile}
-                  accept=".csv, .xlsx, .xls"
+                  accept=".xlsx, .xls, .csv, text/csv, application/vnd.ms-excel"
                   className="hidden"
                 />
 
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/20 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
+                  className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/30 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
                 >
-                  <div className="w-11 h-11 rounded-2xl bg-indigo-50 group-hover:bg-indigo-100 text-indigo-600 flex items-center justify-center mb-2.5 transition-colors">
-                    <Upload size={20} />
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 group-hover:bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3 transition-colors">
+                    <Upload size={22} />
                   </div>
-                  <p className="text-[13.5px] font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">
+                  <p className="text-[14px] font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">
                     {importModal.fileName ? importModal.fileName : 'ចុចដើម្បីជ្រើសរើសឯកសារ ឬអូសទម្លាក់ទីនេះ'}
                   </p>
-                  <p className="text-[11.5px] text-slate-400 mt-1">
-                    ឯកសារ CSV ឬ Excel (.csv, .xlsx)
+                  <p className="text-[12px] text-slate-400 mt-1">
+                    ឯកសារ CSV ឬ Excel (.csv, .xlsx, .xls)
                   </p>
                 </div>
 
@@ -1089,7 +1573,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
                   <button
                     type="button"
                     onClick={handleLoadDemoImport}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 flex items-center gap-1"
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline underline-offset-2 flex items-center gap-1 cursor-pointer"
                   >
                     <span>ចុចទីនេះដើម្បីសាកល្បងផ្ទុកទិន្នន័យគំរូ 3 {activeTab === 'classes' ? 'ថ្នាក់' : 'មុខវិជ្ជា'} ភ្លាមៗ</span>
                     <ArrowRight size={11} />
@@ -1099,7 +1583,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
 
               {/* Step 3: Preview Parsed Data */}
               {importModal.isUploaded && importModal.parsedData.length > 0 && (
-                <div className="flex flex-col gap-2.5 animate-in fade-in duration-200">
+                <div className="flex flex-col gap-3 animate-in fade-in duration-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
@@ -1112,10 +1596,18 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
                     </span>
                   </div>
 
-                  <div className="border border-slate-200/80 rounded-xl overflow-hidden max-h-44 overflow-y-auto custom-scrollbar">
+                  {/* Auto-ID Banner matching AdminStudents */}
+                  <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl px-3.5 py-2 text-[12px] text-indigo-800 flex items-center gap-2 shadow-2xs">
+                    <Sparkles size={14} className="text-indigo-600 shrink-0" />
+                    <span>ប្រព័ន្ធបាន <strong>Auto-Generate លេខកូដ{activeTab === 'classes' ? 'ថ្នាក់' : 'មុខវិជ្ជា'}</strong> ដោយស្វ័យប្រវត្តិតាមលំដាប់ ដើម្បីធានាថាមិនមានការស្ទួនលេខកូដគ្នាឡើយ។</span>
+                  </div>
+
+                  <div className="border border-slate-200/80 rounded-xl overflow-hidden max-h-48 overflow-y-auto custom-scrollbar">
                     <table className="w-full text-left border-collapse text-[12px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-bold">
+                          <th className="py-2.5 px-3 text-center w-12">ល.រ</th>
+                          <th className="py-2.5 px-3 text-center">{activeTab === 'classes' ? 'កូដថ្នាក់ (Auto)' : 'កូដមុខវិជ្ជា (Auto)'}</th>
                           <th className="py-2.5 px-3">{activeTab === 'classes' ? 'ឈ្មោះថ្នាក់' : 'ឈ្មោះមុខវិជ្ជា'}</th>
                           <th className="py-2.5 px-3">{activeTab === 'classes' ? 'គ្រូបន្ទុកថ្នាក់' : 'ប្រភេទមុខវិជ្ជា'}</th>
                           {activeTab === 'classes' && <th className="py-2.5 px-3 text-center">ចំនួនសិស្ស</th>}
@@ -1124,6 +1616,8 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
                       <tbody className="divide-y divide-slate-100 text-slate-700">
                         {importModal.parsedData.map((row, i) => (
                           <tr key={i} className="hover:bg-slate-50/50">
+                            <td className="py-2 px-3 text-center text-slate-400 font-medium">{i + 1}</td>
+                            <td className="py-2 px-3 text-center font-bold text-indigo-600 font-mono">{row.id}</td>
                             <td className="py-2 px-3 font-bold">{row.name}</td>
                             <td className="py-2 px-3">{activeTab === 'classes' ? (row.teacher || '—') : row.type}</td>
                             {activeTab === 'classes' && <td className="py-2 px-3 text-center">{row.students || 0} នាក់</td>}

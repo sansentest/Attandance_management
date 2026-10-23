@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
-import { Mail, Printer, CheckCircle2, Search, Filter, Calendar, Users, FileText } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Mail, Printer, CheckCircle2, Search, Filter, Calendar, Users, FileText, RefreshCw } from 'lucide-react';
 import InvitationLetterPrint from './InvitationLetterPrint';
+import { api } from '../../../utils/api';
 
 export default function AdminInvitationLetters() {
   const [activeTab, setActiveTab] = useState('pending');
@@ -16,12 +17,9 @@ export default function AdminInvitationLetters() {
   });
   const printRef = useRef(null);
 
-  // Mock Data for students who have reached CRITICAL threshold
-  const [pendingStudents, setPendingStudents] = useState([
-    { id: 'S001', name: 'សុខ សាន្ត', gender: 'ប្រុស', class: '10A', absences: 55, dateReached: '2026-07-02' },
-    { id: 'S002', name: 'មាស សុជាតា', gender: 'ស្រី', class: '11B', absences: 45, dateReached: '2026-07-03' },
-    { id: 'S005', name: 'ចាន់ មករា', gender: 'ប្រុស', class: '12C', absences: 40, dateReached: '2026-07-04' }
-  ]);
+  // Data for students who have reached CRITICAL threshold
+  const [pendingStudents, setPendingStudents] = useState([]);
+  const [printedHistory, setPrintedHistory] = useState([]);
 
   React.useEffect(() => {
     const printStudentStr = localStorage.getItem('printStudent');
@@ -53,10 +51,43 @@ export default function AdminInvitationLetters() {
     }
   }, []);
 
-  const [printedHistory, setPrintedHistory] = useState([
-    { id: 'S010', name: 'រស់ ចាន់', gender: 'ប្រុស', class: '9A', absences: 52, datePrinted: '2026-07-01', printedBy: 'Admin លីណា' },
-    { id: 'S015', name: 'នីតា សុវណ្ណ', gender: 'ស្រី', class: '7B', absences: 55, datePrinted: '2026-06-28', printedBy: 'Admin លីណា' }
-  ]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchInvitationData = async () => {
+    setIsRefreshing(true);
+    try {
+      const [invRes, discRes] = await Promise.all([
+        api('invitation.getAll'),
+        api('discipline.getTracking')
+      ]);
+
+      if (invRes && invRes.success && Array.isArray(invRes.data)) {
+        setPrintedHistory(invRes.data);
+      }
+
+      if (discRes && discRes.success && Array.isArray(discRes.data)) {
+        const criticalStudents = discRes.data
+          .filter(s => (s.absent || 0) >= 20)
+          .map(s => ({
+            id: s.id || s.studentId,
+            name: s.name,
+            gender: s.gender === 'F' ? 'ស្រី' : 'ប្រុស',
+            class: s.class || s.className,
+            absences: s.absent || 0,
+            dateReached: s.records?.[0]?.date || new Date().toISOString().split('T')[0]
+          }));
+        setPendingStudents(criticalStudents);
+      }
+    } catch (e) {
+      console.error('Failed to load invitation history', e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchInvitationData();
+  }, []);
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
@@ -98,13 +129,19 @@ export default function AdminInvitationLetters() {
           
           const newHistory = printed.map(s => ({
             ...s,
+            id: s.id || `inv_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
             datePrinted: new Date().toISOString().split('T')[0],
             printedBy: 'អ្នកគ្រប់គ្រង'
           }));
 
-          setPrintedHistory([...newHistory, ...printedHistory]);
+          setPrintedHistory(prev => [...newHistory, ...prev]);
           setPendingStudents(remaining);
           setSelectedIds([]);
+
+          // Save to Firestore
+          newHistory.forEach(item => {
+            api('invitation.savePrinted', { letter: item }).catch(err => console.error(err));
+          });
         }
       }, 1000); // Wait a bit after print dialog closes
     }, 100);
@@ -201,6 +238,18 @@ export default function AdminInvitationLetters() {
           </div>
 
           <div className="flex items-center gap-3 w-full xl:w-auto justify-end">
+
+            {/* Live Sync / Refresh from Firebase */}
+            <button
+              type="button"
+              onClick={fetchInvitationData}
+              disabled={isRefreshing}
+              className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 disabled:opacity-60"
+              title="ទាញយកទិន្នន័យផ្ទាល់ពី Cloud Firebase"
+            >
+              <RefreshCw size={15} strokeWidth={2.2} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{isRefreshing ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
+            </button>
 
             <div className="relative w-full sm:w-[280px] group">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />

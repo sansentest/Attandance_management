@@ -42,7 +42,49 @@ export default function App() {
 
   // Admin Routing
   if (session.role === 'admin') {
-    return <AdminLayout session={session} onLogout={handleLogout} />
+    return (
+      <>
+        <AdminLayout session={session} onLogout={handleLogout} />
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setShowLogoutConfirm(false)}></div>
+            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-[0_20px_60px_rgba(0,0,0,0.15)] relative z-10 animate-in fade-in zoom-in-95 duration-200">
+              <button 
+                className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600 transition-colors"
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                <X size={18} />
+              </button>
+              
+              <div className="flex flex-col items-center text-center mt-2">
+                <div className="w-16 h-16 bg-red-50 text-danger rounded-full flex items-center justify-center mb-4 border-4 border-white shadow-sm">
+                  <LogOut size={28} strokeWidth={2.5} className="ml-1" />
+                </div>
+                <h3 className="text-[20px] font-extrabold text-slate-800 mb-2">ចាកចេញពីគណនី</h3>
+                <p className="text-[15px] font-medium text-slate-500 mb-8 px-2">
+                  តើអ្នកពិតជាចង់ចាកចេញពីប្រព័ន្ធមែនទេ?
+                </p>
+
+                <div className="flex gap-3 w-full">
+                  <button 
+                    className="flex-1 py-3 px-4 rounded-xl border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                    onClick={() => setShowLogoutConfirm(false)}
+                  >
+                    បោះបង់
+                  </button>
+                  <button 
+                    className="flex-1 py-3 px-4 rounded-xl bg-danger hover:bg-red-600 font-bold text-white shadow-md hover:shadow-lg transition-all"
+                    onClick={confirmLogout}
+                  >
+                    ចាកចេញ
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    )
   }
 
   // Define tabs - ONLY Home and Attendance for Monitors

@@ -148,7 +148,7 @@ export default function Report({ session, onNavigate }) {
                   <div className="w-8 h-8 rounded-full bg-success/10 flex items-center justify-center">
                     <TrendingUp size={16} className="text-success" />
                   </div>
-                  អត្រាវត្តមាន ({reportData.periodLabel})
+                  អត្រាវត្តមាន ({reportData.periodLabel?.replace(/[()]/g, '') || 'ទូទៅ'})
                 </h3>
                 <span className="text-[20px] lg:text-[24px] font-black text-success">{reportData.attendanceRate}</span>
               </div>

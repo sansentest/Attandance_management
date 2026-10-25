@@ -15,14 +15,19 @@ export default function AddBotModal({ isOpen, onClose, onSave, classOptions, glo
         { id: 'gt_2', label: 'Bot បណ្ណាល័យ', isActive: false }
       ];
   
-  const filteredClassOptions = classOptions ? classOptions.filter(c => c.id !== 'ALL') : [];
+  const filteredClassOptions = [
+    { id: 'ALL', label: 'គ្រប់ថ្នាក់ទាំងអស់ (គណៈគ្រប់គ្រងសាលា)' },
+    ...(classOptions ? classOptions.filter(c => c.id !== 'ALL') : [])
+  ];
   
   const initialBotState = {
-    class: filteredClassOptions[0]?.id || '',
+    class: filteredClassOptions[0]?.id || 'ALL',
     name: '',
     token: '',
     chatId: '',
-    status: 'active'
+    status: 'active',
+    notifyOnAttendance: true,
+    notifyDailySummary: true
   };
   
   const [newBot, setNewBot] = useState(initialBotState);
@@ -186,6 +191,37 @@ export default function AddBotModal({ isOpen, onClose, onSave, classOptions, glo
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Notification Toggles */}
+              <div className="flex flex-col gap-3 pt-3 border-t border-slate-200/80">
+                <span className="text-[13px] font-bold text-slate-700">ប្រភេទការជូនដំណឹង (Notifications)</span>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={newBot.notifyOnAttendance !== false}
+                    onChange={(e) => setNewBot({ ...newBot, notifyOnAttendance: e.target.checked })}
+                    className="w-4 h-4 mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
+                  />
+                  <div className="flex flex-col text-left">
+                    <span className="text-[13px] font-bold text-slate-800">ជូនដំណឹងពេលស្រង់វត្តមានតាមម៉ោង (Instant Attendance Alert)</span>
+                    <span className="text-[11px] text-slate-500 font-medium">ផ្ញើសារដំណឹងភ្លាមៗនៅពេលប្រធានថ្នាក់ ឬគ្រូស្រង់វត្តមានរួចរាល់</span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50 cursor-pointer transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={newBot.notifyDailySummary !== false}
+                    onChange={(e) => setNewBot({ ...newBot, notifyDailySummary: e.target.checked })}
+                    className="w-4 h-4 mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 accent-indigo-600 cursor-pointer"
+                  />
+                  <div className="flex flex-col text-left">
+                    <span className="text-[13px] font-bold text-slate-800">ផ្ញើរបាយការណ៍សង្ខេបប្រចាំថ្ងៃនៅម៉ោង ៥:០០ ល្ងាច (Daily 5:00 PM Summary)</span>
+                    <span className="text-[11px] text-slate-500 font-medium">Bot ផ្ញើតារាងសង្ខេបវត្តមានគ្រប់ថ្នាក់ទាំងអស់ចូល Group គណៈគ្រប់គ្រងសាលាស្វ័យប្រវត្តិ</span>
+                  </div>
+                </label>
               </div>
 
             </div>

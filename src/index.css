@@ -44,6 +44,8 @@ html, body {
   @apply bg-bg-base text-text-primary font-[family-name:var(--font-primary)];
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 /* Scrollbar styling */

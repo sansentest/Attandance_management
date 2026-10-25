@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import {
   Search, Plus, Bot, MessageCircle, Edit, Trash2,
   CheckCircle, XCircle, ChevronLeft, ChevronRight, ChevronsRight,
-  Activity, Globe, Save, Loader2, Copy, Check, Send, AlertCircle
+  Activity, Globe, Save, Loader2, Copy, Check, Send, AlertCircle, Clock
 } from 'lucide-react'
 import AddBotModal from './AddBotModal'
 import EditBotModal from './EditBotModal'
 import GlobalTokenModal from './GlobalTokenModal'
 import SearchableDropdown from '../../common/SearchableDropdown'
 import { api } from '../../../utils/api'
+import { triggerDailySummary, isDailySummarySentToday, getDailySummarySentLog } from '../../../services/dailySummaryScheduler'
 
 export default function AdminTelegramBot() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -22,6 +23,8 @@ export default function AdminTelegramBot() {
   const [copiedItem, setCopiedItem] = useState({ id: null, type: null })
   const [testingBotId, setTestingBotId] = useState(null)
   const [toast, setToast] = useState(null)
+  const [isSendingDailySummary, setIsSendingDailySummary] = useState(false)
+  const [summarySentToday, setSummarySentToday] = useState(() => isDailySummarySentToday())
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type })
@@ -187,6 +190,25 @@ export default function AdminTelegramBot() {
     }
   }
 
+  // Manual Trigger for Daily 5:00 PM Summary Notification
+  const handleSendDailySummaryNow = async () => {
+    setIsSendingDailySummary(true)
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const res = await triggerDailySummary(today, true)
+      if (res && res.success) {
+        setSummarySentToday(true)
+        showToast(`បានផ្ញើរបាយការណ៍សង្ខេបវត្តមានប្រចាំថ្ងៃទៅកាន់ Telegram (${res.count} ក្រុម) ជោគជ័យ!`, 'success')
+      } else {
+        showToast(res.error || 'បរាជ័យក្នុងការផ្ញើរបាយការណ៍សង្ខេប', 'error')
+      }
+    } catch (err) {
+      showToast('កំហុសពេលផ្ញើ: ' + err.message, 'error')
+    } finally {
+      setIsSendingDailySummary(false)
+    }
+  }
+
   // Filter Data
   let filteredBots = bots
   
@@ -236,6 +258,41 @@ export default function AdminTelegramBot() {
           <span>{toast.message}</span>
         </div>
       )}
+
+      {/* ── Daily 5:00 PM Summary Info Card ── */}
+      <div className="bg-gradient-to-r from-indigo-50/90 via-blue-50/90 to-sky-50/90 border border-indigo-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+        <div className="flex items-start gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-600/20 mt-0.5">
+            <Clock size={22} strokeWidth={2.5} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="text-[14px] sm:text-[16px] font-extrabold text-indigo-950">
+                របាយការណ៍សង្ខេបវត្តមានប្រចាំថ្ងៃស្វ័យប្រវត្តិ (រៀងរាល់ម៉ោង ០៥:០០ រសៀល)
+              </h4>
+              <span className={`text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                summarySentToday
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                  : 'bg-amber-100 text-amber-800 border-amber-300'
+              }`}>
+                {summarySentToday ? '✓ ថ្ងៃនេះបានផ្ញើរួចរាល់' : '⏳ រង់ចាំដល់ម៉ោង ៥:០០ រសៀល'}
+              </span>
+            </div>
+            <p className="text-[12px] sm:text-[13px] text-slate-600 mt-1 leading-relaxed">
+              នៅរៀងរាល់ម៉ោង <strong>០៥:០០ រសៀល</strong> ប្រព័ន្ធនឹងចងក្រងតារាងសង្ខេបវត្តមានគ្រប់ថ្នាក់ទាំងអស់ (ចំនួនសិស្សមក សិស្សឈប់ និងបញ្ជីឈ្មោះ) រួចផ្ញើជូនលោកគ្រូអ្នកគ្រូ និងគណៈគ្រប់គ្រងសាលាដោយស្វ័យប្រវត្តិតាម Telegram Bot។
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleSendDailySummaryNow}
+          disabled={isSendingDailySummary}
+          className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 text-white font-bold text-[12px] sm:text-[13px] px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-2 shrink-0 self-end sm:self-center cursor-pointer"
+        >
+          {isSendingDailySummary ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} strokeWidth={2.5} />}
+          <span>{isSendingDailySummary ? 'កំពុងផ្ញើ...' : 'ផ្ញើសេចក្តីសង្ខេបឥឡូវ'}</span>
+        </button>
+      </div>
 
       {/* Top Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6 w-full">

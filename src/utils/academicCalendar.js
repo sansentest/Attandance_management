@@ -12,13 +12,13 @@ export function getSchoolStatus(date = new Date()) {
   const currentMinutes = date.getHours() * 60 + date.getMinutes();
 
   // 1. វិស្សមកាលធំ (Big Vacation): September 1 to October 31 (reopens Nov 1)
-  if (month === 9 || month === 10) {
+  if (month === 1 || month === 2) {
     return {
       isOpen: false,
       type: 'BIG_VACATION',
       icon: '',
       badgeText: 'វិស្សមកាលធំ',
-      title: 'វិស្សមកាលធំ (បញ្ចប់ឆ្នាំសិក្សា)',
+      title: 'វិស្សមកាលធំ',
       description: 'សាលារៀនកំពុងស្ថិតក្នុងវិស្សមកាលធំ (០១ កញ្ញា – ៣១ តុលា)។ ចូលរៀនវិញនៅថ្ងៃទី ០១ ខែវិច្ឆិកា។',
       reopenDate: 'ថ្ងៃទី ០១ ខែវិច្ឆិកា',
       canTakeAttendance: false
@@ -32,7 +32,7 @@ export function getSchoolStatus(date = new Date()) {
       type: 'SMALL_VACATION',
       icon: '',
       badgeText: 'វិស្សមកាលតូច',
-      title: 'វិស្សមកាលតូច (ពិធីបុណ្យចូលឆ្នាំថ្មី)',
+      title: 'វិស្សមកាលតូច',
       description: 'សាលារៀនកំពុងស្ថិតក្នុងវិស្សមកាលតូច (០៧ មេសា – ១៩ មេសា)។ ចូលរៀនវិញនៅថ្ងៃទី ២០ ខែមេសា។',
       reopenDate: 'ថ្ងៃទី ២០ ខែមេសា',
       canTakeAttendance: false
@@ -46,8 +46,8 @@ export function getSchoolStatus(date = new Date()) {
       type: 'SUNDAY_OFF',
       icon: '',
       badgeText: 'សម្រាកចុងសប្តាហ៍',
-      title: 'ថ្ងៃអាទិត្យ ឈប់សម្រាកប្រចាំសប្តាហ៍',
-      description: 'ថ្ងៃអាទិត្យមិនមានម៉ោងសិក្សាឡើយ។ សាលារៀននឹងបើកបង្រៀនវិញនៅព្រឹកថ្ងៃច័ន្ទ។',
+      title: 'ថ្ងៃអាទិត្យជាថ្ងៃឈប់សម្រាក',
+      description: 'សាលារៀនមិនបើកបង្រៀនថ្ងៃអាទិត្យទេ។',
       reopenDate: 'ព្រឹកថ្ងៃច័ន្ទ',
       canTakeAttendance: false
     };

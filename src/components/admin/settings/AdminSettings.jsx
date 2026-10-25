@@ -578,7 +578,7 @@ export default function AdminSettings({ initialTab = 'school' }) {
           {activeTab === 'discipline' && (
             <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-300">
               <div className="flex items-center gap-3 mb-8">
-                <div className="w-10 h-10 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center shrink-0 border border-orange-100">
+                <div className="w-10 h-10 rounded-full bg-red-50 text-red-600 flex items-center justify-center shrink-0 border border-red-100">
                   <CheckCircle2 size={20} />
                 </div>
                 <div>
@@ -617,16 +617,16 @@ export default function AdminSettings({ initialTab = 'school' }) {
                         min="1" 
                         value={discipline['10-12']} 
                         onChange={e => setDiscipline({...discipline, '10-12': parseInt(e.target.value) || 0})} 
-                        className="w-24 bg-white border border-slate-200 rounded-lg p-2.5 text-center font-bold text-[15px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-sm" 
+                        className="w-24 bg-white  border-slate-200 rounded-lg p-2.5 text-center font-bold text-[15px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-sm" 
                       />
                       <span className="text-[14px] text-slate-500 font-bold">ដង</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-start gap-3 mt-2">
-                  <Shield size={20} className="text-amber-500 shrink-0 mt-0.5" />
-                  <p className="text-[13px] text-amber-800 leading-relaxed font-medium">
+                <div className="bg-gradient-to-br from-red-100 to-rose-50  rounded-xl p-4 flex items-start gap-3 mt-2">
+                  <Shield size={20} className="text-danger shrink-0 mt-0.5" />
+                  <p className="text-[13px] text-danger leading-relaxed font-medium">
                     <span className="font-bold">ចំណាំ៖</span> ការផ្លាស់ប្តូរការកំណត់នេះ នឹងជះឥទ្ធិពលភ្លាមៗទៅលើផ្ទាំងទំព័រ <b>"តាមដានវិន័យសិស្ស"</b>។ រាល់សិស្សដែលមានចំនួនអវត្តមានអត់ច្បាប់ស្មើ ឬលើសកម្រិតនេះ នឹងលោតចូលស្ថានភាព <b>ប្រកាសអាសន្ន (CRITICAL)</b> ដោយស្វ័យប្រវត្តិ។
                   </p>
                 </div>

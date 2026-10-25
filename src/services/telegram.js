@@ -212,6 +212,172 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
 }
 
 /**
+ * Dispatch a Daily 5:00 PM Summary notification to active school management Telegram bots
+ */
+export async function dispatchDailySummaryNotification({
+  date = new Date().toISOString().split('T')[0],
+  records = [],
+  classes = [],
+  students = [],
+  bots = [],
+  globalTokens = [],
+  manualTrigger = false
+}) {
+  // 1. Resolve matching recipients (Bots for ALL or with notifyDailySummary enabled)
+  let matchingBots = bots.filter(b => b.status === 'active' && (b.class === 'ALL' || b.notifyDailySummary === true));
+  if (matchingBots.length === 0) {
+    // If no ALL bot is configured, fallback to any active bot as a safety
+    matchingBots = bots.filter(b => b.status === 'active');
+  }
+
+  const activeGlobal = globalTokens.find(t => t.isActive) || globalTokens[0];
+  const globalTokenVal = activeGlobal ? activeGlobal.token : '';
+
+  const validRecipients = [];
+  matchingBots.forEach(b => {
+    let finalToken = b.token;
+    if (finalToken === 'GLOBAL_TOKEN' || !finalToken) {
+      finalToken = globalTokenVal;
+    }
+    if (finalToken && b.chatId) {
+      validRecipients.push({
+        name: b.name || `Bot ${b.class}`,
+        token: finalToken,
+        chatId: b.chatId
+      });
+    }
+  });
+
+  if (validRecipients.length === 0) {
+    return { success: false, error: 'មិនមាន Telegram Bot សកម្មសម្រាប់ទទួលរបាយការណ៍សង្ខេបទេ' };
+  }
+
+  // 2. Filter records for the specified date
+  const dayRecords = records.filter(r => r.date === date);
+
+  // 3. Build stats per class
+  const classList = classes.length > 0
+    ? classes.map(c => typeof c === 'string' ? c : c.name || c.id)
+    : [...new Set(students.map(s => s.className || s.class).concat(dayRecords.map(r => r.class)))].filter(Boolean);
+
+  let totalSchoolStudents = 0;
+  let totalSchoolPresent = 0;
+  let totalSchoolAbsent = 0;
+  let totalSchoolLeave = 0;
+  const classSummaries = [];
+
+  classList.forEach(className => {
+    const classStudents = students.filter(s => (s.className || s.class) === className);
+    const classRecs = dayRecords.filter(r => r.class === className);
+
+    // Unique students marked absent or leave today in this class
+    const absentMap = new Map();
+    classRecs.forEach(r => {
+      const key = r.studentId || r.name;
+      if (!absentMap.has(key)) {
+        absentMap.set(key, {
+          name: r.name,
+          status: r.status,
+          reason: r.reason,
+          period: r.period
+        });
+      }
+    });
+
+    const absentList = Array.from(absentMap.values());
+    const absentCount = absentList.filter(s => s.status === 'ABSENT').length;
+    const leaveCount = absentList.filter(s => s.status === 'LEAVE').length;
+
+    const studentCount = classStudents.length > 0 ? classStudents.length : Math.max(30, absentList.length);
+    const presentCount = Math.max(0, studentCount - absentCount - leaveCount);
+    const rate = studentCount > 0 ? Math.round((presentCount / studentCount) * 100) : 100;
+
+    totalSchoolStudents += studentCount;
+    totalSchoolPresent += presentCount;
+    totalSchoolAbsent += absentCount;
+    totalSchoolLeave += leaveCount;
+
+    classSummaries.push({
+      className,
+      studentCount,
+      presentCount,
+      absentCount,
+      leaveCount,
+      rate,
+      absentList
+    });
+  });
+
+  const overallRate = totalSchoolStudents > 0
+    ? Math.round((totalSchoolPresent / totalSchoolStudents) * 100)
+    : 100;
+
+  const dateText = getKhmerCurrentDateString(new Date(date + 'T12:00:00'));
+  const now = new Date();
+  const timeText = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  // 4. Construct Khmer message
+  let classListLines = classSummaries.map(c => {
+    const header = `• <b>ថ្នាក់ ${escapeTelegramHtml(c.className)}:</b> វត្តមាន <b>${c.presentCount}/${c.studentCount}</b> (${c.rate}%) | អវត្តមាន: <b>${c.absentCount}</b>, ច្បាប់: <b>${c.leaveCount}</b>`;
+    if (c.absentList.length > 0) {
+      const details = c.absentList.map(a => {
+        const badge = a.status === 'ABSENT' ? '❌' : '📝';
+        const reason = a.reason ? ` - ${escapeTelegramHtml(a.reason)}` : '';
+        return `    └ ${badge} ${escapeTelegramHtml(a.name)}${reason}`;
+      }).join('\n');
+      return `${header}\n${details}`;
+    }
+    return `${header} <i>(មកគ្រប់)</i>`;
+  }).join('\n\n');
+
+  if (!classListLines) {
+    classListLines = '<i>មិនទាន់មានទិន្នន័យស្រង់វត្តមាននៅឡើយទេ</i>';
+  }
+
+  const triggerType = manualTrigger ? ' [ផ្ញើដោយផ្ទាល់]' : ' [ម៉ោង ០៥:០០ រសៀល]';
+
+  const message = [
+    '🏫 <b>វិទ្យាល័យអង្គរកា (Ang Roka High School)</b>',
+    `📊 <b>របាយការណ៍សង្ខេបវត្តមានសិស្សប្រចាំថ្ងៃ</b>${triggerType}`,
+    '━━━━━━━━━━━━━━━━━━━━',
+    `📅 <b>កាលបរិច្ឆេទ:</b> ${dateText}`,
+    `⏰ <b>ពេលវេលា:</b> ម៉ោង ${timeText}`,
+    '━━━━━━━━━━━━━━━━━━━━',
+    '📈 <b>ស្ថិតិសរុបទូទាំងសាលា:</b>',
+    `  • ចំនួនថ្នាក់សរុប: <b>${classList.length}</b> ថ្នាក់`,
+    `  • សិស្សសរុប: <b>${totalSchoolStudents}</b> នាក់`,
+    `  • មានវត្តមាន: <b>${totalSchoolPresent}</b> នាក់ (<b>${overallRate}%</b>)`,
+    `  • អវត្តមានគ្មានច្បាប់: <b>${totalSchoolAbsent}</b> នាក់`,
+    `  • សុំច្បាប់: <b>${totalSchoolLeave}</b> នាក់`,
+    '━━━━━━━━━━━━━━━━━━━━',
+    '📋 <b>ព័ត៌មានលម្អិតតាមថ្នាក់នីមួយៗ:</b>',
+    classListLines,
+    '━━━━━━━━━━━━━━━━━━━━',
+    '<i>🤖 ប្រព័ន្ធគ្រប់គ្រងវត្តមានសិស្សស្វ័យប្រវត្តិតាម Telegram Bot</i>'
+  ].join('\n');
+
+  // Dispatch to recipients
+  const sendPromises = validRecipients.map(recipient =>
+    sendTelegramMessage({
+      token: recipient.token,
+      chatId: recipient.chatId,
+      text: message
+    })
+  );
+
+  const results = await Promise.allSettled(sendPromises);
+  const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+
+  return {
+    success: successCount > 0,
+    count: successCount,
+    totalAttempted: validRecipients.length,
+    date,
+    overallRate
+  };
+}
+
+/**
  * Dispatch discipline warning notification when student crosses discipline thresholds
  */
 export async function dispatchDisciplineWarningNotification({

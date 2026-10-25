@@ -4,7 +4,9 @@ import Dashboard from './components/Dashboard'
 import Attendance from './components/Attendance'
 import Report from './components/Report'
 import AdminLayout from './components/admin/AdminLayout'
-import { loadSession, clearSession } from './utils/api'
+import { loadSession, clearSession, api } from './utils/api'
+import { startDailySummaryScheduler } from './services/dailySummaryScheduler'
+import { syncOfflineAttendanceQueue } from './utils/offlineSync'
 import { Home, ListChecks, LogOut, X } from 'lucide-react'
 
 export default function App() {
@@ -12,12 +14,31 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('attendance')
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
-  // Check for existing session on load
+  // Check for existing session and initialize background services
   useEffect(() => {
     const existingSession = loadSession()
     if (existingSession) {
       setSession(existingSession)
       setActiveTab('attendance')
+    }
+
+    // 1. Start background 5:00 PM Daily Summary scheduler for Telegram
+    const stopScheduler = startDailySummaryScheduler()
+
+    // 2. Setup online listener for automatic offline queue synchronization
+    const handleOnline = () => {
+      syncOfflineAttendanceQueue(api)
+    }
+    window.addEventListener('online', handleOnline)
+
+    // Sync once on app launch if online
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      syncOfflineAttendanceQueue(api)
+    }
+
+    return () => {
+      stopScheduler()
+      window.removeEventListener('online', handleOnline)
     }
   }, [])
 
@@ -94,7 +115,7 @@ export default function App() {
   ]
 
   return (
-    <div className="relative min-h-screen pb-[80px] bg-bg-base font-[family-name:var(--font-primary)]">
+    <div className="relative min-h-screen pb-[64px] bg-bg-base font-[family-name:var(--font-primary)] overflow-x-hidden max-w-full">
       {/* Page Content */}
       <div className="page-enter">
         {activeTab === 'dashboard' && <Dashboard session={session} onLogout={handleLogout} onNavigate={setActiveTab} />}
@@ -103,18 +124,18 @@ export default function App() {
       </div>
 
       {/* Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 h-[64px] bg-white/95 backdrop-blur-xl border-t border-border-main flex items-center justify-around z-[100] shadow-[0_-4px_24px_rgba(0,0,0,0.02)]">
+      <nav className="fixed bottom-0 left-0 right-0 h-[52px] bg-white/95 backdrop-blur-xl border-t border-slate-100 flex items-center justify-around z-[100] shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-col items-center gap-1 min-w-[64px] p-2 rounded-md transition-all duration-200 border-none bg-transparent cursor-pointer
-                ${isActive ? 'text-accent font-bold' : 'text-text-muted hover:text-text-secondary font-medium'}`}
+              className={`flex flex-col items-center justify-center gap-0.5 min-w-[56px] py-1 px-3 rounded-lg transition-all duration-200 border-none bg-transparent cursor-pointer
+                ${isActive ? 'text-accent font-bold scale-105' : 'text-slate-400 hover:text-slate-600 font-medium'}`}
             >
-              <tab.icon size={isActive ? 26 : 24} strokeWidth={isActive ? 2.5 : 2} />
-              <span className="text-[11px] tracking-wide font-medium">{tab.label}</span>
+              <tab.icon size={isActive ? 20 : 19} strokeWidth={isActive ? 2.3 : 1.9} />
+              <span className="text-[10px] sm:text-[11px] tracking-wide leading-none">{tab.label}</span>
             </button>
           )
         })}

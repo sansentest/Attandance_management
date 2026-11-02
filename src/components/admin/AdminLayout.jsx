@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, User, ChevronDown, Users, Bot, BookOpen, Mail, ShieldAlert, Database, Edit, GraduationCap, Calendar } from 'lucide-react'
+import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, User, ChevronDown, Users, Bot, BookOpen, Mail, ShieldAlert, Database, Edit, GraduationCap, Calendar, School } from 'lucide-react'
+import { api, getCachedSchoolSettings } from '../../utils/api'
 import AdminDashboard from './dashboard/AdminDashboard'
 import AdminStudentAttendance from './attendance/AdminStudentAttendance'
 import AdminStudentTracking from './tracking/AdminStudentTracking'
@@ -12,15 +13,52 @@ import AdminProfile from './profile/AdminProfile'
 import AdminInvitationLetters from './invitation/AdminInvitationLetters'
 import AdminStudents from './students/AdminStudents'
 
-export default function AdminLayout({ session, onLogout }) {
+export default function AdminLayout({ session, onLogout, onUpdateSession }) {
   const [activePage, setActivePage] = useState('dashboard')
   const [settingsInitialTab, setSettingsInitialTab] = useState('school')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
+  const [schoolInfo, setSchoolInfo] = useState(() => getCachedSchoolSettings())
   const [openGroups, setOpenGroups] = useState({
     attendance_group: true,
     academic_group: true
   })
+
+  // Sync School Info in real-time from Cloud and local Settings
+  useEffect(() => {
+    let isMounted = true
+    api('settings.get').then(res => {
+      if (isMounted && res?.success && res.data?.school) {
+        setSchoolInfo(res.data.school)
+      }
+    }).catch(() => {})
+
+    const handleSettingsUpdate = (e) => {
+      if (e.detail?.school) {
+        setSchoolInfo(e.detail.school)
+      } else if (e.detail?.name) {
+        setSchoolInfo(prev => ({ ...prev, ...e.detail }))
+      }
+    }
+
+    const handleStorageChange = (e) => {
+      if (e.key === 'school_settings_cache' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue)
+          if (parsed?.school) setSchoolInfo(parsed.school)
+        } catch (err) {}
+      }
+    }
+
+    window.addEventListener('school_settings_updated', handleSettingsUpdate)
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      isMounted = false
+      window.removeEventListener('school_settings_updated', handleSettingsUpdate)
+      window.removeEventListener('storage', handleStorageChange)
+    }
+  }, [])
 
   const toggleGroup = (groupId) => {
     setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }))
@@ -46,7 +84,7 @@ export default function AdminLayout({ session, onLogout }) {
       case 'users': return <AdminUsers />
       case 'telegram': return <AdminTelegramBot />
       case 'settings': return <AdminSettings initialTab={settingsInitialTab} />
-      case 'profile': return <AdminProfile />
+      case 'profile': return <AdminProfile session={session} onUpdateSession={onUpdateSession} />
       default: return <AdminDashboard />
     }
   }
@@ -85,17 +123,21 @@ export default function AdminLayout({ session, onLogout }) {
       <aside className="hidden lg:flex flex-col w-[280px] bg-white z-20 shrink-0 border-r border-slate-200/60">
         
         {/* Profile & Greeting Header Area */}
-        <div className="p-6 pt-8 flex flex-col gap-4 border-b border-slate-100">
+        <div className="p-6 pt-7 flex flex-col gap-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100 text-indigo-600">
-              <User size={22} />
+            <div className="w-11 h-11 rounded-2xl bg-blue-50 flex items-center justify-center shrink-0 border border-blue-100 text-blue-600 overflow-hidden shadow-xs">
+              {schoolInfo?.logo ? (
+                <img src={schoolInfo.logo} alt="School Logo" className="w-full h-full object-cover" />
+              ) : (
+                <GraduationCap size={22} className="text-blue-600" />
+              )}
             </div>
-            <div className="flex flex-col group cursor-default">
-              <h1 className="text-[16px] lg:text-[18px] font-black text-slate-800 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all duration-300 leading-tight tracking-tight">
+            <div className="flex flex-col group cursor-default min-w-0 flex-1">
+              <h1 className="text-[15px] lg:text-[16px] font-black text-slate-800 group-hover:text-indigo-600 transition-colors leading-tight tracking-tight truncate" title={schoolInfo?.name || 'វិទ្យាល័យអង្គរកា'}>
                 ប្រព័ន្ធគ្រប់គ្រងអវត្តមាន
               </h1>
-              <span className="text-[11px] font-bold text-slate-500 tracking-wide mt-1">
-                វិទ្យាល័យអង្គរកា
+              <span className="text-[11px] font-bold text-slate-400 tracking-wide mt-1 flex items-center gap-1.5">
+                {schoolInfo?.name || 'វិទ្យាល័យអង្គរកា'}
               </span>
             </div>
           </div>
@@ -197,20 +239,25 @@ export default function AdminLayout({ session, onLogout }) {
           <aside className="w-[300px] bg-white h-full shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
             
             <div className="p-6 flex items-start justify-between border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100 text-indigo-600">
-                  <User size={22} />
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100 text-indigo-600 overflow-hidden shadow-xs">
+                  {schoolInfo?.logo ? (
+                    <img src={schoolInfo.logo} alt="School Logo" className="w-full h-full object-cover" />
+                  ) : (
+                    <School size={22} className="text-indigo-600" />
+                  )}
                 </div>
-                <div className="flex flex-col group cursor-default">
-                  <h1 className="text-[16px] lg:text-[18px] font-black text-slate-800 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all duration-300 leading-tight tracking-tight">
-                    ប្រព័ន្ធគ្រប់គ្រងអវត្តមាន
+                <div className="flex flex-col min-w-0 flex-1">
+                  <h1 className="text-[15px] font-black text-slate-800 leading-tight tracking-tight truncate" title={schoolInfo?.name || 'វិទ្យាល័យអង្គរកា'}>
+                    {schoolInfo?.name || 'វិទ្យាល័យអង្គរកា'}
                   </h1>
-                  <span className="text-[11px] font-bold text-slate-500 tracking-wide mt-1">
-                    វិទ្យាល័យអង្គរកា
+                  <span className="text-[11px] font-bold text-slate-400 tracking-wide mt-1 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0"></span>
+                    <span className="truncate">ប្រព័ន្ធគ្រប់គ្រងអវត្តមាន</span>
                   </span>
                 </div>
               </div>
-              <button onClick={() => setMobileMenuOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 rounded-full hover:bg-slate-100 mt-1 border border-slate-200/50">
+              <button onClick={() => setMobileMenuOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 bg-slate-50 rounded-full hover:bg-slate-100 mt-1 border border-slate-200/50 shrink-0">
                 <X size={16} strokeWidth={2.5} />
               </button>
             </div>
@@ -307,22 +354,25 @@ export default function AdminLayout({ session, onLogout }) {
       >
         {/* Top Header */}
         <header className="h-[72px] bg-white/80 backdrop-blur-md shrink-0 flex items-center justify-between px-6 lg:px-10 relative z-10 border-b border-slate-100">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
               <Menu size={22} strokeWidth={2.5} />
             </button>
-            <h2 className="text-[18px] font-black text-slate-800 hidden sm:block">
-              {activePage === 'profile' ? 'ប្រវត្តិរូបអ្នកប្រើប្រាស់' : (() => {
-                for (const item of navItems) {
-                  if (item.id === activePage) return item.label;
-                  if (item.subItems) {
-                    const subItem = item.subItems.find(sub => sub.id === activePage);
-                    if (subItem) return subItem.label;
+            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
+              <h2 className="text-[17px] lg:text-[18px] font-black text-slate-800 hidden sm:block whitespace-nowrap">
+                {activePage === 'profile' ? 'ប្រវត្តិរូបអ្នកប្រើប្រាស់' : (() => {
+                  for (const item of navItems) {
+                    if (item.id === activePage) return item.label;
+                    if (item.subItems) {
+                      const subItem = item.subItems.find(sub => sub.id === activePage);
+                      if (subItem) return subItem.label;
+                    }
                   }
-                }
-                return 'គ្រប់គ្រងប្រព័ន្ធ';
-              })()}
-            </h2>
+                  return 'គ្រប់គ្រងប្រព័ន្ធ';
+                })()}
+              </h2>
+             
+            </div>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4 relative" onClick={e => e.stopPropagation()}>
@@ -354,23 +404,37 @@ export default function AdminLayout({ session, onLogout }) {
                   profileDropdownOpen ? 'border-indigo-300 shadow-sm ring-2 ring-indigo-50' : 'border-slate-200/60 hover:shadow-sm hover:border-indigo-100'
                 }`}
               >
-                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white flex items-center justify-center relative overflow-hidden shrink-0">
-                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                  <User size={18} strokeWidth={2.5} className="relative z-10" />
+                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-500 text-white flex items-center justify-center relative overflow-hidden shrink-0 border border-indigo-100 shadow-xs">
+                  {session?.avatar ? (
+                    <img src={session.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    <>
+                      <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                      <User size={18} strokeWidth={2.5} className="relative z-10" />
+                    </>
+                  )}
                 </div>
                 <div className="hidden sm:flex flex-col items-start ml-1">
-                  <span className="text-[13px] font-bold text-slate-700 leading-none group-hover:text-indigo-700 transition-colors">Admin</span>
-                  <span className="text-[10px] font-medium text-indigo-500 mt-1">អ្នកគ្រប់គ្រង</span>
+                  <span className="text-[13px] font-bold text-slate-700 leading-none group-hover:text-indigo-700 transition-colors">
+                    {session?.fullName || session?.username || 'Admin'}
+                  </span>
+                  <span className="text-[10px] font-medium text-indigo-500 mt-1">
+                    {session?.role === 'admin' ? 'អ្នកគ្រប់គ្រង' : (session?.role || 'អ្នកប្រើប្រាស់')}
+                  </span>
                 </div>
                 <ChevronDown size={16} className={`text-slate-400 transition-all ml-1 lg:ml-2 duration-300 ${profileDropdownOpen ? 'rotate-180 text-indigo-500' : 'group-hover:text-indigo-500 group-hover:translate-y-0.5'}`} />
               </button>
 
               {/* Profile Dropdown */}
               {profileDropdownOpen && (
-                <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200 z-50">
+                <div className="absolute right-0 mt-3 w-60 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden animate-in fade-in slide-in-from-top-4 duration-200 z-50">
                   <div className="p-4 border-b border-slate-50 bg-slate-50/50 flex flex-col gap-1">
-                    <span className="text-[14px] font-black text-slate-800">Admin User</span>
-                    <span className="text-[11px] font-bold text-slate-400">admin@angroka.edu.kh</span>
+                    <span className="text-[14px] font-black text-slate-800 truncate">
+                      {session?.fullName || session?.username || 'Admin User'}
+                    </span>
+                    <span className="text-[11px] font-bold text-slate-400 truncate">
+                      {session?.email || (session?.username ? `${session.username}@angroka.edu.kh` : 'admin@angroka.edu.kh')}
+                    </span>
                   </div>
                   <div className="p-2 flex flex-col gap-1">
                     <button 

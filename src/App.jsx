@@ -4,7 +4,7 @@ import Dashboard from './components/Dashboard'
 import Attendance from './components/Attendance'
 import Report from './components/Report'
 import AdminLayout from './components/admin/AdminLayout'
-import { loadSession, clearSession, api } from './utils/api'
+import { loadSession, saveSession, clearSession, api } from './utils/api'
 import { startDailySummaryScheduler } from './services/dailySummaryScheduler'
 import { syncOfflineAttendanceQueue } from './utils/offlineSync'
 import { Home, ListChecks, LogOut, X } from 'lucide-react'
@@ -18,6 +18,57 @@ export default function App() {
   useEffect(() => {
     const existingSession = loadSession()
     if (existingSession) {
+      if (existingSession.role !== 'admin') {
+        api('users.getAll').then(res => {
+          if (res?.success && Array.isArray(res.data)) {
+            const validUser = res.data.find(u => 
+              (u.username || '').toLowerCase() === (existingSession.username || '').toLowerCase() &&
+              u.status === 'active'
+            )
+            if (!validUser) {
+              // The user was deleted or deactivated in Admin! Clear session immediately!
+              clearSession()
+              setSession(null)
+            } else {
+              const updatedSession = {
+                ...existingSession,
+                id: validUser.id,
+                fullName: validUser.name || validUser.username,
+                className: validUser.class || existingSession.className,
+                role: validUser.role || 'monitor',
+                email: validUser.email || existingSession.email || '',
+                phone: validUser.phone || existingSession.phone || '',
+                avatar: validUser.avatar || existingSession.avatar || null
+              }
+              saveSession(updatedSession)
+              setSession(updatedSession)
+            }
+          }
+        }).catch(() => {})
+      } else {
+        // Also sync admin user session from database if updated
+        api('users.getAll').then(res => {
+          if (res?.success && Array.isArray(res.data)) {
+            const adminUser = res.data.find(u => 
+              (u.username || '').toLowerCase() === (existingSession.username || '').toLowerCase() ||
+              u.id === existingSession.id
+            )
+            if (adminUser) {
+              const updatedSession = {
+                ...existingSession,
+                id: adminUser.id,
+                fullName: adminUser.name || existingSession.fullName || existingSession.username,
+                email: adminUser.email || existingSession.email || '',
+                phone: adminUser.phone || existingSession.phone || '',
+                avatar: adminUser.avatar || existingSession.avatar || null,
+                role: adminUser.role || 'admin'
+              }
+              saveSession(updatedSession)
+              setSession(updatedSession)
+            }
+          }
+        }).catch(() => {})
+      }
       setSession(existingSession)
       setActiveTab('attendance')
     }
@@ -65,7 +116,7 @@ export default function App() {
   if (session.role === 'admin') {
     return (
       <>
-        <AdminLayout session={session} onLogout={handleLogout} />
+        <AdminLayout session={session} onLogout={handleLogout} onUpdateSession={(updated) => setSession(updated)} />
         {showLogoutConfirm && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={() => setShowLogoutConfirm(false)}></div>

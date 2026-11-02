@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { api } from '../../../utils/api'
+import { api, getCachedSchoolName } from '../../../utils/api'
 import {
   Download, Search, ChevronDown, AlertCircle, FileText, Calendar,
   FileCode, FileImage, Users, ChevronLeft, ChevronRight, ChevronsRight,
@@ -88,62 +88,62 @@ export const SearchableDropdown = ({ value, onChange, options, placeholder, icon
 // ─────────────────────────────────────────────
 const ALL_RECORDS = [
   // ហ៊ឹម ដារ៉ា — (ឧទាហរណ៍ជាក់ស្តែង៖ ថ្ងៃ ២០២៦-០១-០៥ ព្រឹកសុំច្បាប់ តែដល់ម៉ោងបន្ទាប់គេចម៉ោង -> ប្រព័ន្ធរាប់ជា ១ ថ្ងៃអវត្តមានឥតច្បាប់)
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-05', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'ឈឺក្បាល',   status: 'LEAVE' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-05', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-20', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-02-03', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '08:00 - 09:30', reason: 'ទៅស្រុក',   status: 'LEAVE' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-02-10', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-02-18', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-03-01', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'ឈឺក្រពះ',   status: 'LEAVE' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-03-09', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-03-15', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-04-02', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '08:00 - 09:30', reason: 'មានធុរៈ',   status: 'LEAVE' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-04-14', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-04-21', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-05-07', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '08:00 - 09:30', reason: 'ឈឺ',        status: 'LEAVE' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-05-15', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-05-22', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-06-03', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '08:00 - 09:30', reason: 'ទៅស្រុក',   status: 'LEAVE' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-06-11', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-06-18', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-07-05', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-07-14', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '09:30 - 11:00', reason: 'ឈឺក្បាល',   status: 'LEAVE' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-05', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '08:00 - 09:30', reason: 'ឈឺក្បាល', status: 'LEAVE' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-05', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-01-20', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-02-03', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី', time: '08:00 - 09:30', reason: 'ទៅស្រុក', status: 'LEAVE' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-02-10', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-02-18', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-03-01', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '08:00 - 09:30', reason: 'ឈឺក្រពះ', status: 'LEAVE' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-03-09', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-03-15', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-04-02', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '08:00 - 09:30', reason: 'មានធុរៈ', status: 'LEAVE' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-04-14', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-04-21', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-05-07', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '08:00 - 09:30', reason: 'ឈឺ', status: 'LEAVE' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-05-15', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-05-22', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-06-03', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '08:00 - 09:30', reason: 'ទៅស្រុក', status: 'LEAVE' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-06-11', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-06-18', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-07-05', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', class: '12A', date: '2026-07-14', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី', time: '09:30 - 11:00', reason: 'ឈឺក្បាល', status: 'LEAVE' },
 
   // ស្រីណុច វណ្ណី — 4 records
-  { studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', class: '12A', date: '2026-02-10', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'ឈឺ',        status: 'LEAVE' },
-  { studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', class: '12A', date: '2026-03-14', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', class: '12A', date: '2026-04-01', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', class: '12A', date: '2026-05-05', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'ទៅស្រុក',   status: 'LEAVE' },
+  { studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', class: '12A', date: '2026-02-10', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '08:00 - 09:30', reason: 'ឈឺ', status: 'LEAVE' },
+  { studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', class: '12A', date: '2026-03-14', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', class: '12A', date: '2026-04-01', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', class: '12A', date: '2026-05-05', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '08:00 - 09:30', reason: 'ទៅស្រុក', status: 'LEAVE' },
 
   // ជា វិបុល — 2 records
-  { studentId: 'STU-003', name: 'ជា វិបុល', class: '12B', date: '2026-01-08', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-003', name: 'ជា វិបុល', class: '12B', date: '2026-02-20', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '09:30 - 11:00', reason: 'ឈឺ',        status: 'LEAVE' },
+  { studentId: 'STU-003', name: 'ជា វិបុល', class: '12B', date: '2026-01-08', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-003', name: 'ជា វិបុល', class: '12B', date: '2026-02-20', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '09:30 - 11:00', reason: 'ឈឺ', status: 'LEAVE' },
 
   // ហេង ឌីណា — 7 records
-  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-01-15', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-02-22', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '02:00 - 03:30', reason: 'មានធុរៈ',   status: 'LEAVE' },
-  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-03-10', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-04-05', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-05-12', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-06-08', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'ឈឺ',        status: 'LEAVE' },
-  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-07-01', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-01-15', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-02-22', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '02:00 - 03:30', reason: 'មានធុរៈ', status: 'LEAVE' },
+  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-03-10', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-04-05', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-05-12', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-06-08', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '08:00 - 09:30', reason: 'ឈឺ', status: 'LEAVE' },
+  { studentId: 'STU-004', name: 'ហេង ឌីណា', class: '11A', date: '2026-07-01', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '09:30 - 11:00', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
 
   // ចាន់ វុទ្ធី — 3 records
-  { studentId: 'STU-005', name: 'ចាន់ វុទ្ធី', class: '12A', date: '2026-01-25', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-005', name: 'ចាន់ វុទ្ធី', class: '12A', date: '2026-03-18', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'ទៅស្រុក',   status: 'LEAVE' },
-  { studentId: 'STU-005', name: 'ចាន់ វុទ្ធី', class: '12A', date: '2026-05-30', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-005', name: 'ចាន់ វុទ្ធី', class: '12A', date: '2026-01-25', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-005', name: 'ចាន់ វុទ្ធី', class: '12A', date: '2026-03-18', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'ទៅស្រុក', status: 'LEAVE' },
+  { studentId: 'STU-005', name: 'ចាន់ វុទ្ធី', class: '12A', date: '2026-05-30', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
 
   // ស៊ុន មានី — 10 records (warning zone)
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-01-07', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-01-21', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'ឈឺ',        status: 'LEAVE' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-02-08', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-03-02', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-03-20', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '09:30 - 11:00', reason: 'ទៅស្រុក',   status: 'LEAVE' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-04-10', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-04-25', subject: 'គីមីវិទ្យា',   teacher: 'អ្នកគ្រូ នីតា',   time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-05-08', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា',    time: '09:30 - 11:00', reason: 'ឈឺ',        status: 'LEAVE' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-06-01', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី',  time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
-  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-06-20', subject: 'រូបវិទ្យា',    teacher: 'លោកគ្រូ សុវណ្ណ', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-01-07', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-01-21', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '09:30 - 11:00', reason: 'ឈឺ', status: 'LEAVE' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-02-08', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-03-02', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-03-20', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '09:30 - 11:00', reason: 'ទៅស្រុក', status: 'LEAVE' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-04-10', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-04-25', subject: 'គីមីវិទ្យា', teacher: 'អ្នកគ្រូ នីតា', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-05-08', subject: 'គណិតវិទ្យា', teacher: 'អ្នកគ្រូ សុខា', time: '09:30 - 11:00', reason: 'ឈឺ', status: 'LEAVE' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-06-01', subject: 'អក្សរសាស្ត្រខ្មែរ', teacher: 'លោកគ្រូ វុទ្ធី', time: '02:00 - 03:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
+  { studentId: 'STU-006', name: 'ស៊ុន មានី', class: '11A', date: '2026-06-20', subject: 'រូបវិទ្យា', teacher: 'លោកគ្រូ សុវណ្ណ', time: '08:00 - 09:30', reason: 'គ្មានច្បាប់', status: 'ABSENT' },
 ]
 
 // ─────────────────────────────────────────────
@@ -152,7 +152,7 @@ const ALL_RECORDS = [
 // If any period in the day is ABSENT, the day counts as ABSENT (1 ថ្ងៃឥតច្បាប់).
 // Otherwise (all periods LEAVE), the day counts as LEAVE (1 ថ្ងៃមានច្បាប់).
 // ─────────────────────────────────────────────
-export function calculateDailyAttendance(records = []) {
+function calculateDailyAttendance(records = []) {
   const byDate = {}
   let totalHours = 0
   let absentHours = 0
@@ -224,13 +224,13 @@ function buildStudentSummaries(records) {
 // Status badge logic based on total absent days
 function getStatusInfo(total) {
   if (total >= 15) return { label: 'គ្រោះថ្នាក់', color: 'rose', icon: ShieldAlert }
-  if (total >= 8)  return { label: 'ប្រុងប្រយ័ត្ន', color: 'amber', icon: AlertCircle }
+  if (total >= 8) return { label: 'ប្រុងប្រយ័ត្ន', color: 'amber', icon: AlertCircle }
   return { label: 'ធម្មតា', color: 'emerald', icon: CheckCircle }
 }
 
 const colorMap = {
-  rose:    { badge: 'bg-rose-50 text-rose-600 border-rose-100',       dot: 'bg-rose-500',    pulse: true },
-  amber:   { badge: 'bg-amber-50 text-amber-600 border-amber-100',    dot: 'bg-amber-500',   pulse: false },
+  rose: { badge: 'bg-rose-50 text-rose-600 border-rose-100', dot: 'bg-rose-500', pulse: true },
+  amber: { badge: 'bg-amber-50 text-amber-600 border-amber-100', dot: 'bg-amber-500', pulse: false },
   emerald: { badge: 'bg-emerald-50 text-emerald-600 border-emerald-100', dot: 'bg-emerald-500', pulse: false },
 }
 
@@ -269,11 +269,11 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
   }
 
   // ── Detail page search & filters ──
-  const [detailSearch, setDetailSearch]         = useState('')
-  const [detailSubject, setDetailSubject]       = useState('ALL')
-  const [detailStatus,  setDetailStatus]        = useState('ALL')
-  const [detailMonth,   setDetailMonth]         = useState('ALL')
-  const [detailPage, setDetailPage]             = useState(1)
+  const [detailSearch, setDetailSearch] = useState('')
+  const [detailSubject, setDetailSubject] = useState('ALL')
+  const [detailStatus, setDetailStatus] = useState('ALL')
+  const [detailMonth, setDetailMonth] = useState('ALL')
+  const [detailPage, setDetailPage] = useState(1)
   const [detailExportOpen, setDetailExportOpen] = useState(false)
   const detailExportRef = useRef(null)
   const itemsPerPage = 10
@@ -289,7 +289,470 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
   }, [])
 
   const handleDetailExport = (type) => {
-    alert(`Exporting ${student.name}'s absence history as ${type}... (Mock)`)
+    if (type === 'Excel') {
+      const headers = ['ល.រ', 'កាលបរិច្ឆេទ', 'ម៉ោងសិក្សា', 'មុខវិជ្ជា', 'គ្រូបង្រៀន', 'ប្រភេទ', 'មូលហេតុ']
+      const rows = filtered.map((r, idx) => [
+        idx + 1,
+        `"${r.date || ''}"`,
+        `"${r.time || '-'}"`,
+        `"${r.subject || ''}"`,
+        `"${r.teacher || '-'}"`,
+        `"${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}"`,
+        `"${r.reason || '-'}"`
+      ])
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      const esc = (v) =>
+        String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+      const KH_MONTHS = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
+
+      // ---------- ② Template ----------
+      const issuePlace = 'តាកែវ'; // ទីកន្លែងចេញលិខិត (ប្តូរបានតាមសាលា)
+      const _now = new Date();
+      const issue = {
+        day: kh(String(_now.getDate()).padStart(2, '0')),
+        month: KH_MONTHS[_now.getMonth()],
+        year: kh(_now.getFullYear()),
+      };
+      link.setAttribute('href', url)
+      link.setAttribute('download', `ប្រវត្តិអវត្តមាន_${student.name}_${new Date().toISOString().slice(0, 10)}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } else if (type === 'Word') {
+      const htmlContent = `<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="utf-8">
+  <title>ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស - ${esc(student.name)}</title>
+  <style>
+    /* ទំហំក្រដាស A4 | ទុកគែមឆ្វេង 3cm សម្រាប់ដេរ/ខ្ទាស់ឯកសារ */
+    @page { size: A4 portrait; margin: 2cm 2cm 2cm 3cm; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Khmer OS Siemreap', 'Khmer OS Battambang', 'Noto Sans Khmer', sans-serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: #000;
+    }
+    .muol {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Noto Serif Khmer', serif;
+      font-weight: normal;
+    }
+ 
+    /* ===== ក្បាលលិខិត ===== */
+    .nation { text-align: center; }
+    .kingdom, .motto {
+      font-size: 12pt;
+      line-height: 1.7;
+      white-space: nowrap;
+    }
+    .ornament {
+      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
+      font-size: 20pt;
+      line-height: 1.1;
+    }
+    .issuer {
+      width: 48%;
+      text-align: center;
+      font-size: 11pt;
+      line-height: 1.7;
+      margin-top: 2px;
+    }
+    .issuer-no {
+      font-family: 'Khmer OS Siemreap', 'Noto Sans Khmer', sans-serif;
+      font-size: 10.5pt;
+      margin-top: 4px;
+    }
+ 
+    /* ===== ចំណងជើង ===== */
+    .doc-title {
+      text-align: center;
+      font-size: 13pt;
+      line-height: 1.7;
+      margin: 18px 0 2px 0;
+    }
+    .doc-subtitle {
+      text-align: center;
+      font-size: 10.5pt;
+      margin-bottom: 12px;
+    }
+ 
+    /* ===== ព័ត៌មានសិស្ស ===== */
+    table.info {
+      width: 100%;
+      border-collapse: collapse;
+      border: 0.75pt solid #000;
+      margin-bottom: 12px;
+      font-size: 10.5pt;
+    }
+    table.info td { padding: 3px 8px; vertical-align: top; }
+ 
+    /* ===== តារាងអវត្តមាន ===== */
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      font-size: 10pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 0.75pt solid #000;
+      padding: 4px 6px;
+      vertical-align: middle;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
+    }
+    table.data-table th { text-align: center; font-weight: bold; }
+    table.data-table thead { display: table-header-group; } /* ធ្វើឱ្យក្បាលតារាងលេចឡើងគ្រប់ទំព័រ */
+    table.data-table tr { page-break-inside: avoid; break-inside: avoid; }
+    .text-center { text-align: center; }
+    .absent { font-weight: bold; }
+ 
+    /* ===== ហត្ថលេខា ===== */
+    .sign-area {
+      margin-top: 24px;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .sign-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.3fr;
+      column-gap: 8px;
+      text-align: center;
+    }
+    .sign-date { grid-column: 3; grid-row: 1; font-size: 10.5pt; line-height: 1.7; }
+    .sign-col { grid-row: 2; font-size: 11pt; line-height: 1.7; }
+    .sign-col.c1 { grid-column: 1; }
+    .sign-col.c2 { grid-column: 2; }
+    .sign-col.c3 { grid-column: 3; }
+    .sign-space { height: 2.2cm; }
+    .sign-name { font-size: 10.5pt; }
+  </style>
+</head>
+<body>
+ 
+  <!-- ក្បាលលិខិត៖ ព្រះរាជាណាចក្រ នៅកណ្តាលលើគេ / ស្ថាប័នចេញលិខិត នៅខាងឆ្វេងក្រោម -->
+  <div class="nation">
+    <div class="kingdom muol">ព្រះរាជាណាចក្រកម្ពុជា</div>
+    <div class="motto muol">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
+    <div class="ornament">3</div>
+  </div>
+ 
+  <div class="issuer">
+    <div class="muol">មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
+    <div class="muol">${esc(getCachedSchoolName())}</div>
+    <div class="issuer-no">លេខ៖ ................. ស.ក</div>
+  </div>
+ 
+  <div class="doc-title muol">ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបកំណត់ត្រា៖ ${kh(filtered.length)} លើក</div>
+ 
+  <table class="info">
+    <tr>
+      <td style="width: 40%;"><strong>គោត្តនាម-នាម៖</strong> ${esc(student.name)}</td>
+      <td style="width: 30%;"><strong>អត្តលេខ៖</strong> ${esc(student.studentId)}</td>
+      <td style="width: 30%;"><strong>ថ្នាក់ទី៖</strong> ${esc(student.class)}</td>
+    </tr>
+    <tr>
+      <td><strong>គ្មានច្បាប់ (ល្មើសវិន័យ)៖</strong> <span class="absent">${kh(absentCount)} ថ្ងៃ</span></td>
+      <td><strong>មានច្បាប់៖</strong> ${kh(leaveCount)} ថ្ងៃ</td>
+      <td><strong>ម៉ោងខកខានសរុប៖</strong> ${kh(totalSessions)} ម៉ោង</td>
+    </tr>
+    <tr>
+      <td colspan="2"><strong>ស្ថានភាពវិន័យ៖</strong> ${esc(statusInfo.label)}</td>
+      <td><strong>កាលបរិច្ឆេទចេញ៖</strong> ${issue.day} ${issue.month} ${issue.year}</td>
+    </tr>
+  </table>
+ 
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 6%;">ល.រ</th>
+        <th style="width: 15%;">កាលបរិច្ឆេទ</th>
+        <th style="width: 13%;">ម៉ោងសិក្សា</th>
+        <th style="width: 17%;">មុខវិជ្ជា</th>
+        <th style="width: 17%;">គ្រូបង្រៀន</th>
+        <th style="width: 12%;">ប្រភេទ</th>
+        <th style="width: 20%;">មូលហេតុ</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filtered.length > 0 ? filtered.map((r, idx) => `
+        <tr>
+          <td class="text-center">${kh(idx + 1)}</td>
+          <td class="text-center">${esc(kh(r.date || ''))}</td>
+          <td class="text-center">${esc(kh(r.time || '-'))}</td>
+          <td>${esc(r.subject || '')}</td>
+          <td>${esc(r.teacher || '-')}</td>
+          <td class="text-center ${r.status === 'LEAVE' ? '' : 'absent'}">${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}</td>
+          <td>${esc(r.reason || '-')}</td>
+        </tr>
+      `).join('') : `
+        <tr>
+          <td colspan="7" class="text-center" style="padding: 16px;">មិនមានកំណត់ត្រាអវត្តមានទេ</td>
+        </tr>
+      `}
+    </tbody>
+  </table>
+ 
+  <!-- ហត្ថលេខា៖ កាលបរិច្ឆេទនៅខាងស្តាំ / អ្នកធំនៅខាងឆ្វេង / អ្នករៀបចំនៅខាងស្តាំ -->
+  <div class="sign-area">
+    <div class="sign-grid">
+      <div class="sign-date">
+        <div>ថ្ងៃ........ ខែ........ ឆ្នាំ........ ព.ស ២៥........</div>
+        <div>${issuePlace}, ថ្ងៃទី${issue.day} ខែ${issue.month} ឆ្នាំ${issue.year}</div>
+      </div>
+ 
+      <div class="sign-col c1">
+        <div class="muol">បានឃើញ និងឯកភាព</div>
+        <div class="muol">នាយកសាលា</div>
+        <div class="sign-space"></div>
+        <div class="sign-name">ឈ្មោះ ......................</div>
+      </div>
+ 
+      <div class="sign-col c2">
+        <div class="muol">បានឃើញ និងឯកភាព</div>
+        <div class="muol">គ្រូបន្ទុកថ្នាក់</div>
+        <div class="sign-space"></div>
+        <div class="sign-name">ឈ្មោះ ......................</div>
+      </div>
+ 
+      <div class="sign-col c3">
+        <div>&nbsp;</div>
+        <div class="muol">អ្នករៀបចំរបាយការណ៍</div>
+        <div class="sign-space"></div>
+        <div class="sign-name">ឈ្មោះ ......................</div>
+      </div>
+    </div>
+  </div>
+ 
+</body>
+</html>`;
+
+      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `ប្រវត្តិអវត្តមាន_${student.name}_${new Date().toISOString().slice(0, 10)}.doc`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } else {
+      // PDF / Print (Official Cambodian Administrative Standard: A4 Portrait, Margin 2cm)
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) {
+        alert('សូមអនុញ្ញាត Popup ក្នុង Browser ដើម្បីបើកផ្ទាំងបោះពុម្ព')
+        return
+      }
+      printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស - ${student.name}</title>
+  <style>
+    @page { size: A4 portrait; margin: 2.0cm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif;
+      font-size: 10pt;
+      color: #000000;
+      margin: 0;
+      padding: 0;
+      line-height: 1.5;
+    }
+    .header-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+    }
+    .school-title {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      line-height: 1.5;
+      color: #000000;
+      text-align: center;
+    }
+    .kingdom-box {
+      text-align: center;
+      line-height: 1.5;
+    }
+    .kingdom {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      font-weight: bold;
+      color: #000000;
+    }
+    .motto {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      color: #000000;
+    }
+    .ornament {
+      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
+      font-size: 20pt;
+      line-height: 1.2;
+      color: #000000;
+      margin-top: 2px;
+    }
+    .doc-title {
+      text-align: center;
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 14pt;
+      font-weight: bold;
+      color: #0f172a;
+      margin: 15px 0 4px 0;
+    }
+    .doc-subtitle {
+      text-align: center;
+      font-size: 10pt;
+      color: #000000;
+      margin-bottom: 15px;
+    }
+    .info-card {
+      border: 1px solid #cbd5e1;
+      background-color: #f8fafc;
+      padding: 10px 14px;
+      margin-bottom: 15px;
+      font-size: 10pt;
+      line-height: 1.8;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #94a3b8;
+      padding: 6px 8px;
+    }
+    table.data-table th {
+      background-color: #f1f5f9;
+      font-weight: bold;
+      text-align: center;
+      color: #000000;
+    }
+    .text-center { text-align: center; }
+    .badge-absent { color: #e11d48; font-weight: bold; }
+    .badge-leave { color: #d97706; font-weight: bold; }
+    .footer-sign {
+      margin-top: 30px;
+      display: flex;
+      justify-content: space-between;
+      text-align: center;
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+    .sign-col {
+      width: 200px;
+    }
+    @media print {
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header-grid">
+    <div class="school-title">
+      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
+      <div style="margin-top: 2px;">${getCachedSchoolName()}</div>
+    </div>
+    <div class="kingdom-box">
+      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
+      <div class="motto">ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
+      <div class="ornament">3</div>
+    </div>
+  </div>
+
+  <div class="doc-title">ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបកំណត់ត្រា៖ ${filtered.length} លើក</div>
+
+  <div class="info-card">
+    <div class="info-row">
+      <div><strong>គោត្តនាម-នាម៖</strong> ${student.name}</div>
+      <div><strong>អត្តលេខ៖</strong> ${student.studentId}</div>
+      <div><strong>ថ្នាក់ទី៖</strong> ${student.class}</div>
+    </div>
+    <div class="info-row" style="margin-top: 4px;">
+      <div><strong>គ្មានច្បាប់ (ល្មើសវិន័យ)៖</strong> <span class="badge-absent">${absentCount} ថ្ងៃ</span></div>
+      <div><strong>មានច្បាប់៖</strong> <span class="badge-leave">${leaveCount} ថ្ងៃ</span></div>
+      <div><strong>ម៉ោងខកខានសរុប៖</strong> ${totalSessions} ម៉ោង</div>
+    </div>
+    <div class="info-row" style="margin-top: 4px;">
+      <div><strong>ស្ថានភាពវិន័យ៖</strong> ${statusInfo.label}</div>
+      <div><strong>កាលបរិច្ឆេទចេញ៖</strong> ${new Date().toLocaleDateString('km-KH')}</div>
+    </div>
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 35px;">ល.រ</th>
+        <th style="width: 85px;">កាលបរិច្ឆេទ</th>
+        <th style="width: 75px;">ម៉ោងសិក្សា</th>
+        <th>មុខវិជ្ជា</th>
+        <th>គ្រូបង្រៀន</th>
+        <th style="width: 80px;">ប្រភេទ</th>
+        <th>មូលហេតុ</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filtered.length > 0 ? filtered.map((r, idx) => `
+        <tr>
+          <td class="text-center">${idx + 1}</td>
+          <td class="text-center" style="font-weight: bold; font-family: monospace;">${r.date || ''}</td>
+          <td class="text-center">${r.time || '-'}</td>
+          <td style="font-weight: bold;">${r.subject || ''}</td>
+          <td>${r.teacher || '-'}</td>
+          <td class="text-center ${r.status === 'LEAVE' ? 'badge-leave' : 'badge-absent'}">
+            ${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}
+          </td>
+          <td>${r.reason || '-'}</td>
+        </tr>
+      `).join('') : `
+        <tr>
+          <td colspan="7" class="text-center" style="padding: 20px; color: #94a3b8;">មិនមានកំណត់ត្រាអវត្តមានទេ</td>
+        </tr>
+      `}
+    </tbody>
+  </table>
+
+  <div class="footer-sign">
+    <div class="sign-col">
+      <br>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">នាយកសាលា</div>
+    </div>
+    <div class="sign-col">
+      <br>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">គ្រូបន្ទុកថ្នាក់</div>
+    </div>
+    <div class="sign-col" style="width: 250px;">
+      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
+      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 4px;">អ្នករៀបចំរបាយការណ៍</div>
+    </div>
+  </div>
+</body>
+</html>`)
+      printWindow.document.close()
+      setTimeout(() => {
+        printWindow.print()
+      }, 400)
+    }
     setDetailExportOpen(false)
   }
 
@@ -312,7 +775,7 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
   const statusOpts = [
     { id: 'ALL', label: 'គ្រប់ស្ថានភាព' },
     { id: 'ABSENT', label: 'គ្មានច្បាប់' },
-    { id: 'LEAVE',  label: 'មានច្បាប់' },
+    { id: 'LEAVE', label: 'មានច្បាប់' },
   ]
   const monthOpts = [
     { id: 'ALL', label: 'គ្រប់ខែ' },
@@ -327,8 +790,8 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
   // Apply filters
   let filtered = allRecords
   if (detailSubject !== 'ALL') filtered = filtered.filter(r => r.subject === detailSubject)
-  if (detailStatus  !== 'ALL') filtered = filtered.filter(r => r.status  === detailStatus)
-  if (detailMonth   !== 'ALL') filtered = filtered.filter(r => r.date.split('-')[1] === detailMonth)
+  if (detailStatus !== 'ALL') filtered = filtered.filter(r => r.status === detailStatus)
+  if (detailMonth !== 'ALL') filtered = filtered.filter(r => r.date.split('-')[1] === detailMonth)
   if (detailSearch.trim()) {
     const q = detailSearch.toLowerCase()
     filtered = filtered.filter(r =>
@@ -587,9 +1050,9 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
                 </button>
                 {detailExportOpen && (
                   <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2">
-                    <button onClick={() => handleDetailExport('PDF')}   className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileText  size={16} className="text-rose-500    group-hover:scale-110 transition-transform" /> Export as PDF</button>
-                    <button onClick={() => handleDetailExport('Excel')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileCode  size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" /> Export as Excel</button>
-                    <button onClick={() => handleDetailExport('Word')}  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileImage size={16} className="text-blue-500   group-hover:scale-110 transition-transform" /> Export as Word</button>
+                    <button onClick={() => handleDetailExport('PDF')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileText size={16} className="text-rose-500    group-hover:scale-110 transition-transform" /> Export as PDF</button>
+                    <button onClick={() => handleDetailExport('Excel')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileCode size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" /> Export as Excel</button>
+                    <button onClick={() => handleDetailExport('Word')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"><FileImage size={16} className="text-blue-500   group-hover:scale-110 transition-transform" /> Export as Word</button>
                   </div>
                 )}
               </div>
@@ -599,8 +1062,8 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
           {/* Filters */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
             <SearchableDropdown options={subjectOpts} value={detailSubject} onChange={v => { setDetailSubject(v); setDetailPage(1) }} placeholder="ជ្រើសរើសមុខវិជ្ជា" icon={BookOpen} />
-            <SearchableDropdown options={statusOpts}  value={detailStatus}  onChange={v => { setDetailStatus(v);  setDetailPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" />
-            <SearchableDropdown options={monthOpts}   value={detailMonth}   onChange={v => { setDetailMonth(v);   setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
+            <SearchableDropdown options={statusOpts} value={detailStatus} onChange={v => { setDetailStatus(v); setDetailPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" />
+            <SearchableDropdown options={monthOpts} value={detailMonth} onChange={v => { setDetailMonth(v); setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
           </div>
 
           {/* ── Multi-Select Batch Action Bar ── */}
@@ -668,9 +1131,8 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
                 return (
                   <tr
                     key={rec.id || idx}
-                    className={`transition-colors group ${
-                      isSelected ? 'bg-indigo-50/50 hover:bg-indigo-50/70' : 'hover:bg-slate-50/80'
-                    }`}
+                    className={`transition-colors group ${isSelected ? 'bg-indigo-50/50 hover:bg-indigo-50/70' : 'hover:bg-slate-50/80'
+                      }`}
                   >
                     {/* Row Checkbox */}
                     <td className="py-3.5 px-4 text-center">
@@ -829,11 +1291,10 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
                   <button
                     type="button"
                     onClick={() => setEditFormData({ ...editFormData, status: 'ABSENT' })}
-                    className={`py-2 px-3 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      editFormData.status === 'ABSENT'
-                        ? 'bg-white text-rose-600 shadow-sm border border-rose-100'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    className={`py-2 px-3 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 ${editFormData.status === 'ABSENT'
+                      ? 'bg-white text-rose-600 shadow-sm border border-rose-100'
+                      : 'text-slate-500 hover:text-slate-800'
+                      }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
                     គ្មានច្បាប់ (ABSENT)
@@ -841,11 +1302,10 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
                   <button
                     type="button"
                     onClick={() => setEditFormData({ ...editFormData, status: 'LEAVE' })}
-                    className={`py-2 px-3 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      editFormData.status === 'LEAVE'
-                        ? 'bg-white text-amber-600 shadow-sm border border-amber-100'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    className={`py-2 px-3 rounded-lg text-[12px] font-bold transition-all flex items-center justify-center gap-1.5 ${editFormData.status === 'LEAVE'
+                      ? 'bg-white text-amber-600 shadow-sm border border-amber-100'
+                      : 'text-slate-500 hover:text-slate-800'
+                      }`}
                   >
                     <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
                     មានច្បាប់ (LEAVE)
@@ -992,7 +1452,7 @@ export default function AdminStudentAttendance() {
         const parsed = JSON.parse(cached)
         if (Array.isArray(parsed) && parsed.length > 0) return buildStudentSummaries(parsed)
       }
-    } catch (e) {}
+    } catch (e) { }
     return []
   })
   const [loading, setLoading] = useState(false)
@@ -1044,7 +1504,7 @@ export default function AdminStudentAttendance() {
           return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }, ...parsed.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))]
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }]
   })
 
@@ -1057,14 +1517,14 @@ export default function AdminStudentAttendance() {
           setClassOptions([{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }])
         }
       }
-    }).catch(() => {})
+    }).catch(() => { })
   }, [])
 
   const statusFilterOptions = [
     { id: 'ALL', label: 'គ្រប់ស្ថានភាព' },
-    { id: 'danger',  label: 'គ្រោះថ្នាក់ (≥ 15 ថ្ងៃ)' },
+    { id: 'danger', label: 'គ្រោះថ្នាក់ (≥ 15 ថ្ងៃ)' },
     { id: 'warning', label: 'ប្រុងប្រយ័ត្ន (8–14 ថ្ងៃ)' },
-    { id: 'normal',  label: 'ធម្មតា (< 8 ថ្ងៃ)' },
+    { id: 'normal', label: 'ធម្មតា (< 8 ថ្ងៃ)' },
   ]
 
   // Filtering
@@ -1073,9 +1533,9 @@ export default function AdminStudentAttendance() {
   if (filterStatus !== 'ALL') {
     filtered = filtered.filter(s => {
       const info = getStatusInfo(s.total)
-      if (filterStatus === 'danger')  return info.color === 'rose'
+      if (filterStatus === 'danger') return info.color === 'rose'
       if (filterStatus === 'warning') return info.color === 'amber'
-      if (filterStatus === 'normal')  return info.color === 'emerald'
+      if (filterStatus === 'normal') return info.color === 'emerald'
       return true
     })
   }
@@ -1088,7 +1548,7 @@ export default function AdminStudentAttendance() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage))
   const paginatedData = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
-  const dangerCount  = summaries.filter(s => getStatusInfo(s.total).color === 'rose').length
+  const dangerCount = summaries.filter(s => getStatusInfo(s.total).color === 'rose').length
   const warningCount = summaries.filter(s => getStatusInfo(s.total).color === 'amber').length
 
   const handleExport = (type) => {
@@ -1123,7 +1583,7 @@ export default function AdminStudentAttendance() {
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
 <head>
   <meta charset='utf-8'>
-  <title>របាយការណ៍អវត្តមានសិស្ស - វិទ្យាល័យអង្គរកា</title>
+  <title>របាយការណ៍អវត្តមានសិស្ស - ${getCachedSchoolName()}</title>
   <!--[if gte mso 9]>
   <xml>
     <w:WordDocument>
@@ -1134,56 +1594,66 @@ export default function AdminStudentAttendance() {
   </xml>
   <![endif]-->
   <style>
-    @page { size: A4 landscape; margin: 1.5cm; }
-    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1e293b; line-height: 1.5; }
-    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    .header-table td { border: none; padding: 4px; }
-    .kingdom-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; font-weight: bold; color: #1e3a8a; text-align: center; }
-    .motto-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; color: #1e3a8a; text-align: center; }
-    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 15pt; font-weight: bold; color: #0f172a; text-align: center; margin: 15px 0 5px 0; }
-    .doc-subtitle { text-align: center; font-size: 10pt; color: #64748b; margin-bottom: 15px; }
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
-    table.data-table th, table.data-table td { border: 1px solid #94a3b8; padding: 6px 8px; }
-    table.data-table th { background-color: #f1f5f9; font-weight: bold; text-align: center; color: #1e293b; }
+    @page WordSection1 {
+      size: 595.3pt 841.9pt;
+      margin: 2.0cm 2.0cm 2.0cm 2.0cm;
+      mso-header-margin: 36.0pt;
+      mso-footer-margin: 36.0pt;
+      mso-paper-source: 0;
+    }
+    div.WordSection1 { page: WordSection1; }
+    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #000000; line-height: 1.5; margin: 0; padding: 0; }
+    .header-wrap { width: 100%; margin-bottom: 12px; overflow: hidden; }
+    .header-left-col { float: left; width: 46%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; line-height: 1.6; color: #000000; }
+    .header-right-col { float: right; width: 46%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; line-height: 1.6; color: #000000; }
+    .emblem-text { font-family: 'Tacteing', 'Khmer OS Muol Light', serif; font-size: 20pt; text-align: center; line-height: 1.2; color: #000000; margin-top: 2px; }
+    .clear { clear: both; }
+    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 15pt; font-weight: bold; color: #0F172A; text-align: center; margin: 15px 0 4px 0; }
+    .doc-subtitle { text-align: center; font-family: 'Khmer OS Siemreap', sans-serif; font-size: 10pt; color: #000000; margin-bottom: 15px; }
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    table.data-table th, table.data-table td { border: 1px solid #94A3B8; padding: 5px 6px; font-family: 'Khmer OS Siemreap', sans-serif; }
+    table.data-table th { background-color: #F1F5F9; font-weight: bold; text-align: center; color: #1E293B; }
     .text-center { text-align: center; }
-    .footer-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-    .footer-table td { border: none; text-align: center; font-size: 10pt; }
+    .footer-wrap { width: 100%; margin-top: 30px; overflow: hidden; }
+    .footer-left-col { float: left; width: 45%; text-align: center; font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; line-height: 1.6; }
+    .footer-right-col { float: right; width: 50%; text-align: center; font-size: 10pt; line-height: 1.6; font-family: 'Khmer OS Siemreap', sans-serif; }
+    .footer-sign-title { font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 5px; }
   </style>
 </head>
 <body>
-  <table class="header-table">
-    <tr>
-      <td style="width: 50%; vertical-align: top;">
-        <strong>ក្រសួងអប់រំ យុវជន និងកីឡា</strong><br>
-        <strong>មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ</strong><br>
-        <strong>វិទ្យាល័យអង្គរកា</strong>
-      </td>
-      <td style="width: 50%; vertical-align: top;">
-        <div class="kingdom-title">ព្រះរាជាណាចក្រកម្ពុជា</div>
-        <div class="motto-title">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
-      </td>
-    </tr>
-  </table>
+<div class="WordSection1">
+  <div class="header-wrap">
+    <div class="header-left-col">
+      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
+      <div>${getCachedSchoolName()}</div>
+    </div>
+    <div class="header-right-col">
+      <div>ព្រះរាជាណាចក្រកម្ពុជា</div>
+      <div>ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
+      <div class="emblem-text">3</div>
+    </div>
+    <div class="clear"></div>
+  </div>
 
-  <div class="doc-title">របាយការណ៍អវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបចំនួន៖ ${filtered.length} នាក់</div>
+  <div class="doc-title">របាយការណ៍បូកសរុបអវត្តមានសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ ${filterClass !== 'ALL' ? `| ថ្នាក់ទី ${filterClass}` : ''} | សរុបចំនួនសិស្ស៖ ${filtered.length} នាក់</div>
 
   <table class="data-table">
     <thead>
       <tr>
-        <th style="width: 40px;">ល.រ</th>
-        <th style="width: 80px;">អត្តលេខ</th>
-        <th>ឈ្មោះសិស្ស</th>
-        <th style="width: 60px;">ថ្នាក់</th>
-        <th style="width: 100px;">អវត្តមានសរុប (ថ្ងៃ)</th>
-        <th style="width: 110px;">អវត្តមានសរុប (ម៉ោង)</th>
-        <th style="width: 85px;">មានច្បាប់</th>
-        <th style="width: 85px;">គ្មានច្បាប់</th>
-        <th style="width: 110px;">ស្ថានភាព</th>
+        <th style="width: 35px;">ល.រ</th>
+        <th style="width: 75px;">អត្តលេខ</th>
+        <th>គោត្តនាម-នាមសិស្ស</th>
+        <th style="width: 50px;">ថ្នាក់</th>
+        <th style="width: 75px;">សរុប (ថ្ងៃ)</th>
+        <th style="width: 75px;">សរុប (ម៉ោង)</th>
+        <th style="width: 65px;">មានច្បាប់</th>
+        <th style="width: 65px;">គ្មានច្បាប់</th>
+        <th style="width: 85px;">ស្ថានភាព</th>
       </tr>
     </thead>
     <tbody>
-      ${filtered.map((d, idx) => {
+      ${filtered.length > 0 ? filtered.map((d, idx) => {
         const info = getStatusInfo(d.total)
         return `
         <tr>
@@ -1192,28 +1662,32 @@ export default function AdminStudentAttendance() {
           <td style="font-weight: bold;">${d.name}</td>
           <td class="text-center" style="font-weight: bold;">${d.class}</td>
           <td class="text-center">${d.total || 0}</td>
-          <td class="text-center">${d.totalHours !== undefined ? d.totalHours : (d.totalSessions || 0)}</td>
-          <td class="text-center">${d.leave || 0}</td>
-          <td class="text-center">${d.absent || 0}</td>
+          <td class="text-center">${d.totalHours !== undefined ? d.totalHours : (d.totalSessions || 0)} ម៉ោង</td>
+          <td class="text-center" style="color: #D97706; font-weight: bold;">${d.leave || 0}</td>
+          <td class="text-center" style="color: #E11D48; font-weight: bold;">${d.absent || 0}</td>
           <td class="text-center">${info.label}</td>
         </tr>
-      `}).join('')}
+      `}).join('') : `
+        <tr>
+          <td colspan="9" class="text-center" style="padding: 20px; color: #94A3B8;">មិនមានទិន្នន័យអវត្តមានទេ</td>
+        </tr>
+      `}
     </tbody>
   </table>
 
-  <table class="footer-table">
-    <tr>
-      <td style="width: 50%; vertical-align: top;">
-        <br>
-        <strong>បានឃើញ និងឯកភាព</strong><br>
-        នាយកវិទ្យាល័យអង្គរកា
-      </td>
-      <td style="width: 50%; vertical-align: top;">
-        ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
-        <strong>អ្នករៀបចំរបាយការណ៍</strong>
-      </td>
-    </tr>
-  </table>
+  <div class="footer-wrap">
+    <div class="footer-left-col">
+      <div>បានឃើញ និងឯកភាព</div>
+      <div style="margin-top: 4px;">នាយកសាលា</div>
+    </div>
+    <div class="footer-right-col">
+      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
+      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
+      <div class="footer-sign-title">អ្នករៀបចំរបាយការណ៍</div>
+    </div>
+    <div class="clear"></div>
+  </div>
+</div>
 </body>
 </html>`
       const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
@@ -1226,7 +1700,183 @@ export default function AdminStudentAttendance() {
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
     } else {
-      window.print()
+      // PDF / Print (Official Cambodian Administrative Standard: A4 Portrait, Margin 2cm)
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) {
+        alert('សូមអនុញ្ញាត Popup ក្នុង Browser ដើម្បីបើកផ្ទាំងបោះពុម្ព')
+        return
+      }
+      printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>របាយការណ៍បូកសរុបអវត្តមានសិស្ស - ${getCachedSchoolName()}</title>
+  <style>
+    @page { size: A4 portrait; margin: 2.0cm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif;
+      font-size: 10pt;
+      color: #000000;
+      margin: 0;
+      padding: 0;
+      line-height: 1.5;
+    }
+    .header-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+    }
+    .school-title {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      line-height: 1.5;
+      color: #000000;
+      text-align: center;
+    }
+    .kingdom-box {
+      text-align: center;
+      line-height: 1.5;
+    }
+    .kingdom {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      font-weight: bold;
+      color: #000000;
+    }
+    .motto {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      color: #000000;
+    }
+    .ornament {
+      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
+      font-size: 20pt;
+      line-height: 1.2;
+      color: #000000;
+      margin-top: 2px;
+    }
+    .doc-title {
+      text-align: center;
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 15pt;
+      font-weight: bold;
+      color: #0F172A;
+      margin: 15px 0 4px 0;
+    }
+    .doc-subtitle {
+      text-align: center;
+      font-family: 'Khmer OS Siemreap', sans-serif;
+      font-size: 10pt;
+      color: #000000;
+      margin-bottom: 15px;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #94A3B8;
+      padding: 5px 6px;
+    }
+    table.data-table th {
+      background-color: #F1F5F9;
+      font-weight: bold;
+      text-align: center;
+      color: #1E293B;
+    }
+    .text-center { text-align: center; }
+    .badge-absent { color: #E11D48; font-weight: bold; }
+    .badge-leave { color: #D97706; font-weight: bold; }
+    .footer-sign {
+      margin-top: 30px;
+      display: flex;
+      justify-content: space-between;
+      text-align: center;
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+    .sign-col {
+      width: 250px;
+    }
+    @media print {
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header-grid">
+    <div class="school-title">
+      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
+      <div style="margin-top: 2px;">${getCachedSchoolName()}</div>
+    </div>
+    <div class="kingdom-box">
+      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
+      <div class="motto">ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
+      <div class="ornament">3</div>
+    </div>
+  </div>
+
+  <div class="doc-title">របាយការណ៍បូកសរុបអវត្តមានសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ ${filterClass !== 'ALL' ? `| ថ្នាក់ទី ${filterClass}` : ''} | សរុបចំនួនសិស្ស៖ ${filtered.length} នាក់</div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 35px;">ល.រ</th>
+        <th style="width: 75px;">អត្តលេខ</th>
+        <th>គោត្តនាម-នាមសិស្ស</th>
+        <th style="width: 50px;">ថ្នាក់</th>
+        <th style="width: 75px;">សរុប (ថ្ងៃ)</th>
+        <th style="width: 75px;">សរុប (ម៉ោង)</th>
+        <th style="width: 65px;">មានច្បាប់</th>
+        <th style="width: 65px;">គ្មានច្បាប់</th>
+        <th style="width: 85px;">ស្ថានភាព</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filtered.length > 0 ? filtered.map((d, idx) => {
+        const info = getStatusInfo(d.total)
+        return `
+        <tr>
+          <td class="text-center">${idx + 1}</td>
+          <td class="text-center" style="font-weight: bold; font-family: monospace;">${d.studentId}</td>
+          <td style="font-weight: bold;">${d.name}</td>
+          <td class="text-center" style="font-weight: bold;">${d.class}</td>
+          <td class="text-center">${d.total || 0}</td>
+          <td class="text-center">${d.totalHours !== undefined ? d.totalHours : (d.totalSessions || 0)} ម៉ោង</td>
+          <td class="text-center badge-leave">${d.leave || 0}</td>
+          <td class="text-center badge-absent">${d.absent || 0}</td>
+          <td class="text-center">${info.label}</td>
+        </tr>
+      `}).join('') : `
+        <tr>
+          <td colspan="9" class="text-center" style="padding: 20px; color: #94A3B8;">មិនមានទិន្នន័យអវត្តមានទេ</td>
+        </tr>
+      `}
+    </tbody>
+  </table>
+
+  <div class="footer-sign">
+    <div class="sign-col">
+      <br>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">នាយកសាលា</div>
+    </div>
+    <div class="sign-col">
+      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
+      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 4px;">អ្នករៀបចំរបាយការណ៍</div>
+    </div>
+  </div>
+</body>
+</html>`)
+      printWindow.document.close()
+      setTimeout(() => {
+        printWindow.print()
+      }, 400)
     }
     setExportOpen(false)
   }
@@ -1369,9 +2019,9 @@ export default function AdminStudentAttendance() {
                 </button>
                 {exportOpen && (
                   <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2">
-                    <button onClick={() => handleExport('PDF')}   className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileText  size={16} className="text-rose-500    group-hover:scale-110 transition-transform" /> Export as PDF</button>
-                    <button onClick={() => handleExport('Excel')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileCode  size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" /> Export as Excel</button>
-                    <button onClick={() => handleExport('Word')}  className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileImage size={16} className="text-blue-500   group-hover:scale-110 transition-transform" /> Export as Word</button>
+                    <button onClick={() => handleExport('PDF')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileText size={16} className="text-rose-500    group-hover:scale-110 transition-transform" /> Export as PDF</button>
+                    <button onClick={() => handleExport('Excel')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileCode size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" /> Export as Excel</button>
+                    <button onClick={() => handleExport('Word')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileImage size={16} className="text-blue-500   group-hover:scale-110 transition-transform" /> Export as Word</button>
                   </div>
                 )}
               </div>
@@ -1380,7 +2030,7 @@ export default function AdminStudentAttendance() {
 
           {/* Filters */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-[520px]">
-            <SearchableDropdown options={classOptions}        value={filterClass}  onChange={(v) => { setFilterClass(v);  setCurrentPage(1) }} placeholder="ជ្រើសរើសថ្នាក់"    icon={Users} />
+            <SearchableDropdown options={classOptions} value={filterClass} onChange={(v) => { setFilterClass(v); setCurrentPage(1) }} placeholder="ជ្រើសរើសថ្នាក់" icon={Users} />
             <SearchableDropdown options={statusFilterOptions} value={filterStatus} onChange={(v) => { setFilterStatus(v); setCurrentPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" />
           </div>
         </div>
@@ -1412,7 +2062,7 @@ export default function AdminStudentAttendance() {
             </thead>
             <tbody className="divide-y divide-slate-50">
               {paginatedData.map((student) => {
-                const info   = getStatusInfo(student.total)
+                const info = getStatusInfo(student.total)
                 const colors = colorMap[info.color]
                 const StatusIcon = info.icon
                 return (

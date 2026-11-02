@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { SearchableDropdown } from '../attendance/AdminStudentAttendance'
 import AdminStudentTrackingDetail from './AdminStudentTrackingDetail'
-import { api } from '../../../utils/api'
+import { api, getCachedSchoolName } from '../../../utils/api'
 
 export default function AdminStudentTracking({ onNavigate }) {
   const [data, setData] = useState(() => {
@@ -201,17 +201,18 @@ export default function AdminStudentTracking({ onNavigate }) {
 
   const handleExport = (type) => {
     if (type === 'Excel') {
-      const headers = ['អត្តលេខ', 'ឈ្មោះសិស្ស', 'ថ្នាក់', 'មានច្បាប់ (ថ្ងៃ)', 'គ្មានច្បាប់ (ថ្ងៃ)', 'សរុបខកខាន (ម៉ោង)', 'ស្ថានភាព', 'លេខទូរស័ព្ទអាណាព្យាបាល']
-      const rows = filteredData.map(d => {
+      const headers = ['ល.រ', 'អត្តលេខ', 'ឈ្មោះសិស្ស', 'ថ្នាក់', 'គ្មានច្បាប់ (ថ្ងៃ)', 'មានច្បាប់ (ថ្ងៃ)', 'សរុបខកខាន (ម៉ោង)', 'ស្ថានភាពវិន័យ', 'លេខទូរស័ព្ទអាណាព្យាបាល']
+      const rows = filteredData.map((d, idx) => {
         const st = getStudentStatus(d)
         const stLabel = st === 'CRITICAL' ? 'ត្រូវហៅអាណាព្យាបាល' : st === 'WARNING' ? 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន' : 'ធម្មតា'
         const totalHrs = d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0))
         return [
+          `"${idx + 1}"`,
           `"${d.studentId || d.id}"`,
           `"${d.name}"`,
           `"${d.class}"`,
-          `"${d.leave || 0}"`,
           `"${d.absent || 0}"`,
+          `"${d.leave || 0}"`,
           `"${totalHrs}"`,
           `"${stLabel}"`,
           `"${d.parentPhone || ''}"`
@@ -228,8 +229,345 @@ export default function AdminStudentTracking({ onNavigate }) {
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
+    } else if (type === 'Word') {
+      const htmlContent = `
+<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+<head>
+  <meta charset='utf-8'>
+  <title>តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស - ${getCachedSchoolName()}</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    @page WordSection1 {
+      size: 595.3pt 841.9pt;
+      margin: 2.0cm 2.0cm 2.0cm 2.0cm;
+      mso-header-margin: 36.0pt;
+      mso-footer-margin: 36.0pt;
+      mso-paper-source: 0;
+    }
+    div.WordSection1 { page: WordSection1; }
+    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #000000; line-height: 1.5; }
+    .header-wrap { width: 100%; margin-bottom: 12px; overflow: hidden; }
+    .header-left-col { float: left; width: 45%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; color: #000000; line-height: 1.7; }
+    .header-right-col { float: right; width: 45%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; color: #000000; line-height: 1.7; }
+    .ornament { font-family: 'Tacteing', 'Khmer OS Muol Light', serif; font-size: 20pt; line-height: 1.2; margin-top: 2px; text-align: center; }
+    .clear { clear: both; }
+    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 15pt; font-weight: bold; color: #0f172a; text-align: center; margin: 15px 0 5px 0; }
+    .doc-subtitle { text-align: center; font-size: 10pt; color: #000000; margin-bottom: 15px; }
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    table.data-table th, table.data-table td { border: 1px solid #94a3b8; padding: 5px 8px; }
+    table.data-table th { background-color: #f1f5f9; font-weight: bold; text-align: center; color: #000000; }
+    .text-center { text-align: center; }
+    .footer-wrap { width: 100%; margin-top: 35px; overflow: hidden; }
+    .footer-left-col { float: left; width: 40%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; color: #000000; line-height: 1.8; }
+    .footer-right-col { float: right; width: 50%; text-align: center; font-size: 10pt; color: #000000; line-height: 1.7; }
+    .footer-sign-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; font-weight: bold; margin-top: 4px; }
+  </style>
+</head>
+<body>
+<div class="WordSection1">
+  <div class="header-wrap">
+    <div class="header-left-col">
+      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
+      <div>${getCachedSchoolName()}</div>
+    </div>
+    <div class="header-right-col">
+      <div>ព្រះរាជាណាចក្រកម្ពុជា</div>
+      <div>ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
+      <div class="ornament">3</div>
+    </div>
+    <div class="clear"></div>
+  </div>
+
+  <div class="doc-title">តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ ${filterClass !== 'ALL' ? `| ថ្នាក់ទី ${filterClass}` : ''} | សរុបចំនួនសិស្ស៖ ${filteredData.length} នាក់</div>
+
+  <p style="font-size:10pt; margin:0 0 10px 0;">
+    <strong>សិស្សសរុប៖</strong> ${filteredData.length} នាក់ &nbsp;&nbsp;
+    <strong>មានអវត្តមាន៖</strong> ${filteredData.filter(s => (Number(s.absent) || 0) > 0 || (Number(s.leave) || 0) > 0).length} នាក់ &nbsp;&nbsp;
+    <strong>ប្រុងប្រយ័ត្ន៖</strong> <span style="color:#b45309; font-weight:bold;">${totalWarning} នាក់</span> &nbsp;&nbsp;
+    <strong>ហៅអាណាព្យាបាល៖</strong> <span style="color:#be123c; font-weight:bold;">${totalCritical} នាក់</span>
+  </p>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 35px;">ល.រ</th>
+        <th style="width: 70px;">អត្តលេខ</th>
+        <th>គោត្តនាម-នាមសិស្ស</th>
+        <th style="width: 50px;">ថ្នាក់</th>
+        <th style="width: 65px;">គ្មានច្បាប់</th>
+        <th style="width: 65px;">មានច្បាប់</th>
+        <th style="width: 75px;">សរុបខកខាន</th>
+        <th style="width: 100px;">ស្ថានភាពវិន័យ</th>
+        <th style="width: 90px;">ទូរស័ព្ទអាណាព្យាបាល</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filteredData.length > 0 ? filteredData.map((d, idx) => {
+        const st = getStudentStatus(d)
+        const stLabel = st === 'CRITICAL' ? 'ត្រូវហៅអាណាព្យាបាល' : st === 'WARNING' ? 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន' : 'ធម្មតា'
+        const totalHrs = d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0))
+        return `
+        <tr>
+          <td class="text-center">${idx + 1}</td>
+          <td class="text-center" style="font-weight: bold;">${d.studentId || d.id}</td>
+          <td style="font-weight: bold;">${d.name}</td>
+          <td class="text-center" style="font-weight: bold;">${d.class}</td>
+          <td class="text-center" style="color: #e11d48; font-weight: bold;">${d.absent || 0}</td>
+          <td class="text-center" style="color: #d97706; font-weight: bold;">${d.leave || 0}</td>
+          <td class="text-center">${totalHrs} ម៉ោង</td>
+          <td class="text-center" style="color: ${st === 'CRITICAL' ? '#be123c' : st === 'WARNING' ? '#b45309' : '#047857'}; font-weight: bold;">${stLabel}</td>
+          <td class="text-center">${d.parentPhone || '-'}</td>
+        </tr>
+      `}).join('') : `
+        <tr>
+          <td colspan="9" class="text-center" style="padding: 20px; color: #94a3b8;">មិនមានទិន្នន័យទេ</td>
+        </tr>
+      `}
+    </tbody>
+  </table>
+
+  <div class="footer-wrap">
+    <div class="footer-left-col">
+      <div>បានឃើញ និងឯកភាព</div>
+      <div>នាយកសាលា</div>
+    </div>
+    <div class="footer-right-col">
+      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
+      <div>${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
+      <div class="footer-sign-title">អ្នករៀបចំរបាយការណ៍</div>
+    </div>
+    <div class="clear"></div>
+  </div>
+</div>
+</body>
+</html>`
+      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `បញ្ជីតាមដានវិន័យសិស្ស_${new Date().toISOString().slice(0, 10)}.doc`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
     } else {
-      window.print()
+      // PDF / Print (Official Cambodian Administrative Standard)
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) {
+        alert('សូមអនុញ្ញាត Popup ក្នុង Browser ដើម្បីបើកផ្ទាំងបោះពុម្ព')
+        return
+      }
+      printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស - ${getCachedSchoolName()}</title>
+  <style>
+    @page { size: A4 portrait; margin: 2.0cm; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif;
+      font-size: 10pt;
+      color: #000000;
+      margin: 0;
+      padding: 0;
+      line-height: 1.5;
+    }
+    .header-grid {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 15px;
+    }
+    .school-title {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      line-height: 1.5;
+      color: #000000;
+      text-align: center;
+    }
+    .kingdom-box {
+      text-align: center;
+      line-height: 1.5;
+    }
+    .kingdom {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      font-weight: bold;
+      color: #000000;
+    }
+    .motto {
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 12pt;
+      color: #000000;
+    }
+    .ornament {
+      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
+      font-size: 20pt;
+      line-height: 1.2;
+      margin-top: 2px;
+      color: #000000;
+    }
+    .doc-title {
+      text-align: center;
+      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+      font-size: 15pt;
+      font-weight: bold;
+      color: #0f172a;
+      margin: 12px 0 4px 0;
+    }
+    .doc-subtitle {
+      text-align: center;
+      font-size: 10pt;
+      color: #000000;
+      margin-bottom: 14px;
+    }
+    .stats-bar {
+      display: flex;
+      justify-content: space-around;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      font-size: 9.5pt;
+    }
+    .stats-item {
+      display: flex;
+      gap: 6px;
+    }
+    .stats-label { color: #475569; font-weight: 500; }
+    .stats-val { font-weight: 700; color: #000000; }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5pt;
+    }
+    table.data-table th, table.data-table td {
+      border: 1px solid #94a3b8;
+      padding: 6px 8px;
+    }
+    table.data-table th {
+      background-color: #f1f5f9;
+      font-weight: bold;
+      text-align: center;
+      color: #000000;
+    }
+    .text-center { text-align: center; }
+    .badge-critical { color: #be123c; font-weight: bold; }
+    .badge-warning { color: #b45309; font-weight: bold; }
+    .badge-normal { color: #047857; font-weight: bold; }
+    .footer-sign {
+      margin-top: 30px;
+      display: flex;
+      justify-content: space-between;
+      text-align: center;
+      font-size: 10pt;
+      page-break-inside: avoid;
+    }
+    .sign-col {
+      width: 250px;
+    }
+    @media print {
+      body { padding: 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom: 15px; padding: 10px 14px; background: #f1f5f9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #cbd5e1;">
+    <span style="font-weight: bold; font-size: 13px; color: #334155;">មើលគំរូមុនពេលបោះពុម្ព ឬរក្សាទុកជា PDF (Print / Save as PDF)</span>
+    <button onclick="window.print()" style="padding: 7px 16px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer;">បោះពុម្ព / រក្សាទុកជា PDF</button>
+  </div>
+
+  <div class="header-grid">
+    <div class="school-title">
+      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
+      <div>${getCachedSchoolName()}</div>
+    </div>
+    <div class="kingdom-box">
+      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
+      <div class="motto">ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
+      <div class="ornament">3</div>
+    </div>
+  </div>
+
+  <div class="doc-title">តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស</div>
+  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ ${filterClass !== 'ALL' ? `| ថ្នាក់ទី ${filterClass}` : ''} | សរុបចំនួនសិស្ស៖ ${filteredData.length} នាក់</div>
+
+  <div class="stats-bar">
+    <div class="stats-item"><span class="stats-label">សិស្សសរុប៖</span> <span class="stats-val">${filteredData.length} នាក់</span></div>
+    <div class="stats-item"><span class="stats-label">មានអវត្តមាន៖</span> <span class="stats-val">${filteredData.filter(s => (Number(s.absent) || 0) > 0 || (Number(s.leave) || 0) > 0).length} នាក់</span></div>
+    <div class="stats-item"><span class="stats-label">ស្ថិតក្នុងការប្រុងប្រយ័ត្ន៖</span> <span class="stats-val" style="color: #b45309;">${totalWarning} នាក់</span></div>
+    <div class="stats-item"><span class="stats-label">ត្រូវហៅអាណាព្យាបាល៖</span> <span class="stats-val" style="color: #be123c;">${totalCritical} នាក់</span></div>
+  </div>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th style="width: 35px;">ល.រ</th>
+        <th style="width: 70px;">អត្តលេខ</th>
+        <th>គោត្តនាម-នាមសិស្ស</th>
+        <th style="width: 50px;">ថ្នាក់</th>
+        <th style="width: 65px;">គ្មានច្បាប់</th>
+        <th style="width: 65px;">មានច្បាប់</th>
+        <th style="width: 75px;">សរុបខកខាន</th>
+        <th style="width: 100px;">ស្ថានភាពវិន័យ</th>
+        <th style="width: 90px;">ទូរស័ព្ទអាណាព្យាបាល</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filteredData.length > 0 ? filteredData.map((d, idx) => {
+        const st = getStudentStatus(d)
+        const stLabel = st === 'CRITICAL' ? 'ត្រូវហៅអាណាព្យាបាល' : st === 'WARNING' ? 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន' : 'ធម្មតា'
+        const badgeClass = st === 'CRITICAL' ? 'badge-critical' : st === 'WARNING' ? 'badge-warning' : 'badge-normal'
+        const totalHrs = d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0))
+        return `
+        <tr>
+          <td class="text-center">${idx + 1}</td>
+          <td class="text-center" style="font-weight: bold; font-family: monospace;">${d.studentId || d.id}</td>
+          <td style="font-weight: bold;">${d.name}</td>
+          <td class="text-center" style="font-weight: bold;">${d.class}</td>
+          <td class="text-center" style="color: #e11d48; font-weight: bold;">${d.absent || 0}</td>
+          <td class="text-center" style="color: #d97706; font-weight: bold;">${d.leave || 0}</td>
+          <td class="text-center">${totalHrs} ម៉ោង</td>
+          <td class="text-center ${badgeClass}">${stLabel}</td>
+          <td class="text-center" style="font-family: monospace;">${d.parentPhone || '-'}</td>
+        </tr>
+      `}).join('') : `
+        <tr>
+          <td colspan="9" class="text-center" style="padding: 20px; color: #94a3b8;">មិនមានទិន្នន័យទេ</td>
+        </tr>
+      `}
+    </tbody>
+  </table>
+
+  <div class="footer-sign">
+    <div class="sign-col">
+      <br>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">នាយកសាលា</div>
+    </div>
+    <div class="sign-col" style="width: 260px;">
+      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
+      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
+      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 4px;">អ្នករៀបចំរបាយការណ៍</div>
+    </div>
+  </div>
+</body>
+</html>`)
+      printWindow.document.close()
+      setTimeout(() => {
+        printWindow.print()
+      }, 400)
     }
     setExportOpen(false)
   }
@@ -343,7 +681,7 @@ export default function AdminStudentTracking({ onNavigate }) {
                   className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full lg:w-auto whitespace-nowrap"
                 >
                   <Download size={15} strokeWidth={2.5} />
-                  <span>នាំចេញ (Export)</span>
+                  <span>នាំចេញ / បោះពុម្ព</span>
                   <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-1 ${exportOpen ? 'rotate-180' : ''}`} />
                 </button>
 
@@ -351,24 +689,24 @@ export default function AdminStudentTracking({ onNavigate }) {
                   <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2">
                     <button
                       onClick={() => handleExport('PDF')}
-                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
                     >
                       <FileText size={16} className="text-rose-500 group-hover:scale-110 transition-transform" />
-                      Export as PDF
+                      បោះពុម្ព / Save as PDF
                     </button>
                     <button
                       onClick={() => handleExport('Excel')}
-                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
                     >
                       <FileCode size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" />
-                      Export as Excel
+                      ទាញយកជា Excel (.csv)
                     </button>
                     <button
                       onClick={() => handleExport('Word')}
-                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group"
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
                     >
                       <FileImage size={16} className="text-blue-500 group-hover:scale-110 transition-transform" />
-                      Export as Word
+                      ទាញយកជា Word (.doc)
                     </button>
                   </div>
                 )}

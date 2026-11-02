@@ -8,12 +8,11 @@ export default function EditBotModal({ isOpen, onClose, onSave, classOptions, bo
     { id: 'inactive', label: 'ផ្អាក (Inactive)' }
   ];
   
-  const globalTokenOptions = globalTokens && globalTokens.length > 0
-    ? globalTokens.map(t => ({ id: t.id, label: `${t.name}${t.isActive ? ' (Active)' : ''}`, isActive: t.isActive }))
-    : [
-        { id: 'gt_1', label: 'Bot សាលាកណ្តាល (Active)', isActive: true },
-        { id: 'gt_2', label: 'Bot បណ្ណាល័យ', isActive: false }
-      ];
+  const globalTokenOptions = (globalTokens || []).map(t => ({
+    id: t.id,
+    label: `${t.name}${t.isActive ? ' (Active)' : ''}`,
+    isActive: t.isActive
+  }));
   
   const filteredClassOptions = [
     { id: 'ALL', label: 'គ្រប់ថ្នាក់ទាំងអស់ (គណៈគ្រប់គ្រងសាលា)' },
@@ -161,7 +160,7 @@ export default function EditBotModal({ isOpen, onClose, onSave, classOptions, bo
                         type="text"
                         value={bot.token}
                         onChange={(e) => setBot({...bot, token: e.target.value})}
-                        placeholder="ឧ. 123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                        placeholder="ឧ. 7123456789:AAHkjl84m0n987e..."
                         className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300 font-mono"
                       />
                     </div>

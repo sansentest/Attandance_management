@@ -123,53 +123,14 @@ export function invalidateFirebaseCache(key = null) {
 }
 
 // ─────────────────────────────────────────────
-// Default Roster Seeding (Runs if students collection is empty)
+// Default Roster Seeding (Removed mock students)
 // ─────────────────────────────────────────────
-export const DEFAULT_ROSTER = {
-  '12A': [
-    { id: 'STU-001', studentId: 'STU-001', name: 'ហ៊ឹម ដារ៉ា', gender: 'M', className: '12A' },
-    { id: 'STU-002', studentId: 'STU-002', name: 'ស្រីណុច វណ្ណី', gender: 'F', className: '12A' },
-    { id: 'STU-005', studentId: 'STU-005', name: 'ចាន់ វុទ្ធី', gender: 'M', className: '12A' },
-    { id: 'S-001',   studentId: 'S-001',   name: 'សាន វ៉ាន់ឌី', gender: 'M', className: '12A' },
-    { id: 'S-004',   studentId: 'S-004',   name: 'ចាន់ ស្រីនី', gender: 'F', className: '12A' },
-    { id: 'S-007',   studentId: 'S-007',   name: 'ហ៊ឹម ចាន់ណា', gender: 'F', className: '12A' },
-    { id: 'S-010',   studentId: 'S-010',   name: 'មាស សុភា', gender: 'F', className: '12A' },
-  ],
-  '12B': [
-    { id: 'STU-003', studentId: 'STU-003', name: 'ជា វិបុល', gender: 'M', className: '12B' },
-    { id: 'S-006',   studentId: 'S-006',   name: 'លី លីហ្សា', gender: 'F', className: '12B' },
-  ],
-  '11A': [
-    { id: 'STU-004', studentId: 'STU-004', name: 'ហេង ឌីណា', gender: 'F', className: '11A' },
-    { id: 'STU-006', studentId: 'STU-006', name: 'ស៊ុន មានី', gender: 'F', className: '11A' },
-    { id: 'S-005',   studentId: 'S-005',   name: 'មាស សំណាង', gender: 'M', className: '11A' },
-  ],
-  '11B': [
-    { id: 'S-002',   studentId: 'S-002',   name: 'សុខ មាន', gender: 'M', className: '11B' },
-    { id: 'S-008',   studentId: 'S-008',   name: 'ឡេង វឌ្ឍនា', gender: 'M', className: '11B' },
-  ],
-};
+export const DEFAULT_ROSTER = {};
 
-// Seed initial student rosters into Firestore if not present
+// Initial student rosters (No mock data auto-seeded)
 export async function seedStudentsIfEmpty() {
-  if (!db) return;
-  try {
-    const snap = await getDocs(query(collection(db, COL_STUDENTS)));
-    if (snap.empty) {
-      console.log('[Firebase] Seeding initial student rosters into Firestore...');
-      const batch = writeBatch(db);
-      Object.entries(DEFAULT_ROSTER).forEach(([className, list]) => {
-        list.forEach(student => {
-          const docRef = doc(db, COL_STUDENTS, `${className}_${student.id}`);
-          batch.set(docRef, { ...student, createdAt: serverTimestamp() });
-        });
-      });
-      await batch.commit();
-      console.log('[Firebase] Student rosters seeded successfully.');
-    }
-  } catch (err) {
-    console.error('[Firebase] Error seeding students:', err);
-  }
+  // Purely dynamic - no mock data seeded
+  return;
 }
 
 // ─────────────────────────────────────────────
@@ -252,8 +213,8 @@ export async function saveAttendanceToFirestore(body) {
           period: periodVal,
           hours: student.hours || hoursMissed,
           time: `${body.startTime || '07:00'} - ${body.endTime || '08:00'}`,
-          subject: body.subject || 'គណិតវិទ្យា',
-          teacher: body.teacher || 'លោកគ្រូ សាន វិបុល',
+          subject: body.subject || '',
+          teacher: body.teacher || '',
           status: student.status,
           reason: student.reason || (student.status === 'LEAVE' ? 'មានច្បាប់ត្រឹមត្រូវ' : 'គ្មានច្បាប់ / គេចម៉ោង'),
           isFullDay: Boolean(student.isFullDay),
@@ -372,41 +333,45 @@ export async function getDailyReportFromFirestore(className = '12A', date = null
     );
     const snap = await getDocs(q);
 
+    const studentRecordsMap = {};
+    snap.forEach(d => {
+      const r = d.data();
+      if (!studentRecordsMap[r.name]) studentRecordsMap[r.name] = [];
+      studentRecordsMap[r.name].push(r);
+    });
+
     const absentStudents = [];
-    const studentStatusMap = {};
     let absentCount = 0;
     let leaveCount = 0;
 
-    snap.forEach(d => {
-      const r = d.data();
-      if (!studentStatusMap[r.name]) {
-        studentStatusMap[r.name] = r.status;
-      } else if (r.status === 'ABSENT') {
-        studentStatusMap[r.name] = 'ABSENT';
+    Object.keys(studentRecordsMap).forEach(name => {
+      const recs = studentRecordsMap[name];
+      const hasUnexcused = recs.some(r => r.status === 'ABSENT');
+      const hasLeave = recs.some(r => r.status === 'LEAVE');
+
+      if (hasUnexcused) {
+        absentCount++;
+        absentStudents.push({ name, status: 'ABSENT' });
+      } else if (hasLeave) {
+        leaveCount++;
+        absentStudents.push({ name, status: 'LEAVE', isFullDay: true });
       }
     });
 
-    Object.keys(studentStatusMap).forEach(name => {
-      absentStudents.push(name);
-      if (studentStatusMap[name] === 'ABSENT') absentCount++;
-      else leaveCount++;
-    });
-
-    let totalStudents = DEFAULT_ROSTER[className]?.length || 7;
+    let totalStudents = 0;
     try {
       const stSnap = await getDocs(query(collection(db, COL_STUDENTS), where('className', '==', className)));
       if (!stSnap.empty) totalStudents = stSnap.size;
-    } catch (e) {}
+    } catch (e) { }
 
-    const totalMissed = absentCount + leaveCount;
-    const presentCount = Math.max(0, totalStudents - totalMissed);
+    const presentCount = Math.max(0, totalStudents - absentCount - leaveCount);
     const rate = totalStudents > 0 ? `${Math.round((presentCount / totalStudents) * 100)}%` : '100%';
 
     return {
       className,
       date: today,
       present: presentCount,
-      absent: totalMissed,
+      absent: absentCount,
       leave: leaveCount,
       totalStudents,
       attendanceRate: rate,
@@ -477,11 +442,11 @@ export async function getWeeklyReportFromFirestore(className = '12A', refDate = 
     const topAbsentStudents = Object.values(studentMap)
       .sort((a, b) => (b.absences + b.leaves) - (a.absences + a.leaves));
 
-    let totalStudents = DEFAULT_ROSTER[className]?.length || 7;
+    let totalStudents = 0;
     try {
       const stSnap = await getDocs(query(collection(db, COL_STUDENTS), where('className', '==', className)));
       if (!stSnap.empty) totalStudents = stSnap.size;
-    } catch (e) {}
+    } catch (e) { }
 
     const totalExpected = Math.max(1, totalStudents * 6);
     const totalMissed = totalAbsences + totalLeaves;
@@ -557,11 +522,11 @@ export async function getMonthlyReportFromFirestore(className = '12A', refDate =
     const topAbsentStudents = Object.values(studentMap)
       .sort((a, b) => (b.absences + b.leaves) - (a.absences + a.leaves));
 
-    let totalStudents = DEFAULT_ROSTER[className]?.length || 7;
+    let totalStudents = 0;
     try {
       const stSnap = await getDocs(query(collection(db, COL_STUDENTS), where('className', '==', className)));
       if (!stSnap.empty) totalStudents = stSnap.size;
-    } catch (e) {}
+    } catch (e) { }
 
     const totalExpected = Math.max(1, totalStudents * 24);
     const totalMissed = totalAbsences + totalLeaves;
@@ -633,11 +598,11 @@ export async function getYearlyReportFromFirestore(className = '12A', refDate = 
     const topAbsentStudents = Object.values(studentMap)
       .sort((a, b) => (b.absences + b.leaves) - (a.absences + a.leaves));
 
-    let totalStudents = DEFAULT_ROSTER[className]?.length || 7;
+    let totalStudents = 0;
     try {
       const stSnap = await getDocs(query(collection(db, COL_STUDENTS), where('className', '==', className)));
       if (!stSnap.empty) totalStudents = stSnap.size;
-    } catch (e) {}
+    } catch (e) { }
 
     const totalExpected = Math.max(1, totalStudents * 200);
     const totalMissed = totalAbsences + totalLeaves;
@@ -766,24 +731,26 @@ export async function getAdminDashboardStatsFromFirestore(force = false) {
     const todayRecords = records.filter(r => r.date === today);
     const todayStudentMap = {};
     todayRecords.forEach(r => {
-      if (!todayStudentMap[r.name]) {
-        todayStudentMap[r.name] = r.status;
-      } else if (r.status === 'ABSENT') {
-        todayStudentMap[r.name] = 'ABSENT';
-      }
+      if (!todayStudentMap[r.name]) todayStudentMap[r.name] = [];
+      todayStudentMap[r.name].push(r);
     });
 
     let todayAbsent = 0;
     let todayLeave = 0;
-    Object.values(todayStudentMap).forEach(st => {
-      if (st === 'ABSENT') todayAbsent++;
-      else todayLeave++;
+    Object.values(todayStudentMap).forEach(recs => {
+      const hasUnexcused = recs.some(r => r.status === 'ABSENT');
+      const hasLeave = recs.some(r => r.status === 'LEAVE');
+      if (hasUnexcused) {
+        todayAbsent++;
+      } else if (hasLeave) {
+        todayLeave++;
+      }
     });
 
     const totalAbsentAllTime = records.filter(r => r.status === 'ABSENT').length;
     const totalLeaveAllTime = records.filter(r => r.status === 'LEAVE').length;
-    const globalRate = totalStudents > 0 
-      ? Math.max(0, Math.round(((totalStudents - (todayAbsent + todayLeave)) / totalStudents) * 100)) 
+    const globalRate = totalStudents > 0
+      ? Math.max(0, Math.round(((totalStudents - (todayAbsent + todayLeave)) / totalStudents) * 100))
       : 100;
 
     // Weekly trend
@@ -1170,8 +1137,11 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
           const hasUnexcused = dayRecs.some(m => m.status === 'ABSENT' || !m.status || m.status === 'LATE');
           const hasLeave = dayRecs.some(m => m.status === 'LEAVE');
 
-          if (hasUnexcused) absentDays += 1;
-          else if (hasLeave) leaveDays += 1;
+          if (hasUnexcused) {
+            absentDays += 1;
+          } else if (hasLeave) {
+            leaveDays += 1;
+          }
         });
 
         trackingList.push({
@@ -1181,7 +1151,7 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
           gender: 'M',
           class: r.class || '12A',
           phone: '',
-          parentPhone: '012 345 678',
+          parentPhone: r.parentPhone || '',
           leave: leaveDays,
           absent: absentDays,
           leaveHours: leaveHours,
@@ -1240,38 +1210,19 @@ export async function saveInvitationLetterToFirestore(letterData) {
 // ─────────────────────────────────────────────
 // 12. Academic Classes & Subjects (Firestore)
 // ─────────────────────────────────────────────
-const DEFAULT_ACADEMIC_CLASSES = [
-  { id: 'c1', name: 'ថ្នាក់ 12A', students: 35, teacher: 'លោកគ្រូ សាន វិបុល' },
-  { id: 'c2', name: 'ថ្នាក់ 12B', students: 32, teacher: 'អ្នកគ្រូ ហេង សុផល' },
-  { id: 'c3', name: 'ថ្នាក់ 11A', students: 40, teacher: 'លោកគ្រូ ចាន់ ណារិន' },
-  { id: 'c4', name: 'ថ្នាក់ 11B', students: 38, teacher: 'អ្នកគ្រូ កែវ សុខា' },
-  { id: 'c5', name: 'ថ្នាក់ 10A', students: 42, teacher: 'លោកគ្រូ ឡុង ពិសិដ្ឋ' },
-  { id: 'c6', name: 'ថ្នាក់ 10B', students: 36, teacher: 'អ្នកគ្រូ ជា ស្រីពៅ' },
-];
-
-const DEFAULT_ACADEMIC_SUBJECTS = [
-  { id: 's1', name: 'គណិតវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-  { id: 's2', name: 'រូបវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-  { id: 's3', name: 'គីមីវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-  { id: 's4', name: 'ជីវវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-  { id: 's5', name: 'អក្សរសាស្ត្រខ្មែរ', type: 'សង្គម' },
-  { id: 's6', name: 'ប្រវត្តិវិទ្យា', type: 'សង្គម' },
-  { id: 's7', name: 'ភាសាអង់គ្លេស', type: 'ភាសាបរទេស' },
-  { id: 's8', name: 'ពលរដ្ឋវិទ្យា', type: 'សង្គម' },
-  { id: 's9', name: 'ព័ត៌មានវិទ្យា', type: 'វិទ្យាសាស្ត្រ' },
-  { id: 's10', name: 'អប់រំកាយ/កីឡា', type: 'ទូទៅ' },
-];
+const DEFAULT_ACADEMIC_CLASSES = [];
+const DEFAULT_ACADEMIC_SUBJECTS = [];
 
 export async function getClassesFromFirestore(force = false) {
   if (!force && _memoryCache.classes.data && (Date.now() - _memoryCache.classes.time < MEMORY_CACHE_TTL_MS)) {
     return _memoryCache.classes.data;
   }
-  if (!db) return DEFAULT_ACADEMIC_CLASSES;
+  if (!db) return [];
   try {
     const q = query(collection(db, COL_CLASSES));
     const snap = await getDocs(q);
 
-    // If empty, auto-seed defaults
+    // If empty, return empty array
     if (snap.empty) {
       _memoryCache.classes.data = [];
       _memoryCache.classes.time = Date.now();
@@ -1305,7 +1256,7 @@ export async function getClassesFromFirestore(force = false) {
     return classes;
   } catch (err) {
     console.error('[Firebase] getClasses error:', err);
-    return _memoryCache.classes.data || DEFAULT_ACADEMIC_CLASSES;
+    return _memoryCache.classes.data || [];
   }
 }
 
@@ -1328,12 +1279,28 @@ export async function saveClassToFirestore(classData) {
   }
 }
 
-export async function deleteClassFromFirestore(classId) {
+export async function deleteClassFromFirestore(classId, className = null) {
   if (!db) return { success: false, error: 'Firebase not configured' };
   try {
-    const docRef = doc(db, COL_CLASSES, classId);
-    await deleteDoc(docRef);
+    if (classId) {
+      const docRef = doc(db, COL_CLASSES, classId);
+      await deleteDoc(docRef);
+    }
     invalidateFirebaseCache('classes');
+
+    // Cascade delete associated timetable document from COL_TIMETABLES (both by classId and className)
+    if (classId) {
+      try {
+        await deleteDoc(doc(db, COL_TIMETABLES, classId));
+      } catch (e) { }
+    }
+    if (className && className !== classId) {
+      try {
+        await deleteDoc(doc(db, COL_TIMETABLES, className));
+      } catch (e) { }
+    }
+    invalidateFirebaseCache('timetables');
+
     return { success: true };
   } catch (err) {
     console.error('[Firebase] deleteClass error:', err);
@@ -1341,16 +1308,28 @@ export async function deleteClassFromFirestore(classId) {
   }
 }
 
+export async function deleteTimetableFromFirestore(classKey) {
+  if (!db || !classKey) return { success: false };
+  try {
+    await deleteDoc(doc(db, COL_TIMETABLES, classKey));
+    invalidateFirebaseCache('timetables');
+    return { success: true };
+  } catch (err) {
+    console.error('[Firebase] deleteTimetable error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+
 export async function getSubjectsFromFirestore(force = false) {
   if (!force && _memoryCache.subjects.data && (Date.now() - _memoryCache.subjects.time < MEMORY_CACHE_TTL_MS)) {
     return _memoryCache.subjects.data;
   }
-  if (!db) return DEFAULT_ACADEMIC_SUBJECTS;
+  if (!db) return [];
   try {
     const q = query(collection(db, COL_SUBJECTS));
     const snap = await getDocs(q);
 
-    // If empty, auto-seed defaults
     if (snap.empty) {
       _memoryCache.subjects.data = [];
       _memoryCache.subjects.time = Date.now();
@@ -1366,7 +1345,7 @@ export async function getSubjectsFromFirestore(force = false) {
     return subjects;
   } catch (err) {
     console.error('[Firebase] getSubjects error:', err);
-    return _memoryCache.subjects.data || DEFAULT_ACADEMIC_SUBJECTS;
+    return _memoryCache.subjects.data || [];
   }
 }
 
@@ -1406,11 +1385,18 @@ export async function deleteSubjectFromFirestore(subjectId) {
 // Users & Permissions Management Functions
 // ─────────────────────────────────────────────
 export const DEFAULT_USERS = [
-  { id: 'USR-001', name: 'San Vandy', username: 'vandy12A', role: 'monitor', class: '12A', status: 'active', lastLogin: '2026-06-30' },
-  { id: 'USR-002', name: 'Sok Mean', username: 'mean11B', role: 'monitor', class: '11B', status: 'active', lastLogin: '2026-06-29' },
-  { id: 'USR-003', name: 'Admin Chhen', username: 'admin_sys', role: 'admin', class: '-', status: 'active', lastLogin: '2026-07-01' },
-  { id: 'USR-004', name: 'Keo Rotha', username: 'rotha10A', role: 'monitor', class: '10A', status: 'inactive', lastLogin: '2026-05-15' },
-  { id: 'USR-005', name: 'Somnang', username: 'somnang1', role: 'monitor', class: '11A', status: 'active', lastLogin: '2026-06-20' },
+  {
+    id: 'USR-ADMIN',
+    username: 'admin',
+    name: 'អ្នកគ្រប់គ្រងប្រព័ន្ធ',
+    role: 'admin',
+    class: 'ALL',
+    status: 'active',
+    email: 'admin@angroka.edu.kh',
+    phone: '012 345 678',
+    password: 'admin123',
+    lastLogin: 'មិនទាន់ចូលប្រើ'
+  }
 ];
 
 export async function getUsersFromFirestore(force = false) {
@@ -1422,22 +1408,26 @@ export async function getUsersFromFirestore(force = false) {
     const q = query(collection(db, COL_USERS));
     const snap = await getDocs(q);
 
-    // If empty, auto-seed defaults
     if (snap.empty) {
-      const batch = writeBatch(db);
-      DEFAULT_USERS.forEach(u => {
-        batch.set(doc(db, COL_USERS, u.id), { ...u, createdAt: serverTimestamp() });
-      });
-      await batch.commit();
-      _memoryCache.users.data = DEFAULT_USERS;
+      const initialAdmin = { ...DEFAULT_USERS[0], updatedAt: serverTimestamp() };
+      saveUserToFirestore(initialAdmin).catch(() => {});
+      _memoryCache.users.data = [initialAdmin];
       _memoryCache.users.time = Date.now();
-      return DEFAULT_USERS;
+      return [initialAdmin];
     }
 
     const users = [];
     snap.forEach(d => {
       users.push({ id: d.id, ...d.data() });
     });
+
+    const hasAdmin = users.some(u => u.role === 'admin' || u.username === 'admin');
+    if (!hasAdmin) {
+      const initialAdmin = { ...DEFAULT_USERS[0], updatedAt: serverTimestamp() };
+      saveUserToFirestore(initialAdmin).catch(() => {});
+      users.unshift(initialAdmin);
+    }
+
     _memoryCache.users.data = users;
     _memoryCache.users.time = Date.now();
     return users;
@@ -1482,60 +1472,7 @@ export async function deleteUserFromFirestore(userId) {
 // ─────────────────────────────────────────────
 // Academic Timetables (កាលវិភាគ) Firestore Engine
 // ─────────────────────────────────────────────
-const DEFAULT_TIMETABLES = {
-  '12A': [
-    // ថ្ងៃច័ន្ទ
-    { id: 't1', day: 'mon', period: 'm1', duration: 2, subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សាន វិបុល', isLibre: false },
-    { id: 't2', day: 'mon', period: 'm3', duration: 1, subject: 'ភាសាខ្មែរ', teacher: 'លោកគ្រូ សុខ ផល្លា', isLibre: false },
-    { id: 't3', day: 'mon', period: 'm4', duration: 1, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ហេង សុផល', isLibre: false },
-    { id: 't4', day: 'mon', period: 'a1', duration: 1, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', isLibre: false },
-    { id: 't5', day: 'mon', period: 'a2', duration: 1, subject: 'ជីវវិទ្យា', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', isLibre: false },
-    { id: 't6', day: 'mon', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃអង្គារ
-    { id: 't7', day: 'tue', period: 'm1', duration: 2, subject: 'ភាសាខ្មែរ', teacher: 'លោកគ្រូ សុខ ផល្លា', isLibre: false },
-    { id: 't8', day: 'tue', period: 'm3', duration: 2, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ហេង សុផល', isLibre: false },
-    { id: 't9', day: 'tue', period: 'a1', duration: 1, subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សាន វិបុល', isLibre: false },
-    { id: 't10', day: 'tue', period: 'a2', duration: 1, subject: 'ភាសាអង់គ្លេស', teacher: 'អ្នកគ្រូ កែវ ធីតា', isLibre: false },
-    { id: 't11', day: 'tue', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃពុធ
-    { id: 't12', day: 'wed', period: 'm1', duration: 2, subject: 'ភាសាអង់គ្លេស', teacher: 'អ្នកគ្រូ កែវ ធីតា', isLibre: false },
-    { id: 't13', day: 'wed', period: 'm3', duration: 2, subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សាន វិបុល', isLibre: false },
-    { id: 't14', day: 'wed', period: 'a1', duration: 1, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', isLibre: false },
-    { id: 't15', day: 'wed', period: 'a2', duration: 1, subject: 'ប្រវត្តិវិទ្យា', teacher: 'លោកគ្រូ ឡុង សារ៉ាត់', isLibre: false },
-    { id: 't16', day: 'wed', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃព្រហស្បតិ៍
-    { id: 't17', day: 'thu', period: 'm1', duration: 2, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ហេង សុផល', isLibre: false },
-    { id: 't18', day: 'thu', period: 'm3', duration: 1, subject: 'ជីវវិទ្យា', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', isLibre: false },
-    { id: 't19', day: 'thu', period: 'm4', duration: 1, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', isLibre: false },
-    { id: 't20', day: 'thu', period: 'a1', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't21', day: 'thu', period: 'a2', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't22', day: 'thu', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃសុក្រ
-    { id: 't23', day: 'fri', period: 'm1', duration: 2, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', isLibre: false },
-    { id: 't24', day: 'fri', period: 'm3', duration: 1, subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សាន វិបុល', isLibre: false },
-    { id: 't25', day: 'fri', period: 'm4', duration: 1, subject: 'ពលរដ្ឋវិទ្យា', teacher: 'អ្នកគ្រូ ស៊ឹម ម៉ានី', isLibre: false },
-    { id: 't26', day: 'fri', period: 'a1', duration: 1, subject: 'ប្រវត្តិវិទ្យា', teacher: 'លោកគ្រូ ឡុង សារ៉ាត់', isLibre: false },
-    { id: 't27', day: 'fri', period: 'a2', duration: 1, subject: 'អប់រំកាយ/កីឡា', teacher: 'លោកគ្រូ ឌី សុវណ្ណ', isLibre: false },
-    { id: 't28', day: 'fri', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃសៅរ៍
-    { id: 't29', day: 'sat', period: 'm1', duration: 2, subject: 'ព័ត៌មានវិទ្យា', teacher: 'លោកគ្រូ ម៉ែន វិចិត្រ', isLibre: false },
-    { id: 't30', day: 'sat', period: 'm3', duration: 1, subject: 'ភាសាខ្មែរ', teacher: 'លោកគ្រូ សុខ ផល្លា', isLibre: false },
-    { id: 't31', day: 'sat', period: 'm4', duration: 1, subject: 'ជីវវិទ្យា', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', isLibre: false },
-    { id: 't32', day: 'sat', period: 'a1', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't33', day: 'sat', period: 'a2', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't34', day: 'sat', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-  ],
-  '12B': [
-    { id: 'tb1', day: 'mon', period: 'm1', duration: 2, subject: 'ភាសាខ្មែរ', teacher: 'លោកគ្រូ សុខ ផល្លា', isLibre: false },
-    { id: 'tb2', day: 'mon', period: 'm3', duration: 2, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ហេង សុផល', isLibre: false },
-    { id: 'tb3', day: 'mon', period: 'a1', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-  ]
-};
+const DEFAULT_TIMETABLES = {};
 
 export async function getTimetablesFromFirestore(classId = null) {
   const now = Date.now();
@@ -1634,63 +1571,86 @@ export async function clearTimetableInFirestore(classId) {
 // ─────────────────────────────────────────────
 // Telegram Bots & Global Settings Firestore Engine
 // ─────────────────────────────────────────────
-const DEFAULT_TELEGRAM_BOTS = [
-  { id: 'BOT-001', class: '12A', name: 'Bot ថ្នាក់ ១២A', token: '123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', chatId: '-1001234567890', status: 'active', notifyOnAttendance: true, lastUpdated: '2026-07-01' },
-  { id: 'BOT-002', class: '12B', name: 'Bot ថ្នាក់ ១២B', token: '987654321:XYZ-DEF1234ghIkl-zyx57W2v1u123ew22', chatId: '-1009876543210', status: 'active', notifyOnAttendance: true, lastUpdated: '2026-06-25' },
-  { id: 'BOT-003', class: '11A', name: 'Bot ថ្នាក់ ១១A', token: '555555555:QWE-DEF1234ghIkl-zyx57W2v1u123ew33', chatId: '-1005555555555', status: 'inactive', notifyOnAttendance: true, lastUpdated: '2026-05-10' },
-];
+export const DEFAULT_TELEGRAM_BOTS = [];
+export const DEFAULT_GLOBAL_TOKENS = [];
 
-const DEFAULT_GLOBAL_TOKENS = [
-  { id: 'gt_1', token: '123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', name: 'Bot សាលាកណ្តាល', isActive: true },
-  { id: 'gt_2', token: '987654321:XYZ-UVW9876abCde-rqp98L4m0n987ew22', name: 'Bot បណ្ណាល័យ', isActive: false }
-];
+export const isDummyTelegramToken = (tokenObj) => {
+  if (!tokenObj) return false;
+  const tok = tokenObj.token || '';
+  const id = tokenObj.id || '';
+  const name = tokenObj.name || '';
+  if (id === 'gt_1' || id === 'gt_2') return true;
+  if (tok.includes('123456789:ABC') || tok.includes('987654321:XYZ') || tok.includes('555555555:QWE')) return true;
+  if ((name === 'Bot សាលាកណ្តាល' || name === 'Bot បណ្ណាល័យ') && (tok.includes('123456789') || tok.includes('987654321') || !tok)) return true;
+  return false;
+};
 
-export async function getTelegramBotsFromFirestore() {
+export const isDummyTelegramBot = (bot) => {
+  if (!bot) return false;
+  const tok = bot.token || '';
+  const id = bot.id || '';
+  const name = bot.name || '';
+  if (id === 'BOT-001' || id === 'BOT-002') return true;
+  if (tok.includes('123456789:ABC') || tok.includes('987654321:XYZ') || tok.includes('555555555:QWE')) return true;
+  if ((name === 'Bot សាលាកណ្តាល' || name === 'Bot បណ្ណាល័យ') && (tok.includes('123456789') || tok.includes('987654321') || !tok)) return true;
+  return false;
+};
+
+export async function getTelegramBotsFromFirestore(force = false) {
   const now = Date.now();
-  if (_memoryCache.telegramBots.data && (now - _memoryCache.telegramBots.time) < MEMORY_CACHE_TTL_MS) {
-    return _memoryCache.telegramBots.data;
+  if (!force && _memoryCache.telegramBots.data && (now - _memoryCache.telegramBots.time) < MEMORY_CACHE_TTL_MS) {
+    return _memoryCache.telegramBots.data.filter(b => !isDummyTelegramBot(b));
   }
 
-  if (!db) return DEFAULT_TELEGRAM_BOTS;
+  if (!db) return [];
 
   try {
     const colRef = collection(db, COL_TELEGRAM_BOTS);
     const snap = await getDocs(colRef);
 
     if (snap.empty) {
-      console.log('[Firebase] Seeding initial telegram bots...');
-      const batch = writeBatch(db);
-      DEFAULT_TELEGRAM_BOTS.forEach(b => {
-        batch.set(doc(db, COL_TELEGRAM_BOTS, b.id), { ...b, createdAt: serverTimestamp() });
-      });
-      await batch.commit();
-      _memoryCache.telegramBots.data = DEFAULT_TELEGRAM_BOTS;
+      _memoryCache.telegramBots.data = [];
       _memoryCache.telegramBots.time = Date.now();
-      return DEFAULT_TELEGRAM_BOTS;
+      return [];
     }
 
     const bots = [];
+    const dummyDocRefs = [];
     snap.forEach(d => {
-      bots.push({ id: d.id, ...d.data() });
+      const bData = { ...d.data(), id: d.id, docId: d.id };
+      if (isDummyTelegramBot(bData)) {
+        dummyDocRefs.push(d.ref);
+      } else {
+        bots.push(bData);
+      }
     });
+
+    if (dummyDocRefs.length > 0) {
+      try {
+        const batch = writeBatch(db);
+        dummyDocRefs.forEach(ref => batch.delete(ref));
+        await batch.commit();
+      } catch (e) { }
+    }
 
     _memoryCache.telegramBots.data = bots;
     _memoryCache.telegramBots.time = Date.now();
     return bots;
   } catch (err) {
     console.error('[Firebase] getTelegramBots error:', err);
-    return _memoryCache.telegramBots.data || DEFAULT_TELEGRAM_BOTS;
+    return (_memoryCache.telegramBots.data || []).filter(b => !isDummyTelegramBot(b));
   }
 }
 
 export async function saveTelegramBotToFirestore(botData) {
   if (!db) return { success: false, error: 'Firebase not configured' };
   try {
-    const docId = botData.id || `BOT-${String(Date.now()).slice(-4)}`;
+    const docId = botData.docId || botData.id || `BOT-${String(Date.now()).slice(-4)}`;
     const docRef = doc(db, COL_TELEGRAM_BOTS, docId);
     const payload = {
       ...botData,
       id: docId,
+      docId: docId,
       lastUpdated: new Date().toISOString().split('T')[0],
       updatedAt: serverTimestamp()
     };
@@ -1706,9 +1666,12 @@ export async function saveTelegramBotToFirestore(botData) {
 export async function updateTelegramBotInFirestore(botId, botData) {
   if (!db) return { success: false, error: 'Firebase not configured' };
   try {
-    const docRef = doc(db, COL_TELEGRAM_BOTS, botId);
+    const docId = botData.docId || botId;
+    const docRef = doc(db, COL_TELEGRAM_BOTS, docId);
     const payload = {
       ...botData,
+      id: docId,
+      docId: docId,
       lastUpdated: new Date().toISOString().split('T')[0],
       updatedAt: serverTimestamp()
     };
@@ -1724,8 +1687,21 @@ export async function updateTelegramBotInFirestore(botId, botData) {
 export async function deleteTelegramBotFromFirestore(botId) {
   if (!db) return { success: false, error: 'Firebase not configured' };
   try {
+    // 1. Direct doc delete by ID
     const docRef = doc(db, COL_TELEGRAM_BOTS, botId);
     await deleteDoc(docRef);
+
+    // 2. Query by 'id' or 'docId' field in case Firestore document key differed
+    try {
+      const q = query(collection(db, COL_TELEGRAM_BOTS), where('id', '==', botId));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const batch = writeBatch(db);
+        snap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    } catch (e) { }
+
     invalidateFirebaseCache('telegramBots');
     return { success: true };
   } catch (err) {
@@ -1737,30 +1713,36 @@ export async function deleteTelegramBotFromFirestore(botId) {
 export async function getGlobalTelegramTokensFromFirestore() {
   const now = Date.now();
   if (_memoryCache.telegramGlobalTokens.data && (now - _memoryCache.telegramGlobalTokens.time) < MEMORY_CACHE_TTL_MS) {
-    return _memoryCache.telegramGlobalTokens.data;
+    return _memoryCache.telegramGlobalTokens.data.filter(t => !isDummyTelegramToken(t));
   }
 
-  if (!db) return DEFAULT_GLOBAL_TOKENS;
+  if (!db) return [];
 
   try {
     const docRef = doc(db, COL_SETTINGS, 'telegram');
     const snap = await getDoc(docRef);
 
     if (!snap.exists()) {
-      await setDoc(docRef, { globalTokens: DEFAULT_GLOBAL_TOKENS, updatedAt: serverTimestamp() });
-      _memoryCache.telegramGlobalTokens.data = DEFAULT_GLOBAL_TOKENS;
+      _memoryCache.telegramGlobalTokens.data = [];
       _memoryCache.telegramGlobalTokens.time = Date.now();
-      return DEFAULT_GLOBAL_TOKENS;
+      return [];
     }
 
     const data = snap.data();
-    const tokens = data.globalTokens || DEFAULT_GLOBAL_TOKENS;
+    const rawTokens = Array.isArray(data.globalTokens) ? data.globalTokens : [];
+    const tokens = rawTokens.filter(t => !isDummyTelegramToken(t));
+
+    // If Firestore document still holds dummy tokens, purge them immediately
+    if (tokens.length !== rawTokens.length) {
+      setDoc(docRef, { globalTokens: tokens, updatedAt: serverTimestamp() }, { merge: true }).catch(() => { });
+    }
+
     _memoryCache.telegramGlobalTokens.data = tokens;
     _memoryCache.telegramGlobalTokens.time = Date.now();
     return tokens;
   } catch (err) {
     console.error('[Firebase] getGlobalTelegramTokens error:', err);
-    return _memoryCache.telegramGlobalTokens.data || DEFAULT_GLOBAL_TOKENS;
+    return (_memoryCache.telegramGlobalTokens.data || []).filter(t => !isDummyTelegramToken(t));
   }
 }
 
@@ -2086,7 +2068,7 @@ export async function clearAllAttendanceDataFromFirestore() {
     localStorage.removeItem('attendance_records');
     localStorage.setItem('school_attendance_records', '[]');
     localStorage.setItem('school_attendance_cache', '[]');
-  } catch (e) {}
+  } catch (e) { }
 
   invalidateFirebaseCache('attendance');
   invalidateFirebaseCache('discipline');
@@ -2119,7 +2101,7 @@ export async function clearAllStudentsFromFirestore() {
   try {
     localStorage.removeItem('school_students_cache');
     localStorage.setItem('school_students_cache', '[]');
-  } catch (e) {}
+  } catch (e) { }
 
   invalidateFirebaseCache('students');
   invalidateFirebaseCache('discipline');
@@ -2166,19 +2148,48 @@ export async function wipeAllDatabaseDataFromFirestore() {
       await deleteCollectionDocs(COL_TIMETABLES);
       await deleteCollectionDocs(COL_TELEGRAM_BOTS);
 
+      try {
+        const telSetDoc = doc(db, COL_SETTINGS, 'telegram');
+        await setDoc(telSetDoc, { globalTokens: [], updatedAt: serverTimestamp() }, { merge: true });
+      } catch (e) { }
+
       // Clean non-admin users in users collection
       const uSnap = await getDocs(query(collection(db, COL_USERS)));
+      let hasAdminInDb = false;
       if (!uSnap.empty) {
         const b = writeBatch(db);
         let hasDeletes = false;
         uSnap.docs.forEach(d => {
           const u = d.data();
-          if (u.role !== 'admin' && u.username !== 'admin_sys') {
+          if (u.role !== 'admin' && u.username !== 'admin') {
             b.delete(d.ref);
             hasDeletes = true;
+          } else {
+            hasAdminInDb = true;
           }
         });
         if (hasDeletes) await b.commit();
+      }
+
+      if (!hasAdminInDb) {
+        try {
+          const adminRef = doc(db, COL_USERS, 'USR-ADMIN');
+          await setDoc(adminRef, {
+            id: 'USR-ADMIN',
+            name: 'អ្នកគ្រប់គ្រងប្រព័ន្ធ',
+            username: 'admin',
+            role: 'admin',
+            class: 'ALL',
+            status: 'active',
+            email: 'admin@angroka.edu.kh',
+            phone: '012 345 678',
+            password: 'admin123',
+            lastLogin: 'មិនទាន់ចូលប្រើ',
+            createdAt: serverTimestamp()
+          });
+        } catch (e) {
+          console.warn('[Firebase] wipeAll save admin error:', e);
+        }
       }
     } catch (err) {
       console.error('[Firebase] wipeAllDatabaseData error:', err);
@@ -2227,15 +2238,21 @@ export async function wipeAllDatabaseDataFromFirestore() {
     localStorage.removeItem('school_telegram_bots_cache');
     localStorage.setItem('school_telegram_bots_cache', '[]');
 
+    localStorage.removeItem('school_telegram_global_tokens_cache');
+    localStorage.setItem('school_telegram_global_tokens_cache', '[]');
+
     // Keep only Admin User
     const adminUser = {
-      id: 'USR-001',
-      name: 'Admin Chhen',
-      username: 'admin_sys',
+      id: 'USR-ADMIN',
+      name: 'អ្នកគ្រប់គ្រងប្រព័ន្ធ',
+      username: 'admin',
       role: 'admin',
-      class: '-',
+      class: 'ALL',
       status: 'active',
-      phone: ''
+      email: 'admin@angroka.edu.kh',
+      phone: '012 345 678',
+      password: 'admin123',
+      lastLogin: 'មិនទាន់ចូលប្រើ'
     };
     localStorage.setItem('school_users_cache', JSON.stringify([adminUser]));
   } catch (e) {
@@ -2244,9 +2261,9 @@ export async function wipeAllDatabaseDataFromFirestore() {
 
   invalidateFirebaseCache();
 
-  return { 
-    success: true, 
-    message: 'បានលុបទិន្នន័យសាលាទាំងអស់ចេញស្អាត ១០០% (បញ្ជីសិស្ស, ថ្នាក់, មុខវិជ្ជា, កាលវិភាគ, វត្តមាន, លិខិត) ដោយជោគជ័យ' 
+  return {
+    success: true,
+    message: 'បានលុបទិន្នន័យសាលាទាំងអស់ចេញស្អាត ១០០% (បញ្ជីសិស្ស, ថ្នាក់, មុខវិជ្ជា, កាលវិភាគ, វត្តមាន, លិខិត) ដោយជោគជ័យ'
   };
 }
 

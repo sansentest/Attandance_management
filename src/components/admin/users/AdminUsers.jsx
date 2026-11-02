@@ -31,16 +31,10 @@ export default function AdminUsers() {
       const cached = localStorage.getItem('school_users_cache')
       if (cached) {
         const parsed = JSON.parse(cached)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        if (Array.isArray(parsed)) return parsed
       }
     } catch (e) {}
-    return [
-      { id: 'USR-001', name: 'San Vandy', username: 'vandy12A', role: 'monitor', class: '12A', status: 'active', lastLogin: '2026-06-30' },
-      { id: 'USR-002', name: 'Sok Mean', username: 'mean11B', role: 'monitor', class: '11B', status: 'active', lastLogin: '2026-06-29' },
-      { id: 'USR-003', name: 'Admin Chhen', username: 'admin_sys', role: 'admin', class: '-', status: 'active', lastLogin: '2026-07-01' },
-      { id: 'USR-004', name: 'Keo Rotha', username: 'rotha10A', role: 'monitor', class: '10A', status: 'inactive', lastLogin: '2026-05-15' },
-      { id: 'USR-005', name: 'Somnang', username: 'somnang1', role: 'monitor', class: '11A', status: 'active', lastLogin: '2026-06-20' },
-    ]
+    return []
   })
 
   // Custom Filter States
@@ -397,9 +391,19 @@ export default function AdminUsers() {
                   </td>
                   <td className="py-3 px-6">
                     {user.class !== '-' ? (
-                      <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 font-bold text-[12px]">
-                        {user.class}
-                      </span>
+                      (() => {
+                        const isDeleted = user.role === 'monitor' && classOptions.length > 1 && !classOptions.some(o => o.id === user.class || o.id === (user.class || '').replace('ថ្នាក់ ', '').trim());
+                        return isDeleted ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 text-danger border border-red-200/60 font-bold text-[12px]" title="ថ្នាក់នេះត្រូវបានលុបចេញពីប្រព័ន្ធហើយ">
+                            <span>{user.class}</span>
+                            <span className="text-[10px] bg-danger text-white px-1.5 py-0.5 rounded font-bold">លុប</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 font-bold text-[12px]">
+                            {user.class}
+                          </span>
+                        );
+                      })()
                     ) : (
                       <span className="text-slate-400 font-bold text-[14px]">-</span>
                     )}

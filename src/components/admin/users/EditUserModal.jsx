@@ -27,7 +27,10 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
 
   useEffect(() => {
     if (userData) {
-      setUser(userData);
+      setUser({
+        ...userData,
+        password: ''
+      });
     }
   }, [userData]);
 
@@ -36,7 +39,11 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      if (onSave) await onSave(user);
+      const payload = {
+        ...user,
+        password: user.password && user.password.trim() ? user.password.trim() : (userData?.password || '')
+      };
+      if (onSave) await onSave(payload);
       setShowSuccessAlert(true);
       setTimeout(() => {
         setShowSuccessAlert(false);
@@ -93,7 +100,7 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
                       type="text"
                       value={user.name}
                       onChange={(e) => setUser({...user, name: e.target.value})}
-                      placeholder="ឧ. San Vandy"
+                      placeholder="ឧ. ឈ្មោះពេញ"
                       className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
                     />
                   </div>
@@ -112,7 +119,7 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
                       type="text"
                       value={user.username}
                       onChange={(e) => setUser({...user, username: e.target.value})}
-                      placeholder="ឧ. vandy12A"
+                      placeholder="ឧ. user12a"
                       className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
                     />
                   </div>

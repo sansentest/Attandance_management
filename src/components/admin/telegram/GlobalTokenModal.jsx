@@ -1,24 +1,36 @@
 import { useState, useEffect } from 'react';
-import { Globe, X, Save, Loader2, MessageCircle, Edit, Trash2, CheckCircle, Tag, Copy, Check } from 'lucide-react';
+import { Globe, X, Save, Loader2, MessageCircle, Edit, Trash2, CheckCircle, Tag, Copy, Check, AlertCircle } from 'lucide-react';
+
+const isDummyToken = (t) => {
+  if (!t) return false;
+  const tok = t.token || '';
+  const id = t.id || '';
+  const name = t.name || '';
+  if (id === 'gt_1' || id === 'gt_2') return true;
+  if (tok.includes('123456789:ABC') || tok.includes('987654321:XYZ') || tok.includes('555555555:QWE')) return true;
+  if ((name === 'Bot សាលាកណ្តាល' || name === 'Bot បណ្ណាល័យ') && (tok.includes('123456789') || tok.includes('987654321') || !tok)) return true;
+  return false;
+};
 
 export default function GlobalTokenModal({ isOpen, onClose, onSave, existingTokens = [] }) {
-  const [tokens, setTokens] = useState(() => {
-    if (existingTokens && existingTokens.length > 0) return existingTokens;
-    return [
-      { id: 'gt_1', token: '123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', name: 'Bot សាលាកណ្តាល', isActive: true },
-      { id: 'gt_2', token: '987654321:XYZ-UVW9876abCde-rqp98L4m0n987ew22', name: 'Bot បណ្ណាល័យ', isActive: false }
-    ];
-  });
+  const sanitize = (list) => {
+    if (!Array.isArray(list)) return [];
+    return list.filter(t => !isDummyToken(t));
+  };
+
+  const [tokens, setTokens] = useState(() => sanitize(existingTokens));
   
   const [newToken, setNewToken] = useState('');
   const [newName, setNewName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [tokenToDelete, setTokenToDelete] = useState(null);
+  const [statusMessage, setStatusMessage] = useState('');
 
   useEffect(() => {
-    if (existingTokens && existingTokens.length > 0) {
-      setTokens(existingTokens);
+    if (existingTokens && Array.isArray(existingTokens)) {
+      setTokens(sanitize(existingTokens));
     }
   }, [existingTokens]);
 
@@ -37,14 +49,17 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
     if (editingId) {
       nextTokens = tokens.map(t => t.id === editingId ? { ...t, token: newToken.trim(), name: newName.trim() || 'Bot ថ្មី' } : t);
       setEditingId(null);
+      setStatusMessage('បានកែប្រែ Global Token ដោយជោគជ័យ!');
     } else {
       nextTokens = [{ id: `gt_${Date.now()}`, token: newToken.trim(), name: newName.trim() || 'Bot ថ្មី', isActive: tokens.length === 0 }, ...tokens];
+      setStatusMessage('បានបន្ថែម Global Token ថ្មីដោយជោគជ័យ!');
     }
     setTokens(nextTokens);
     if (onSave) onSave(nextTokens);
     setNewToken('');
     setNewName('');
     setIsSaving(false);
+    setTimeout(() => setStatusMessage(''), 3000);
   };
 
   const handleCancelEdit = () => {
@@ -57,21 +72,29 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
     setEditingId(t.id);
     setNewToken(t.token);
     setNewName(t.name || '');
+    setTokenToDelete(null);
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm("តើអ្នកពិតជាចង់លុប Token នេះមែនទេ?")) {
-      const next = tokens.filter(t => t.id !== id);
-      setTokens(next);
-      if (onSave) onSave(next);
-      if (editingId === id) handleCancelEdit();
+  const handleExecuteDelete = (id) => {
+    const deletedToken = tokens.find(t => t.id === id);
+    let next = tokens.filter(t => t.id !== id);
+    if (deletedToken?.isActive && next.length > 0) {
+      next[0] = { ...next[0], isActive: true };
     }
+    setTokens(next);
+    if (onSave) onSave(next);
+    if (editingId === id) handleCancelEdit();
+    setTokenToDelete(null);
+    setStatusMessage('បានលុប Global Token ដោយជោគជ័យ!');
+    setTimeout(() => setStatusMessage(''), 3000);
   };
 
   const handleSetActive = (id) => {
     const next = tokens.map(t => ({ ...t, isActive: t.id === id }));
     setTokens(next);
     if (onSave) onSave(next);
+    setStatusMessage('បានជ្រើសរើស Token សកម្ម!');
+    setTimeout(() => setStatusMessage(''), 2500);
   };
 
   return (
@@ -86,16 +109,24 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
             </div>
             <div className="flex flex-col pt-0.5">
               <h3 className="text-[16px] font-black text-slate-800 tracking-tight">គ្រប់គ្រង Global Token</h3>
-              <p className="text-[12px] font-medium text-slate-500 mt-0.5">បន្ថែម ឬជ្រើសរើស Token កណ្តាលសម្រាប់ប្រើប្រាស់រួម។</p>
+              <p className="text-[12px] font-medium text-slate-500 mt-0.5">បន្ថែម កែប្រែ ឬលុប Token កណ្តាលសម្រាប់ប្រើប្រាស់រួម។</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors z-10 mt-0.5"
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors z-10 mt-0.5 cursor-pointer"
           >
             <X size={18} strokeWidth={2.5} />
           </button>
         </div>
+
+        {/* Status Toast Banner */}
+        {statusMessage && (
+          <div className="px-6 py-2.5 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2 text-emerald-800 text-[12px] font-bold animate-in fade-in duration-200">
+            <CheckCircle size={15} className="text-emerald-600 shrink-0" />
+            <span>{statusMessage}</span>
+          </div>
+        )}
         
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/30 p-6 flex flex-col gap-6">
@@ -120,7 +151,7 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
                     type="text"
                     value={newName}
                     onChange={(e) => setNewName(e.target.value)}
-                    placeholder="ឧ. Bot សាលាកណ្តាល"
+                    placeholder="ឧ. Bot ប្រចាំសាលា"
                     className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
                   />
                 </div>
@@ -139,7 +170,7 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
                     type="text"
                     value={newToken}
                     onChange={(e) => setNewToken(e.target.value)}
-                    placeholder="ឧ. 123456789:ABC-DEF1234..."
+                    placeholder="ឧ. 7123456789:AAHkjl84m0n987e..."
                     className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300 font-mono"
                   />
                 </div>
@@ -158,7 +189,7 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
               <button 
                 onClick={handleSave}
                 disabled={isSaving || !newToken.trim() || !newName.trim()}
-                className="flex items-center justify-center gap-2 px-6 py-2 rounded-xl font-bold text-[12px] text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-sm hover:shadow hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-2 px-6 py-2 rounded-xl font-bold text-[12px] text-white bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-sm hover:shadow hover:-translate-y-0.5 transition-all disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isSaving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 <span>{editingId ? 'រក្សាទុកការកែប្រែ' : 'បន្ថែម'}</span>
@@ -168,10 +199,15 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
 
           {/* Token List */}
           <div className="flex flex-col gap-3">
-            <h4 className="text-[14px] font-bold text-slate-700">បញ្ជី Global Token ដែលមាន</h4>
+            <h4 className="text-[14px] font-bold text-slate-700 flex items-center justify-between">
+              <span>បញ្ជី Global Token ដែលមាន ({tokens.length})</span>
+              <span className="text-[11px] font-medium text-slate-400">ចុចរង្វង់ដើម្បីកំណត់ Token សកម្ម</span>
+            </h4>
             {tokens.length === 0 ? (
-              <div className="text-center py-8 text-slate-500 text-[13px] bg-white rounded-2xl border border-slate-100">
-                មិនទាន់មាន Global Token នៅឡើយទេ។
+              <div className="text-center py-10 text-slate-400 text-[13px] bg-white rounded-2xl border border-slate-200/60 shadow-2xs flex flex-col items-center justify-center gap-2">
+                <Globe size={28} className="text-slate-300" />
+                <span className="font-bold text-slate-600">មិនទាន់មាន Global Token នៅឡើយទេ</span>
+                <span className="text-[12px] text-slate-400">សូមបញ្ចូលព័ត៌មានខាងលើ រួចចុចប៊ូតុង «បន្ថែម»</span>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -180,7 +216,7 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
                     <div className="flex items-start sm:items-center gap-3">
                       <button 
                         onClick={() => handleSetActive(t.id)}
-                        className={`w-5 h-5 mt-2.5 sm:mt-0 rounded-full border-2 flex items-center justify-center shrink-0 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 ${
+                        className={`w-5 h-5 mt-2.5 sm:mt-0 rounded-full border-2 flex items-center justify-center shrink-0 transition-all focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:ring-offset-2 cursor-pointer ${
                           t.isActive ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 hover:border-emerald-400 bg-white'
                         }`}
                         title={t.isActive ? "កំពុងប្រើ" : "ជ្រើសរើស"}
@@ -201,7 +237,7 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
                           <button
                             type="button"
                             onClick={() => handleCopy(t.token, t.id)}
-                            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
                             title="Copy Token"
                           >
                             {copiedId === t.id ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
@@ -211,20 +247,44 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
                     </div>
                     
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                      <button 
-                        onClick={() => handleEdit(t)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg text-indigo-500 hover:bg-indigo-50 transition-colors"
-                        title="កែប្រែ"
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(t.id)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 transition-colors"
-                        title="លុប"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {tokenToDelete?.id === t.id ? (
+                        <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 p-1.5 rounded-xl animate-in fade-in zoom-in-95 duration-150">
+                          <span className="text-[11px] font-bold text-rose-700 px-1">លុប Token?</span>
+                          <button
+                            type="button"
+                            onClick={() => handleExecuteDelete(t.id)}
+                            className="px-2.5 py-1 rounded-lg bg-rose-600 text-white font-bold text-[11px] hover:bg-rose-700 transition-all shadow-2xs cursor-pointer"
+                          >
+                            យល់ព្រម
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTokenToDelete(null)}
+                            className="px-2 py-1 rounded-lg bg-slate-200 text-slate-700 font-bold text-[11px] hover:bg-slate-300 transition-all cursor-pointer"
+                          >
+                            បោះបង់
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button 
+                            type="button"
+                            onClick={() => handleEdit(t)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-100 transition-all cursor-pointer"
+                            title="កែប្រែ"
+                          >
+                            <Edit size={14} />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => setTokenToDelete(t)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-50 border border-transparent hover:border-rose-100 transition-all cursor-pointer"
+                            title="លុប Token"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -242,7 +302,7 @@ export default function GlobalTokenModal({ isOpen, onClose, onSave, existingToke
           <button 
             type="button"
             onClick={onClose}
-            className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-[13px] shadow-sm hover:shadow transition-all ml-auto"
+            className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-[13px] shadow-sm hover:shadow transition-all ml-auto cursor-pointer"
           >
             រួចរាល់
           </button>

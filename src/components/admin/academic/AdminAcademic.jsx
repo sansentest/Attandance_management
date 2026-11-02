@@ -5,7 +5,7 @@ import {
   ChevronDown, ChevronLeft, ChevronRight, ChevronsRight, FileText, FileCode, User,
   Upload, FileSpreadsheet, ArrowRight, RefreshCw, FileImage, Sparkles
 } from 'lucide-react';
-import { api } from '../../../utils/api';
+import { api, getCachedSchoolName } from '../../../utils/api';
 
 // Helper to generate sequential IDs for classes
 function generateBatchClassIds(existingList, count) {
@@ -163,7 +163,7 @@ const SearchableDropdown = ({ value, onChange, options, placeholder, icon: Icon 
 export default function AdminAcademic({ initialTab = 'classes' }) {
   const [activeTab, setActiveTab] = useState(initialTab); // 'classes' | 'subjects'
 
-  // Mock Data with Cache
+  // Academic Data with Cache
   const [classes, setClasses] = useState(() => {
     try {
       const cached = localStorage.getItem('school_classes_cache');
@@ -396,7 +396,10 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
     if (!deleteConfirm.item) return;
     try {
       if (deleteConfirm.type === 'class') {
-        const res = await api('academic.deleteClass', { classId: deleteConfirm.item.id });
+        const res = await api('academic.deleteClass', { 
+          classId: deleteConfirm.item.id,
+          className: deleteConfirm.item.name 
+        });
         if (res?.success) {
           setClasses(prev => prev.filter(c => c.id !== deleteConfirm.item.id));
           showToast(`បានលុបថ្នាក់ "${deleteConfirm.item.name}"`);
@@ -454,7 +457,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', `បញ្ជីថ្នាក់រៀន_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.csv`);
+        link.setAttribute('download', `បញ្ជីថ្នាក់រៀន_${getCachedSchoolName()}_${new Date().toISOString().slice(0, 10)}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -474,7 +477,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', `បញ្ជីមុខវិជ្ជា_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.csv`);
+        link.setAttribute('download', `បញ្ជីមុខវិជ្ជា_${getCachedSchoolName()}_${new Date().toISOString().slice(0, 10)}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -524,7 +527,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
 <head>
   <meta charset='utf-8'>
-  <title>${title} - វិទ្យាល័យអង្គរកា</title>
+  <title>${title} - ${getCachedSchoolName()}</title>
   <!--[if gte mso 9]>
   <xml>
     <w:WordDocument>
@@ -557,7 +560,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
       <td style="width: 50%; vertical-align: top;">
         <strong>ក្រសួងអប់រំ យុវជន និងកីឡា</strong><br>
         <strong>មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ</strong><br>
-        <strong>វិទ្យាល័យអង្គរកា</strong>
+        <strong>${getCachedSchoolName()}</strong>
       </td>
       <td style="width: 50%; vertical-align: top;">
         <div class="kingdom-title">ព្រះរាជាណាចក្រកម្ពុជា</div>
@@ -579,7 +582,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
       <td style="width: 50%; vertical-align: top;">
         <br>
         <strong>បានឃើញ និងឯកភាព</strong><br>
-        នាយកវិទ្យាល័យអង្គរកា
+        នាយក${getCachedSchoolName()}
       </td>
       <td style="width: 50%; vertical-align: top;">
         ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
@@ -593,7 +596,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);
-      link.setAttribute('download', `${title}_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.doc`);
+      link.setAttribute('download', `${title}_${getCachedSchoolName()}_${new Date().toISOString().slice(0, 10)}.doc`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -650,7 +653,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${title} - វិទ្យាល័យអង្គរកា</title>
+  <title>${title} - ${getCachedSchoolName()}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Moul&display=swap');
     @page { size: A4 portrait; margin: 1.2cm; }
@@ -685,7 +688,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
     <div class="school-title">
       ក្រសួងអប់រំ យុវជន និងកីឡា<br>
       មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ<br>
-      វិទ្យាល័យអង្គរកា
+      ${getCachedSchoolName()}
     </div>
     <div class="kingdom-box">
       <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
@@ -705,7 +708,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
     <div class="sign-col">
       <br>
       <strong>បានឃើញ និងឯកភាព</strong><br>
-      នាយកវិទ្យាល័យអង្គរកា
+      នាយក${getCachedSchoolName()}
     </div>
     <div class="sign-col">
       ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
@@ -728,9 +731,9 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
     if (activeTab === 'classes') {
       const headers = ['កូដថ្នាក់ (ទុកទទេ - ប្រព័ន្ធបង្កើតអូតូ)', 'ឈ្មោះថ្នាក់', 'គ្រូបន្ទុកថ្នាក់', 'ចំនួនសិស្ស'];
       const sample = [
-        ['""', '"12C"', '"លោកគ្រូ សុខ ផល្លា"', '"36"'],
-        ['""', '"11C"', '"អ្នកគ្រូ អ៊ុំ សាវ៉ាន"', '"38"'],
-        ['""', '"10C"', '"លោកគ្រូ ឈុន វឌ្ឍនៈ"', '"40"']
+        ['""', '"12C"', '"ឈ្មោះគ្រូបន្ទុកថ្នាក់"', '"36"'],
+        ['""', '"11C"', '"ឈ្មោះគ្រូបន្ទុកថ្នាក់"', '"38"'],
+        ['""', '"10C"', '"ឈ្មោះគ្រូបន្ទុកថ្នាក់"', '"40"']
       ];
       const csvContent = '\uFEFF' + [headers.join(','), ...sample.map(r => r.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -858,9 +861,9 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
   const handleLoadDemoImport = () => {
     if (activeTab === 'classes') {
       const demo = [
-        { name: 'ថ្នាក់ 12C', teacher: 'លោកគ្រូ សុខ ផល្លា', students: 36 },
-        { name: 'ថ្នាក់ 11C', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', students: 38 },
-        { name: 'ថ្នាក់ 10C', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', students: 40 }
+        { name: 'ថ្នាក់ 12C', teacher: 'ឈ្មោះគ្រូបន្ទុកថ្នាក់', students: 36 },
+        { name: 'ថ្នាក់ 11C', teacher: 'ឈ្មោះគ្រូបន្ទុកថ្នាក់', students: 38 },
+        { name: 'ថ្នាក់ 10C', teacher: 'ឈ្មោះគ្រូបន្ទុកថ្នាក់', students: 40 }
       ];
       const generatedIds = generateBatchClassIds(classes, demo.length);
       const finalDemo = demo.map((item, idx) => ({
@@ -1471,7 +1474,7 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
               បញ្ជាក់ការលុប{deleteConfirm.type === 'class' ? 'ថ្នាក់រៀន' : 'មុខវិជ្ជា'}
             </h3>
             <p className="text-[13px] text-slate-500 mt-2 leading-relaxed">
-              តើអ្នកពិតជាចង់លុប <span className="font-bold text-slate-800">"{deleteConfirm.item.name}"</span> ចេញពីប្រព័ន្ធមែនទេ? សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។
+              តើអ្នកពិតជាចង់លុប <span className="font-bold text-slate-800">"{deleteConfirm.item.name}"</span> ចេញពីប្រព័ន្ធមែនទេ? {deleteConfirm.type === 'class' ? 'ការលុបថ្នាក់នេះ នឹងជម្រះកាលវិភាគសិក្សាដែលពាក់ព័ន្ធទាំងអស់ចេញពីប្រព័ន្ធដោយស្វ័យប្រវត្តិ។' : 'សកម្មភាពនេះមិនអាចត្រឡប់វិញបានទេ។'}
             </p>
 
             <div className="flex items-center justify-end gap-3 mt-6">

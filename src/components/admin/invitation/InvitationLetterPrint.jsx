@@ -1,4 +1,5 @@
 import { forwardRef } from 'react';
+import { getCachedSchoolName } from '../../../utils/api';
 
 const InvitationLetterPrint = forwardRef(({ selectedStudents, config = {} }, ref) => {
   
@@ -63,7 +64,7 @@ const InvitationLetterPrint = forwardRef(({ selectedStudents, config = {} }, ref
 
             {/* School Info - Top Left */}
             <div className="absolute top-4 left-4 text-left">
-              <h3 className="text-[14px] font-moul mb-2">វិទ្យាល័យអង្គរកា</h3>
+              <h3 className="text-[14px] font-moul mb-2">{config.schoolName || getCachedSchoolName()}</h3>
               <p className="text-[13px] font-bold">លេខ <span className="font-normal">{config.reference || '.........................'}</span></p>
             </div>
 
@@ -86,7 +87,7 @@ const InvitationLetterPrint = forwardRef(({ selectedStudents, config = {} }, ref
                 <div className="flex-1">
                   លោក/លោកស្រី .............................................................. ជាអាណាព្យាបាលសិស្សឈ្មោះ <span className="font-bold border-b border-dotted border-black px-4">{student.name}</span>
                   <br />
-                  ភេទ <span className="font-bold border-b border-dotted border-black px-2">{student.gender || 'ប្រុស'}</span> អាយុ ............ ឆ្នាំ រៀនថ្នាក់ទី <span className="font-bold border-b border-dotted border-black px-2">{toKhmerNum(student.class)}</span> នៃវិទ្យាល័យអង្គរកា។
+                  ភេទ <span className="font-bold border-b border-dotted border-black px-2">{student.gender || 'ប្រុស'}</span> អាយុ ............ ឆ្នាំ រៀនថ្នាក់ទី <span className="font-bold border-b border-dotted border-black px-2">{toKhmerNum(student.class)}</span> នៃ{config.schoolName || getCachedSchoolName()}។
                   <br />
                   ទីលំនៅបច្ចុប្បន្នភូមិ................................................ ឃុំ................................................ ស្រុក................................................ ខេត្ត................................................
                   <br />
@@ -111,7 +112,7 @@ const InvitationLetterPrint = forwardRef(({ selectedStudents, config = {} }, ref
               <div className="flex items-start">
                 <div className="w-[120px] shrink-0 font-bold">- ទីកន្លែង :</div>
                 <div className="flex-1">
-                  <span className="font-bold">{config.location || 'វិទ្យាល័យអង្គរកា'}</span>
+                  <span className="font-bold">{config.location || getCachedSchoolName()}</span>
                 </div>
               </div>
               

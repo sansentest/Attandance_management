@@ -89,7 +89,7 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
                       type="text"
                       value={newUser.name}
                       onChange={(e) => setNewUser({...newUser, name: e.target.value})}
-                      placeholder="ឧ. San Vandy"
+                      placeholder="ឧ. ឈ្មោះពេញ"
                       className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
                     />
                   </div>
@@ -108,7 +108,7 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
                       type="text"
                       value={newUser.username}
                       onChange={(e) => setNewUser({...newUser, username: e.target.value})}
-                      placeholder="ឧ. vandy12A"
+                      placeholder="ឧ. user12a"
                       className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
                     />
                   </div>

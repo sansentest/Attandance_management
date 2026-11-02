@@ -6,7 +6,7 @@ import {
   RefreshCw, ChevronDown, FileText, FileCode, FileImage
 } from 'lucide-react'
 import SearchableDropdown from '../../common/SearchableDropdown'
-import { api } from '../../../utils/api'
+import { api, getCachedSchoolName } from '../../../utils/api'
 
 // Function to generate the next unique student ID based on existing students
 function getNextStudentId(studentList) {
@@ -528,9 +528,9 @@ export default function AdminStudents({ onNavigate }) {
 
   const handleLoadDemoExcel = () => {
     const demoRows = [
-      { name: 'ហ៊ឹម ចាន់ណា', gender: 'F', class: '12A', dob: '2005-06-18', phone: '012 998 877', parentName: 'ហ៊ឹម វិចិត្រ', parentPhone: '012 334 455', status: 'active' },
-      { name: 'ឡេង វឌ្ឍនា',  gender: 'M', class: '11B', dob: '2006-09-22', phone: '097 554 433', parentName: 'ឡេង ភិរុណ',  parentPhone: '097 112 233', status: 'active' },
-      { name: 'ជា ធារ៉ា',    gender: 'F', class: '10A', dob: '2007-04-12', phone: '088 667 788', parentName: 'ជា គឹមសួរ',  parentPhone: '088 990 011', status: 'active' },
+      { name: 'សិស្សគំរូ ក', gender: 'F', class: '12A', dob: '2005-06-18', phone: '012 000 001', parentName: 'អាណាព្យាបាល ក', parentPhone: '012 000 002', status: 'active' },
+      { name: 'សិស្សគំរូ ខ',  gender: 'M', class: '11B', dob: '2006-09-22', phone: '097 000 001', parentName: 'អាណាព្យាបាល ខ',  parentPhone: '097 000 002', status: 'active' },
+      { name: 'សិស្សគំរូ គ',    gender: 'F', class: '10A', dob: '2007-04-12', phone: '088 000 001', parentName: 'អាណាព្យាបាល គ',  parentPhone: '088 000 002', status: 'active' },
     ]
     const generatedIds = generateBatchStudentIds(students, demoRows.length)
     const finalDemo = demoRows.map((r, idx) => ({
@@ -610,7 +610,7 @@ export default function AdminStudents({ onNavigate }) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.setAttribute('href', url)
-      link.setAttribute('download', `បញ្ជីសិស្ស_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.csv`)
+      link.setAttribute('download', `បញ្ជីសិស្ស_${getCachedSchoolName()}_${new Date().toISOString().slice(0, 10)}.csv`)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -622,7 +622,7 @@ export default function AdminStudents({ onNavigate }) {
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
 <head>
   <meta charset='utf-8'>
-  <title>បញ្ជីរាយនាមសិស្ស - វិទ្យាល័យអង្គរកា</title>
+  <title>បញ្ជីរាយនាមសិស្ស - ${getCachedSchoolName()}</title>
   <!--[if gte mso 9]>
   <xml>
     <w:WordDocument>
@@ -713,7 +713,7 @@ export default function AdminStudents({ onNavigate }) {
       <td style="width: 50%; vertical-align: top;">
         <strong>ក្រសួងអប់រំ យុវជន និងកីឡា</strong><br>
         <strong>មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ</strong><br>
-        <strong>វិទ្យាល័យអង្គរកា</strong>
+        <strong>${getCachedSchoolName()}</strong>
       </td>
       <td style="width: 50%; vertical-align: top;">
         <div class="kingdom-title">ព្រះរាជាណាចក្រកម្ពុជា</div>
@@ -763,7 +763,7 @@ export default function AdminStudents({ onNavigate }) {
       <td style="width: 50%; vertical-align: top;">
         <br>
         <strong>បានឃើញ និងឯកភាព</strong><br>
-        នាយកវិទ្យាល័យអង្គរកា
+        នាយក${getCachedSchoolName()}
       </td>
       <td style="width: 50%; vertical-align: top;">
         ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
@@ -777,7 +777,7 @@ export default function AdminStudents({ onNavigate }) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.setAttribute('href', url)
-      link.setAttribute('download', `បញ្ជីសិស្ស_វិទ្យាល័យអង្គរកា_${new Date().toISOString().slice(0, 10)}.doc`)
+      link.setAttribute('download', `បញ្ជីសិស្ស_${getCachedSchoolName()}_${new Date().toISOString().slice(0, 10)}.doc`)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -796,7 +796,7 @@ export default function AdminStudents({ onNavigate }) {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>បញ្ជីរាយនាមសិស្ស - វិទ្យាល័យអង្គរកា</title>
+  <title>បញ្ជីរាយនាមសិស្ស - ${getCachedSchoolName()}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Moul&display=swap');
     @page {
@@ -911,7 +911,7 @@ export default function AdminStudents({ onNavigate }) {
     <div class="school-title">
       ក្រសួងអប់រំ យុវជន និងកីឡា<br>
       មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ<br>
-      វិទ្យាល័យអង្គរកា
+      ${getCachedSchoolName()}
     </div>
     <div class="kingdom-box">
       <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
@@ -963,7 +963,7 @@ export default function AdminStudents({ onNavigate }) {
     <div class="sign-col">
       <br>
       <strong>បានឃើញ និងឯកភាព</strong><br>
-      នាយកវិទ្យាល័យអង្គរកា
+      នាយក${getCachedSchoolName()}
     </div>
     <div class="sign-col">
       ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
@@ -989,9 +989,9 @@ export default function AdminStudents({ onNavigate }) {
   const handleDownloadTemplate = () => {
     const headers = ['លេខកូដ (ទុកទទេ - ប្រព័ន្ធបង្កើតអូតូ)', 'ឈ្មោះសិស្ស', 'ភេទ', 'ថ្នាក់', 'ថ្ងៃខែឆ្នាំកំណើត', 'លេខទូរស័ព្ទសិស្ស', 'ឈ្មោះអាណាព្យាបាល', 'លេខទូរស័ព្ទអាណាព្យាបាល', 'ស្ថានភាព']
     const sampleRows = [
-      ['""', '"ហេង ពិសិដ្ឋ"', '"ប្រុស"', '"12A"', '"2005-03-15"', '"012 345 678"', '"ហេង វិបុល"', '"012 345 678"', '"active"'],
-      ['""', '"សួស ធីតា"', '"ស្រី"', '"12B"', '"2005-07-20"', '"098 765 432"', '"សួស ផល្លា"', '"098 765 432"', '"active"'],
-      ['""', '"កែវ រតនៈ"', '"ប្រុស"', '"12A"', '"2005-11-02"', '"011 223 344"', '"កែវ សារុន"', '"011 223 344"', '"active"']
+      ['""', '"សិស្សគំរូ ក"', '"ប្រុស"', '"12A"', '"2005-03-15"', '"012 000 001"', '"អាណាព្យាបាល ក"', '"012 000 002"', '"active"'],
+      ['""', '"សិស្សគំរូ ខ"', '"ស្រី"', '"12B"', '"2005-07-20"', '"098 000 001"', '"អាណាព្យាបាល ខ"', '"098 000 002"', '"active"'],
+      ['""', '"សិស្សគំរូ គ"', '"ប្រុស"', '"12A"', '"2005-11-02"', '"011 000 001"', '"អាណាព្យាបាល គ"', '"011 000 002"', '"active"']
     ]
     const csvContent = '\uFEFF' + [headers.join(','), ...sampleRows.map(r => r.join(','))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -1552,7 +1552,7 @@ export default function AdminStudents({ onNavigate }) {
                     value={formData.name}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                     className="w-full bg-white border border-slate-200 text-slate-800 py-2 px-3 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all shadow-sm"
-                    placeholder="ឧ. សាន វ៉ាន់ឌី"
+                    placeholder="ឧ. ឈ្មោះសិស្ស"
                   />
                 </div>
               </div>

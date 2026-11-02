@@ -279,30 +279,43 @@ export async function dispatchDailySummaryNotification({
           name: r.name,
           status: r.status,
           reason: r.reason,
-          period: r.period
+          period: r.period,
+          isFullDay: Boolean(r.isFullDay),
+          records: [r]
         });
+      } else {
+        const item = absentMap.get(key);
+        item.records.push(r);
+        if (r.status === 'ABSENT') {
+          item.status = 'ABSENT';
+        }
+        if (r.isFullDay) {
+          item.isFullDay = true;
+        }
       }
     });
 
     const absentList = Array.from(absentMap.values());
     const absentCount = absentList.filter(s => s.status === 'ABSENT').length;
-    const leaveCount = absentList.filter(s => s.status === 'LEAVE').length;
+    // បើសិស្សសុំច្បាប់តែម្តង (1 ម៉ោង) មិនរាប់ជាការបាត់បង់វត្តមាន ១ ថ្ងៃឡើយ
+    const leaveDayCount = absentList.filter(s => s.status === 'LEAVE' && (s.isFullDay || s.records.length > 1)).length;
+    const leaveTotalCount = absentList.filter(s => s.status === 'LEAVE').length;
 
     const studentCount = classStudents.length > 0 ? classStudents.length : Math.max(30, absentList.length);
-    const presentCount = Math.max(0, studentCount - absentCount - leaveCount);
+    const presentCount = Math.max(0, studentCount - absentCount - leaveDayCount);
     const rate = studentCount > 0 ? Math.round((presentCount / studentCount) * 100) : 100;
 
     totalSchoolStudents += studentCount;
     totalSchoolPresent += presentCount;
     totalSchoolAbsent += absentCount;
-    totalSchoolLeave += leaveCount;
+    totalSchoolLeave += leaveTotalCount;
 
     classSummaries.push({
       className,
       studentCount,
       presentCount,
       absentCount,
-      leaveCount,
+      leaveCount: leaveTotalCount,
       rate,
       absentList
     });
@@ -322,8 +335,9 @@ export async function dispatchDailySummaryNotification({
     if (c.absentList.length > 0) {
       const details = c.absentList.map(a => {
         const badge = a.status === 'ABSENT' ? '❌' : '📝';
+        const singleNote = (a.status === 'LEAVE' && !a.isFullDay && a.records.length === 1) ? ' (ច្បាប់ ១ ម៉ោង)' : '';
         const reason = a.reason ? ` - ${escapeTelegramHtml(a.reason)}` : '';
-        return `    └ ${badge} ${escapeTelegramHtml(a.name)}${reason}`;
+        return `    └ ${badge} ${escapeTelegramHtml(a.name)}${singleNote}${reason}`;
       }).join('\n');
       return `${header}\n${details}`;
     }

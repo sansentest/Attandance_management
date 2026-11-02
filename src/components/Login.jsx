@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { api, saveSession } from '../utils/api'
+import { useState, useEffect } from 'react'
+import { api, saveSession, getCachedSchoolSettings } from '../utils/api'
 import { User, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react'
 
 export default function Login({ onLogin }) {
@@ -8,6 +8,17 @@ export default function Login({ onLogin }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
+  const [schoolInfo, setSchoolInfo] = useState(() => getCachedSchoolSettings())
+
+  useEffect(() => {
+    let isMounted = true
+    api('settings.get').then(res => {
+      if (isMounted && res?.success && res.data?.school) {
+        setSchoolInfo(res.data.school)
+      }
+    }).catch(() => {})
+    return () => { isMounted = false }
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -28,8 +39,8 @@ export default function Login({ onLogin }) {
     if (!password) {
       errors.password = 'សូមបញ្ចូលពាក្យសម្ងាត់'
       valid = false
-    } else if (password.length < 8) {
-      errors.password = 'ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៨ តួអក្សរ'
+    } else if (password.length < 6) {
+      errors.password = 'ពាក្យសម្ងាត់ត្រូវមានយ៉ាងតិច ៦ តួអក្សរ'
       valid = false
     }
 
@@ -71,12 +82,16 @@ export default function Login({ onLogin }) {
         <div className="flex flex-col items-center mb-8 animate-in slide-in-from-bottom-5 fade-in duration-700">
           <div className="relative mb-6">
             <div className="absolute inset-0 bg-indigo-500 rounded-full blur-xl opacity-20"></div>
-            <div className="w-[100px] h-[100px] rounded-full bg-white flex items-center justify-center shadow-xl shadow-indigo-500/10 p-3 transform transition-transform hover:scale-105 duration-500 border border-slate-50 relative z-10">
-              <img src="https://upload.wikimedia.org/wikipedia/commons/4/4a/Emblem_of_the_Ministry_of_Education%2C_Youth_and_Sport_%28Cambodia%29.svg" alt="MoEYS Logo" className="w-full h-full object-contain drop-shadow-sm" />
+            <div className="w-[100px] h-[100px] rounded-full bg-white flex items-center justify-center shadow-xl shadow-indigo-500/10 p-3 transform transition-transform hover:scale-105 duration-500 border border-slate-50 relative z-10 overflow-hidden">
+              <img 
+                src={schoolInfo?.logo || "https://upload.wikimedia.org/wikipedia/commons/4/4a/Emblem_of_the_Ministry_of_Education%2C_Youth_and_Sport_%28Cambodia%29.svg"} 
+                alt="School Logo" 
+                className="w-full h-full object-contain drop-shadow-sm" 
+              />
             </div>
           </div>
-          <h1 className="text-[32px] font-black text-slate-800 tracking-tight text-center leading-tight">
-            វិទ្យាល័យអង្គរកា
+          <h1 className="text-[30px] sm:text-[32px] font-black text-slate-800 tracking-tight text-center leading-tight">
+            {schoolInfo?.name || 'វិទ្យាល័យអង្គរកា'}
           </h1>
           <p className="text-[15px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-sky-500 mt-2 tracking-wide uppercase">
             ប្រព័ន្ធគ្រប់គ្រងវត្តមានសិស្ស

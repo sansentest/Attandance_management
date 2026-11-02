@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
 import { getSchoolStatus } from '../utils/academicCalendar'
-import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, BarChart3, ChevronRight } from 'lucide-react'
+import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, BarChart3, ChevronRight, AlertCircle } from 'lucide-react'
 
 export default function Dashboard({ session, onLogout, onNavigate }) {
   const [currentPeriod, setCurrentPeriod] = useState(null)
@@ -31,6 +31,9 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
 
   const loadCurrentPeriod = async () => {
     setLoadingPeriod(true)
+    // Sync active classes to detect deleted classes immediately
+    api('academic.getClasses').catch(() => {})
+
     const schoolStatus = getSchoolStatus()
 
     if (!schoolStatus.isOpen) {
@@ -51,10 +54,15 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
     
     if (!result.success) {
       setCurrentPeriod({ noClassMsg: 'មិនអាចទាញយកកាលវិភាគបានទេ។' })
-    } else if (result.data.currentPeriod) {
+    } else if (result.data?.isClassDeleted) {
+      setCurrentPeriod({ noClassMsg: result.data.noClassMsg || `ថ្នាក់ ${className} ត្រូវបានលុបចេញពីប្រព័ន្ធហើយ`, isClassDeleted: true })
+    } else if (result.data?.currentPeriod) {
       setCurrentPeriod({ period: result.data.currentPeriod })
     } else {
-      setCurrentPeriod({ noClassMsg: `ពេលនេះគ្មានម៉ោងសិក្សាទេ។` })
+      setCurrentPeriod({ 
+        noClassMsg: result.data?.noClassMsg || 'ពេលនេះគ្មានម៉ោងសិក្សាទេ។',
+        subtitle: result.data?.subtitle || ''
+      })
     }
     setLoadingPeriod(false)
   }
@@ -145,7 +153,7 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
                 <Crown size={13} className="text-yellow-300" fill="currentColor" /> ប្រធានថ្នាក់
               </span>
               <span className="flex items-center gap-1 bg-white/20 backdrop-blur-md text-white border border-white/30 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-semibold shadow-xs">
-                <GraduationCap size={13} className="text-sky-200" fill="currentColor" /> ថ្នាក់ {session.className}
+                <GraduationCap size={13} className="text-sky-200" fill="currentColor" /> {session.className ? (session.className.startsWith('ថ្នាក់') ? session.className : `ថ្នាក់ ${session.className}`) : 'មិនទាន់មានថ្នាក់'}
               </span>
             </div>
           </div>
@@ -166,7 +174,7 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
                   <Crown size={14} className="text-yellow-300" fill="currentColor" /> ប្រធានថ្នាក់
                 </span>
                 <span className="flex items-center gap-1.5 bg-white/20 backdrop-blur-md text-white border border-white/30 px-3 py-1.5 rounded-full text-[13px] font-bold shadow-sm">
-                  <GraduationCap size={14} className="text-sky-200" fill="currentColor" /> ថ្នាក់ {session.className}
+                  <GraduationCap size={14} className="text-sky-200" fill="currentColor" /> {session.className ? (session.className.startsWith('ថ្នាក់') ? session.className : `ថ្នាក់ ${session.className}`) : 'មិនទាន់មានថ្នាក់'}
                 </span>
               </div>
             </div>
@@ -240,14 +248,26 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
                         {currentPeriod.period.periodLabel || `ម៉ោងទី ${currentPeriod.period.period}`}
                       </span>
                     </div>
-                    <span className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold text-success bg-success/10 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full">
-                      <span className="w-1.5 h-1.5 rounded-full bg-success animate-[pulse-dot_2s_infinite]"></span> កំពុងសិក្សា
-                    </span>
+                    {currentPeriod.period.isUpcoming ? (
+                      <span className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full">
+                        ម៉ោងបន្ទាប់
+                      </span>
+                    ) : currentPeriod.period.isLibre ? (
+                      <span className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full">
+                        ម៉ោងទំនេរ
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-bold text-success bg-success/10 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full">
+                        <span className="w-1.5 h-1.5 rounded-full bg-success animate-[pulse-dot_2s_infinite]"></span> កំពុងសិក្សា
+                      </span>
+                    )}
                   </div>
-                  <div className="text-[20px] sm:text-[24px] lg:text-[28px] font-extrabold mb-1 text-slate-800 tracking-tight mt-1 sm:mt-2">{currentPeriod.period.subject}</div>
+                  <div className="text-[20px] sm:text-[24px] lg:text-[28px] font-extrabold mb-1 text-slate-800 tracking-tight mt-1 sm:mt-2">
+                    {currentPeriod.period.subject || (currentPeriod.period.isLibre ? 'ម៉ោងទំនេរ' : 'គ្មានមុខវិជ្ជា')}
+                  </div>
                   <div className="text-[13px] sm:text-[14px] lg:text-[15px] text-slate-500 font-medium flex items-center gap-2 mt-1 sm:mt-2 mb-3 sm:mb-4 lg:mb-6">
                     <BookOpen size={15} className="text-slate-400 shrink-0" />
-                    <span className="truncate">{currentPeriod.period.teacher}</span> <span className="text-slate-300">•</span> <span className="shrink-0">{currentPeriod.period.startTime} – {currentPeriod.period.endTime}</span>
+                    <span className="truncate">{currentPeriod.period.teacher || (currentPeriod.period.isLibre ? '—' : 'មិនទាន់មានគ្រូ')}</span> <span className="text-slate-300">•</span> <span className="shrink-0">{currentPeriod.period.startTime} – {currentPeriod.period.endTime}</span>
                   </div>
                 </div>
                 <button 
@@ -259,10 +279,34 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
               </div>
             ) : (
               <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-8 text-center text-slate-400 flex flex-col items-center justify-center h-full min-h-[140px] sm:min-h-[200px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-slate-50 rounded-full flex items-center justify-center mb-2 sm:mb-3">
-                  <CalendarOff size={24} className="sm:w-8 sm:h-8 text-slate-300" />
+                <div className={`w-12 h-12 sm:w-16 sm:h-16 ${currentPeriod?.isClassDeleted ? 'bg-red-50 text-danger' : 'bg-slate-50 text-slate-300'} rounded-full flex items-center justify-center mb-2 sm:mb-3`}>
+                  {currentPeriod?.isClassDeleted ? (
+                    <AlertCircle size={24} className="sm:w-8 sm:h-8 text-danger" />
+                  ) : (
+                    <CalendarOff size={24} className="sm:w-8 sm:h-8 text-slate-300" />
+                  )}
                 </div>
-                <div className="text-[13px] sm:text-[15px] lg:text-[18px] font-medium">{currentPeriod?.noClassMsg}</div>
+                <div className={`text-[13px] sm:text-[15px] lg:text-[17px] font-bold ${currentPeriod?.isClassDeleted ? 'text-danger' : 'text-slate-700'}`}>
+                  {currentPeriod?.noClassMsg || 'ពេលនេះគ្មានម៉ោងសិក្សាទេ'}
+                </div>
+                {currentPeriod?.subtitle && (
+                  <p className="text-[12px] sm:text-[13px] text-slate-500 mt-1 max-w-md">
+                    {currentPeriod.subtitle}
+                  </p>
+                )}
+                {currentPeriod?.isClassDeleted ? (
+                  <p className="text-[12px] sm:text-[13px] text-slate-400 mt-1 max-w-md">
+                    ថ្នាក់នេះត្រូវបានលុបចេញពីប្រព័ន្ធដោយ Admin។ សូមទាក់ទង Admin ដើម្បីកំណត់ថ្នាក់ថ្មី។
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => onNavigate('attendance')}
+                    className="mt-3 text-[12px] sm:text-[13px] font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50/80 hover:bg-indigo-100 px-3.5 py-1.5 rounded-lg border border-indigo-200/60 transition-all flex items-center gap-1.5 shadow-sm"
+                  >
+                    <CheckSquare size={14} className="shrink-0 text-indigo-500" />
+                    <span>មើលកាលវិភាគ / ស្រង់វត្តមានថ្ងៃនេះ</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -420,16 +464,21 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-5 w-full">
                   {stats.absentStudents.map((item, i) => {
                     const name = typeof item === 'string' ? item : (item.name || 'សិស្ស');
+                    const isLeave = typeof item === 'object' && item.status === 'LEAVE';
                     return (
                       <div key={i} className="flex items-center justify-between p-2 sm:p-3 lg:p-4 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all rounded-lg sm:rounded-xl border border-slate-100/50">
                         <div className="flex items-center gap-2.5 sm:gap-3 lg:gap-4 min-w-0">
-                          <div className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-full bg-red-50 text-danger flex items-center justify-center shrink-0 border border-red-100 font-bold text-[12px] sm:text-sm">
+                          <div className={`w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center shrink-0 border font-bold text-[12px] sm:text-sm ${
+                            isLeave ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-red-50 text-danger border-red-100'
+                          }`}>
                             <User size={14} className="sm:w-4 sm:h-4 lg:w-5 lg:h-5" />
                           </div>
                           <span className="text-[13px] sm:text-[15px] lg:text-[16px] font-bold text-slate-700 truncate">{name}</span>
                         </div>
-                        <span className="text-[10px] sm:text-xs font-bold text-danger bg-red-50 border border-red-100 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md shrink-0">
-                          អវត្តមាន
+                        <span className={`text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md shrink-0 border ${
+                          isLeave ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-danger bg-red-50 border-red-100'
+                        }`}>
+                          {isLeave ? 'ច្បាប់' : 'អវត្តមាន'}
                         </span>
                       </div>
                     );

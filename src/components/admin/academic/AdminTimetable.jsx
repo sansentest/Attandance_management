@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { api } from '../../../utils/api'
+import { api, getCachedSchoolName } from '../../../utils/api'
 import {
   Clock, BookOpen, Users, Plus, Edit, Trash2,
   Printer, Download, X, Save, CheckCircle2,
   GraduationCap, AlertTriangle, Copy, User,
   Calendar, Coffee, Sparkles, Check, ArrowRight,
   Sun, Sunset, Upload, FileSpreadsheet,
-  ChevronDown, FileText, FileCode, FileImage
+  ChevronDown, FileText, FileCode, FileImage,
+  Layers, Clipboard
 } from 'lucide-react'
 import SearchableDropdown from '../../common/SearchableDropdown'
 
@@ -122,70 +123,10 @@ const getSubjectTheme = (subject) => {
 }
 
 // Homeroom Teachers Map (គ្រូបន្ទុកថ្នាក់)
-const CLASS_HOMEROOM_MAP = {
-  '12A': 'លោកគ្រូ សាន វិបុល',
-  '12B': 'អ្នកគ្រូ ហេង សុផល',
-  '11A': 'លោកគ្រូ ចាន់ ណារិន',
-  '11B': 'អ្នកគ្រូ កែវ សុខា',
-  '10A': 'លោកគ្រូ ឡុង ពិសិដ្ឋ',
-  '10B': 'អ្នកគ្រូ ជា ស្រីពៅ',
-}
+const CLASS_HOMEROOM_MAP = {}
 
-// Initial Mock Schedule for Class 12A
-const INITIAL_TIMETABLE = {
-  '12A': [
-    // ថ្ងៃច័ន្ទ
-    { id: 't1', day: 'mon', period: 'm1', duration: 2, subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សាន វិបុល', isLibre: false },
-    { id: 't2', day: 'mon', period: 'm3', duration: 1, subject: 'ភាសាខ្មែរ', teacher: 'លោកគ្រូ សុខ ផល្លា', isLibre: false },
-    { id: 't3', day: 'mon', period: 'm4', duration: 1, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ហេង សុផល', isLibre: false },
-    { id: 't4', day: 'mon', period: 'a1', duration: 2, subject: 'ជីវវិទ្យា', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', isLibre: false },
-    { id: 't5', day: 'mon', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃអង្គារ
-    { id: 't6', day: 'tue', period: 'm1', duration: 2, subject: 'ភាសាខ្មែរ', teacher: 'លោកគ្រូ សុខ ផល្លា', isLibre: false },
-    { id: 't7', day: 'tue', period: 'm3', duration: 1, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ហេង សុផល', isLibre: false },
-    { id: 't8', day: 'tue', period: 'm4', duration: 1, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', isLibre: false },
-    { id: 't9', day: 'tue', period: 'a1', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't10', day: 'tue', period: 'a2', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't11', day: 'tue', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃពុធ
-    { id: 't12', day: 'wed', period: 'm1', duration: 2, subject: 'ភាសាអង់គ្លេស', teacher: 'អ្នកគ្រូ កែវ ធីតា', isLibre: false },
-    { id: 't13', day: 'wed', period: 'm3', duration: 2, subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សាន វិបុល', isLibre: false },
-    { id: 't14', day: 'wed', period: 'a1', duration: 1, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', isLibre: false },
-    { id: 't15', day: 'wed', period: 'a2', duration: 1, subject: 'ប្រវត្តិវិទ្យា', teacher: 'លោកគ្រូ ឡុង សារ៉ាត់', isLibre: false },
-    { id: 't16', day: 'wed', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃព្រហស្បតិ៍
-    { id: 't17', day: 'thu', period: 'm1', duration: 2, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ហេង សុផល', isLibre: false },
-    { id: 't18', day: 'thu', period: 'm3', duration: 1, subject: 'ជីវវិទ្យា', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', isLibre: false },
-    { id: 't19', day: 'thu', period: 'm4', duration: 1, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', isLibre: false },
-    { id: 't20', day: 'thu', period: 'a1', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't21', day: 'thu', period: 'a2', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't22', day: 'thu', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃសុក្រ
-    { id: 't23', day: 'fri', period: 'm1', duration: 2, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ ឈុន វឌ្ឍនៈ', isLibre: false },
-    { id: 't24', day: 'fri', period: 'm3', duration: 1, subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សាន វិបុល', isLibre: false },
-    { id: 't25', day: 'fri', period: 'm4', duration: 1, subject: 'ពលរដ្ឋវិទ្យា', teacher: 'អ្នកគ្រូ ស៊ឹម ម៉ានី', isLibre: false },
-    { id: 't26', day: 'fri', period: 'a1', duration: 1, subject: 'ប្រវត្តិវិទ្យា', teacher: 'លោកគ្រូ ឡុង សារ៉ាត់', isLibre: false },
-    { id: 't27', day: 'fri', period: 'a2', duration: 1, subject: 'អប់រំកាយ/កីឡា', teacher: 'លោកគ្រូ ឌី សុវណ្ណ', isLibre: false },
-    { id: 't28', day: 'fri', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-
-    // ថ្ងៃសៅរ៍
-    { id: 't29', day: 'sat', period: 'm1', duration: 2, subject: 'ព័ត៌មានវិទ្យា', teacher: 'លោកគ្រូ ម៉ែន វិចិត្រ', isLibre: false },
-    { id: 't30', day: 'sat', period: 'm3', duration: 1, subject: 'ភាសាខ្មែរ', teacher: 'លោកគ្រូ សុខ ផល្លា', isLibre: false },
-    { id: 't31', day: 'sat', period: 'm4', duration: 1, subject: 'ជីវវិទ្យា', teacher: 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន', isLibre: false },
-    { id: 't32', day: 'sat', period: 'a1', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't33', day: 'sat', period: 'a2', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-    { id: 't34', day: 'sat', period: 'a3', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-  ],
-  '12B': [
-    { id: 'tb1', day: 'mon', period: 'm1', duration: 2, subject: 'ភាសាខ្មែរ', teacher: 'លោកគ្រូ សុខ ផល្លា', isLibre: false },
-    { id: 'tb2', day: 'mon', period: 'm3', duration: 2, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ហេង សុផល', isLibre: false },
-    { id: 'tb3', day: 'mon', period: 'a1', duration: 1, subject: 'ម៉ោងលីប', teacher: '', isLibre: true },
-  ]
-}
+// Initial Timetable (Empty)
+const INITIAL_TIMETABLE = {}
 
 const CLASS_OPTIONS = [
   { id: '12A', label: 'ថ្នាក់ 12A' },
@@ -196,25 +137,8 @@ const CLASS_OPTIONS = [
   { id: '10B', label: 'ថ្នាក់ 10B' },
 ]
 
-const AVAILABLE_SUBJECTS = [
-  'គណិតវិទ្យា', 'ភាសាខ្មែរ', 'ភាសាអង់គ្លេស', 'រូបវិទ្យា',
-  'គីមីវិទ្យា', 'ជីវវិទ្យា', 'ព័ត៌មានវិទ្យា', 'ប្រវត្តិវិទ្យា',
-  'ពលរដ្ឋវិទ្យា', 'អប់រំកាយ/កីឡា'
-]
-
-// Default teacher assignments per subject
-const DEFAULT_SUBJECT_TEACHERS = {
-  'គណិតវិទ្យា': 'លោកគ្រូ សាន វិបុល',
-  'ភាសាខ្មែរ': 'លោកគ្រូ សុខ ផល្លា',
-  'ភាសាអង់គ្លេស': 'អ្នកគ្រូ កែវ ធីតា',
-  'រូបវិទ្យា': 'អ្នកគ្រូ ហេង សុផល',
-  'គីមីវិទ្យា': 'លោកគ្រូ ឈុន វឌ្ឍនៈ',
-  'ជីវវិទ្យា': 'អ្នកគ្រូ អ៊ុំ សាវ៉ាន',
-  'ព័ត៌មានវិទ្យា': 'លោកគ្រូ ម៉ែន វិចិត្រ',
-  'ប្រវត្តិវិទ្យា': 'លោកគ្រូ ឡុង សារ៉ាត់',
-  'ពលរដ្ឋវិទ្យា': 'អ្នកគ្រូ ស៊ឹម ម៉ានី',
-  'អប់រំកាយ/កីឡា': 'លោកគ្រូ ឌី សុវណ្ណ'
-}
+// Subjects and teachers are loaded dynamically from table subjects (academic.getSubjects)
+const DEFAULT_SUBJECT_TEACHERS = {}
 
 // Check if a candidate slot causes a teacher conflict with another class
 const checkTeacherConflict = (candidateSlot, currentClassId, allTimetableData, excludeSlotId = null) => {
@@ -273,14 +197,107 @@ const checkTeacherConflict = (candidateSlot, currentClassId, allTimetableData, e
 }
 
 // ─────────────────────────────────────────────
+// Subject & Code Mapping for Cambodian High School Timetables
+// ─────────────────────────────────────────────
+const CODE_TO_SUBJECT_MAP = {
+  // Khmer
+  'k': 'ភាសាខ្មែរ', 'kh': 'ភាសាខ្មែរ', 'ខ្មែរ': 'ភាសាខ្មែរ', 'ភាសាខ្មែរ': 'ភាសាខ្មែរ',
+  // Math
+  'm': 'គណិតវិទ្យា', 'math': 'គណិតវិទ្យា', 'គណិត': 'គណិតវិទ្យា', 'គណិតវិទ្យា': 'គណិតវិទ្យា',
+  // Physics
+  'p': 'រូបវិទ្យា', 'phy': 'រូបវិទ្យា', 'រូប': 'រូបវិទ្យា', 'រូបវិទ្យា': 'រូបវិទ្យា',
+  // Chemistry
+  'c': 'គីមីវិទ្យា', 'chem': 'គីមីវិទ្យា', 'គីមី': 'គីមីវិទ្យា', 'គីមីវិទ្យា': 'គីមីវិទ្យា',
+  // Biology
+  'b': 'ជីវវិទ្យា', 'bio': 'ជីវវិទ្យា', 'ជីវ': 'ជីវវិទ្យា', 'ជីវវិទ្យា': 'ជីវវិទ្យា',
+  // History
+  'h': 'ប្រវត្តិវិទ្យា', 'hist': 'ប្រវត្តិវិទ្យា', 'ប្រវត្តិ': 'ប្រវត្តិវិទ្យា', 'ប្រវត្តិវិទ្យា': 'ប្រវត្តិវិទ្យា',
+  // Geography
+  'g': 'ភូមិវិទ្យា', 'geo': 'ភូមិវិទ្យា', 'ភូមិ': 'ភូមិវិទ្យា', 'ភូមិវិទ្យា': 'ភូមិវិទ្យា',
+  // Earth Science
+  'es': 'ផែនដីវិទ្យា', 'earth': 'ផែនដីវិទ្យា', 'ផែនដី': 'ផែនដីវិទ្យា', 'ផែនដីវិទ្យា': 'ផែនដីវិទ្យា',
+  // English / Foreign language
+  'e': 'ភាសាអង់គ្លេស', 'eng': 'ភាសាអង់គ្លេស', 'អង់គ្លេស': 'ភាសាអង់គ្លេស', 'ភាសាអង់គ្លេស': 'ភាសាអង់គ្លេស',
+  'i': 'ភាសាអង់គ្លេស', 'inter': 'ភាសាអង់គ្លេស',
+  // Economics
+  'ec': 'សេដ្ឋកិច្ច', 'econ': 'សេដ្ឋកិច្ច', 'សេដ្ឋកិច្ច': 'សេដ្ឋកិច្ច',
+  // Physical Education / Sports
+  'ed': 'អប់រំកាយ/កីឡា', 'pe': 'អប់រំកាយ/កីឡា', 'កីឡា': 'អប់រំកាយ/កីឡា', 'អប់រំកាយ': 'អប់រំកាយ/កីឡា',
+  // Information Technology
+  'it': 'ព័ត៌មានវិទ្យា', 'ict': 'ព័ត៌មានវិទ្យា', 'info': 'ព័ត៌មានវិទ្យា', 'ព័ត៌មានវិទ្យា': 'ព័ត៌មានវិទ្យា',
+  // Agriculture
+  'ag': 'កសិកម្ម', 'agri': 'កសិកម្ម', 'កសិកម្ម': 'កសិកម្ម',
+  // Civics / Morality
+  'mor': 'ពលរដ្ឋវិទ្យា', 'civ': 'ពលរដ្ឋវិទ្យា', 'ពលរដ្ឋ': 'ពលរដ្ឋវិទ្យា', 'សីលធម៌': 'ពលរដ្ឋវិទ្យា'
+}
+
+// Decode Cell Text to Subject and Teacher
+function decodeTimetableCell(rawText) {
+  if (!rawText) return null
+  const trimmed = String(rawText).trim()
+  if (!trimmed || trimmed === '—' || trimmed === '-' || trimmed === 'X' || trimmed === 'x') {
+    return null
+  }
+  if (trimmed.includes('(ត)')) {
+    return { isContinuation: true }
+  }
+  if (/ម៉ោងលីប|លីប|ទំនេរ/i.test(trimmed)) {
+    return { isLibre: true, subject: 'ម៉ោងលីប', teacher: '—' }
+  }
+
+  let cleanSubj = trimmed
+  let cleanTeacher = ''
+
+  if (trimmed.includes('\n')) {
+    const parts = trimmed.split('\n').map(s => s.trim()).filter(Boolean)
+    cleanSubj = parts[0] || trimmed
+    cleanTeacher = parts[1] || ''
+  } else if (trimmed.includes(' - ')) {
+    const parts = trimmed.split(' - ').map(s => s.trim())
+    cleanSubj = parts[0] || trimmed
+    cleanTeacher = parts[1] || ''
+  } else if (trimmed.includes('(') && trimmed.includes(')')) {
+    const match = trimmed.match(/^([^(]+)\s*\(([^)]+)\)$/)
+    if (match) {
+      cleanSubj = match[1].trim()
+      const inner = match[2].trim()
+      if (!inner.includes('ម៉ោង')) cleanTeacher = inner
+    }
+  }
+
+  cleanSubj = cleanSubj.replace(/\(?[១1២2]\s*ម៉ោង\)?|\[?[១1២2]\s*ម៉ោង\]?/g, '').trim()
+
+  // Match short code: e.g. K3, M1, P1, C1, B1, H1, G2, Es1, E2, Ec1, Ed1, It2, Ag, I1
+  const codeMatch = cleanSubj.match(/^([a-zA-Z]+|\p{Script=Khmer}+)\s*([0-9]+.*)?$/u)
+  if (codeMatch) {
+    const prefix = codeMatch[1].toLowerCase()
+    const numSuffix = codeMatch[2] ? codeMatch[2].trim() : ''
+    if (CODE_TO_SUBJECT_MAP[prefix]) {
+      const fullSubject = CODE_TO_SUBJECT_MAP[prefix]
+      const teacherCode = cleanTeacher || (numSuffix ? `${codeMatch[1].toUpperCase()}${numSuffix}` : (codeMatch[1].length <= 2 ? codeMatch[1].toUpperCase() : ''))
+      return { subject: fullSubject, teacher: teacherCode, isLibre: false }
+    }
+  }
+
+  // Exact or partial match in subject dictionary
+  for (const [key, val] of Object.entries(CODE_TO_SUBJECT_MAP)) {
+    if (cleanSubj.toLowerCase().includes(key)) {
+      return { subject: val, teacher: cleanTeacher, isLibre: false }
+    }
+  }
+
+  return { subject: cleanSubj, teacher: cleanTeacher, isLibre: false }
+}
+
+// ─────────────────────────────────────────────
 // Robust CSV / TSV Parser
 // ─────────────────────────────────────────────
 function parseCSV(text) {
   const clean = text.replace(/^\uFEFF/, '').trim()
   const lines = clean.split(/\r?\n/).filter(line => line.trim().length > 0)
-  if (lines.length <= 1) return []
+  if (lines.length === 0) return []
 
-  const delimiter = clean.indexOf('\t') !== -1 && clean.indexOf('\t') < clean.indexOf('\n') ? '\t' : ','
+  const delimiter = clean.indexOf('\t') !== -1 && (clean.indexOf(',') === -1 || clean.indexOf('\t') < clean.indexOf(',')) ? '\t' : ','
 
   const parseLine = (line) => {
     const result = []
@@ -307,12 +324,423 @@ function parseCSV(text) {
   }
 
   const rows = []
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = 0; i < lines.length; i++) {
     const cols = parseLine(lines[i])
-    if (cols.every(c => !c)) continue
-    rows.push(cols)
+    if (cols.some(c => Boolean(c && c.trim()))) {
+      rows.push(cols)
+    }
   }
   return rows
+}
+
+// ─────────────────────────────────────────────
+// Parse XML Spreadsheet 2003 with Multi-Worksheet Support
+// ─────────────────────────────────────────────
+function parseSpreadsheetXmlWorkbook(xmlText) {
+  try {
+    const parser = new DOMParser()
+    const xmlDoc = parser.parseFromString(xmlText, 'text/xml')
+    const worksheets = Array.from(xmlDoc.getElementsByTagName('Worksheet'))
+    if (!worksheets || worksheets.length === 0) return null
+
+    const resultSheets = {}
+    worksheets.forEach(ws => {
+      const sheetName = ws.getAttribute('ss:Name') || 'Sheet1'
+      const rows = Array.from(ws.getElementsByTagName('Row'))
+      const matrix = []
+
+      rows.forEach(row => {
+        const rowCells = []
+        let cIdx = 0
+        const cells = Array.from(row.getElementsByTagName('Cell'))
+        cells.forEach(cell => {
+          if (cell.getAttribute('ss:Index')) {
+            cIdx = parseInt(cell.getAttribute('ss:Index'), 10) - 1
+          }
+          const data = cell.getElementsByTagName('Data')[0]
+          rowCells[cIdx] = data ? data.textContent.trim() : ''
+          cIdx++
+        })
+        matrix.push(rowCells)
+      })
+
+      resultSheets[sheetName] = matrix
+    })
+
+    return resultSheets
+  } catch (e) {
+    console.error('XML parse error:', e)
+    return null
+  }
+}
+
+// ─────────────────────────────────────────────
+// Convert 2D Matrix to Clean Timetable Slots (Error-Free)
+// ─────────────────────────────────────────────
+function convertMatrixToSlots(matrix, targetClassName = '12B') {
+  if (!matrix || matrix.length === 0) return []
+
+  // 1. Find Header Row containing 'ច័ន្ទ' or 'mon'
+  let headerRowIdx = -1
+  for (let r = 0; r < matrix.length; r++) {
+    const row = matrix[r] || []
+    if (row.some(c => /ច័ន្ទ|mon/i.test(c)) && row.some(c => /អង្គារ|tue/i.test(c))) {
+      headerRowIdx = r
+      break
+    }
+  }
+
+  if (headerRowIdx === -1) {
+    headerRowIdx = matrix.findIndex(r => (r || []).some(c => /ច័ន្ទ|mon|អង្គារ|tue/i.test(c)))
+  }
+
+  if (headerRowIdx === -1) return []
+
+  const headerRow = matrix[headerRowIdx]
+  const colToDayMap = {}
+  headerRow.forEach((cell, cIdx) => {
+    const txt = (cell || '').toLowerCase().trim()
+    if (/ច័ន្ទ|mon/i.test(txt)) colToDayMap[cIdx] = 'mon'
+    else if (/អង្គារ|tue/i.test(txt)) colToDayMap[cIdx] = 'tue'
+    else if (/ពុធ|wed/i.test(txt)) colToDayMap[cIdx] = 'wed'
+    else if (/ព្រហ|thu/i.test(txt)) colToDayMap[cIdx] = 'thu'
+    else if (/សុក្រ|fri/i.test(txt)) colToDayMap[cIdx] = 'fri'
+    else if (/សៅរ៍|sat/i.test(txt)) colToDayMap[cIdx] = 'sat'
+  })
+
+  const dayKeys = Object.values(colToDayMap)
+  if (dayKeys.length === 0) return []
+
+  const morningPeriods = ['m1', 'm2', 'm3', 'm4']
+  const afternoonPeriods = ['a1', 'a2', 'a3']
+
+  let isAfternoon = false
+  let morningIdx = 0
+  let afternoonIdx = 0
+
+  const rawSlotsGrid = {} // key: `${day}_${period}`
+
+  for (let r = headerRowIdx + 1; r < matrix.length; r++) {
+    const row = matrix[r] || []
+    if (row.length === 0) continue
+
+    const firstCell = (row[0] || '').trim()
+
+    // Afternoon Divider
+    if (/រសៀល|afternoon|lunch|សម្រាក/i.test(firstCell) || row.some(c => /ពេលរសៀល/i.test(c))) {
+      isAfternoon = true
+      continue
+    }
+
+    // Stop on legend or signatures
+    if (/កំណត់សម្គាល់|កូដមុខវិជ្ជា|\*|សម្គាល់|បានឃើញ|ហត្ថលេខា/i.test(firstCell)) {
+      break
+    }
+
+    let periodKey = null
+    if (isAfternoon) {
+      if (afternoonIdx < afternoonPeriods.length) {
+        periodKey = afternoonPeriods[afternoonIdx]
+        afternoonIdx++
+      }
+    } else {
+      if (morningIdx < morningPeriods.length) {
+        periodKey = morningPeriods[morningIdx]
+        morningIdx++
+      } else {
+        isAfternoon = true
+        if (afternoonIdx < afternoonPeriods.length) {
+          periodKey = afternoonPeriods[afternoonIdx]
+          afternoonIdx++
+        }
+      }
+    }
+
+    if (!periodKey) continue
+
+    for (const [colIdxStr, dayId] of Object.entries(colToDayMap)) {
+      const cIdx = parseInt(colIdxStr, 10)
+      const cellText = (row[cIdx] || '').trim()
+      const decoded = decodeTimetableCell(cellText)
+      if (decoded) {
+        rawSlotsGrid[`${dayId}_${periodKey}`] = decoded
+      }
+    }
+  }
+
+  // Assemble into slots with smart 2-hour merging
+  const finalSlots = []
+  const allDays = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+  const allPeriods = ['m1', 'm2', 'm3', 'm4', 'a1', 'a2', 'a3']
+
+  allDays.forEach(dayId => {
+    for (let pIdx = 0; pIdx < allPeriods.length; pIdx++) {
+      const pKey = allPeriods[pIdx]
+      const current = rawSlotsGrid[`${dayId}_${pKey}`]
+      if (!current) continue
+      if (current.isContinuation) continue
+
+      const pObj = PERIODS.find(p => p.id === pKey)
+      const dayObj = DAYS.find(d => d.id === dayId)
+
+      let duration = 1
+
+      // Automatically combine consecutive slots with same subject as 2 hours
+      const canMergeWithNext = (pKey === 'm1' || pKey === 'm3' || pKey === 'a1')
+      if (canMergeWithNext && pIdx + 1 < allPeriods.length) {
+        const nextPKey = allPeriods[pIdx + 1]
+        const next = rawSlotsGrid[`${dayId}_${nextPKey}`]
+        if (next) {
+          if (next.isContinuation || (!current.isLibre && !next.isLibre && next.subject === current.subject && (next.teacher === current.teacher || !next.teacher || !current.teacher))) {
+            duration = 2
+            rawSlotsGrid[`${dayId}_${nextPKey}`] = { isContinuation: true }
+          }
+        }
+      }
+
+      const autoCode = `SCH-${targetClassName}-${String(finalSlots.length + 1).padStart(3, '0')}`
+      finalSlots.push({
+        id: autoCode,
+        autoCode,
+        day: dayId,
+        period: pKey,
+        dayLabel: dayObj ? dayObj.label : dayId,
+        timeLabel: pObj ? pObj.time : pKey,
+        duration,
+        subject: current.subject,
+        teacher: current.teacher || '',
+        isLibre: Boolean(current.isLibre)
+      })
+    }
+  })
+
+  return finalSlots
+}
+
+// ─────────────────────────────────────────────
+// XML Spreadsheet 2003 Generator (Styled like school paper timetable)
+// ─────────────────────────────────────────────
+function generateSpreadsheetMLWorkbook(sheets) {
+  const stylesXml = `
+  <Styles>
+   <Style ss:ID="Default" ss:Name="Normal">
+    <Alignment ss:Vertical="Center"/>
+    <Borders/>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="10" ss:Color="#000000"/>
+    <Interior/>
+    <NumberFormat/>
+    <Protection/>
+   </Style>
+   <Style ss:ID="TitleKingdom">
+    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    <Font ss:FontName="Khmer OS Muol Light" ss:Size="13" ss:Bold="1" ss:Color="#0f172a"/>
+   </Style>
+   <Style ss:ID="TitleMotto">
+    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="11" ss:Bold="1" ss:Color="#334155"/>
+   </Style>
+   <Style ss:ID="TitleSchedule">
+    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    <Font ss:FontName="Khmer OS Muol Light" ss:Size="12" ss:Bold="1" ss:Color="#1e3a8a"/>
+   </Style>
+   <Style ss:ID="MetaLeft">
+    <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="10.5" ss:Bold="1" ss:Color="#1e293b"/>
+   </Style>
+   <Style ss:ID="MetaRight">
+    <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="10.5" ss:Bold="1" ss:Color="#1e293b"/>
+   </Style>
+   <Style ss:ID="ColHeader">
+    <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+    <Borders>
+     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#64748b"/>
+     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#64748b"/>
+     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#64748b"/>
+     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#64748b"/>
+    </Borders>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="10" ss:Bold="1" ss:Color="#0f172a"/>
+    <Interior ss:Color="#E2E8F0" ss:Pattern="Solid"/>
+   </Style>
+   <Style ss:ID="TimeCell">
+    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    <Borders>
+     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94a3b8"/>
+     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94a3b8"/>
+     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94a3b8"/>
+     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#94a3b8"/>
+    </Borders>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="9.5" ss:Bold="1" ss:Color="#334155"/>
+    <Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/>
+   </Style>
+   <Style ss:ID="SlotCell">
+    <Alignment ss:Horizontal="Center" ss:Vertical="Center" ss:WrapText="1"/>
+    <Borders>
+     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#cbd5e1"/>
+     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#cbd5e1"/>
+     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#cbd5e1"/>
+     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#cbd5e1"/>
+    </Borders>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="10" ss:Bold="1" ss:Color="#1e293b"/>
+   </Style>
+   <Style ss:ID="AfternoonBanner">
+    <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+    <Borders>
+     <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#cbd5e1"/>
+     <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#cbd5e1"/>
+     <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#cbd5e1"/>
+     <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#cbd5e1"/>
+    </Borders>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="10.5" ss:Bold="1" ss:Color="#92400e"/>
+    <Interior ss:Color="#FEF3C7" ss:Pattern="Solid"/>
+   </Style>
+   <Style ss:ID="LegendHead">
+    <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="9.5" ss:Bold="1" ss:Color="#4338ca"/>
+   </Style>
+   <Style ss:ID="LegendText">
+    <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="9" ss:Color="#475569"/>
+   </Style>
+   <Style ss:ID="LegendHint">
+    <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+    <Font ss:FontName="Khmer OS Siemreap" ss:Size="8.5" ss:Italic="1" ss:Color="#64748b"/>
+   </Style>
+  </Styles>`
+
+  const worksheetsXml = sheets.map(sheet => {
+    const slots = sheet.slots || []
+    const twoHourContinuations = {}
+
+    const morningPeriods = [
+      { id: 'm1', label: '០៧:០០ ដល់ ០៨:០០' },
+      { id: 'm2', label: '០៨:០០ ដល់ ០៩:០០' },
+      { id: 'm3', label: '០៩:០០ ដល់ ១០:០០' },
+      { id: 'm4', label: '១០:០០ ដល់ ១១:០០' }
+    ]
+
+    const afternoonPeriods = [
+      { id: 'a1', label: '១៤:០០ ដល់ ១៥:០០' },
+      { id: 'a2', label: '១៥:០០ ដល់ ១៦:០០' },
+      { id: 'a3', label: '១៦:០០ ដល់ ១៧:០០' }
+    ]
+
+    const buildRow = (period) => {
+      let cells = `<Cell ss:StyleID="TimeCell"><Data ss:Type="String">${period.label}</Data></Cell>`
+      DAYS.forEach(day => {
+        if (twoHourContinuations[`${day.id}_${period.id}`]) {
+          const cont = twoHourContinuations[`${day.id}_${period.id}`]
+          cells += `<Cell ss:StyleID="SlotCell"><Data ss:Type="String">${cont.text} (ត)</Data></Cell>`
+          return
+        }
+
+        const slot = slots.find(s => s.day === day.id && s.period === period.id)
+        if (!slot) {
+          cells += `<Cell ss:StyleID="SlotCell"><Data ss:Type="String">—</Data></Cell>`
+        } else if (slot.isLibre) {
+          cells += `<Cell ss:StyleID="SlotCell"><Data ss:Type="String">ម៉ោងលីប</Data></Cell>`
+        } else {
+          const teacherPart = slot.teacher ? `\n${slot.teacher}` : ''
+          const is2H = slot.duration === 2
+          const cellContent = `${slot.subject}${teacherPart}`
+          cells += `<Cell ss:StyleID="SlotCell"><Data ss:Type="String">${cellContent}</Data></Cell>`
+
+          if (is2H) {
+            const allP = [...morningPeriods, ...afternoonPeriods]
+            const pIdx = allP.findIndex(p => p.id === period.id)
+            if (pIdx !== -1 && pIdx + 1 < allP.length) {
+              twoHourContinuations[`${day.id}_${allP[pIdx + 1].id}`] = { text: slot.subject }
+            }
+          }
+        }
+      })
+      cells += `<Cell ss:StyleID="SlotCell"><Data ss:Type="String"></Data></Cell>`
+      return `<Row ss:Height="26">${cells}</Row>`
+    }
+
+    const morningRows = morningPeriods.map(buildRow).join('\n    ')
+    const afternoonRows = afternoonPeriods.map(buildRow).join('\n    ')
+
+    return `
+  <Worksheet ss:Name="${sheet.name.replace(/[/\\?*[\]]/g, '_')}">
+   <Table ss:DefaultRowHeight="24">
+    <Column ss:Width="115"/>
+    <Column ss:Width="95"/>
+    <Column ss:Width="95"/>
+    <Column ss:Width="95"/>
+    <Column ss:Width="95"/>
+    <Column ss:Width="95"/>
+    <Column ss:Width="95"/>
+    <Column ss:Width="80"/>
+
+    <Row ss:Height="26">
+     <Cell ss:MergeAcross="7" ss:StyleID="TitleKingdom"><Data ss:Type="String">ព្រះរាជាណាចក្រកម្ពុជា</Data></Cell>
+    </Row>
+    <Row ss:Height="22">
+     <Cell ss:MergeAcross="7" ss:StyleID="TitleMotto"><Data ss:Type="String">ជាតិ  សាសនា  ព្រះមហាក្សត្រ</Data></Cell>
+    </Row>
+    <Row ss:Height="26">
+     <Cell ss:MergeAcross="7" ss:StyleID="TitleSchedule"><Data ss:Type="String">កាលវិភាគប្រចាំសប្តាហ៍</Data></Cell>
+    </Row>
+    <Row ss:Height="10"><Cell ss:MergeAcross="7"/></Row>
+
+    <Row ss:Height="24">
+     <Cell ss:MergeAcross="3" ss:StyleID="MetaLeft"><Data ss:Type="String">ថ្នាក់៖ ${sheet.name}</Data></Cell>
+     <Cell ss:MergeAcross="3" ss:StyleID="MetaRight"><Data ss:Type="String">បន្ទុក៖ ${sheet.teacher || '........................'}</Data></Cell>
+    </Row>
+    <Row ss:Height="8"><Cell ss:MergeAcross="7"/></Row>
+
+    <Row ss:Height="28">
+     <Cell ss:StyleID="ColHeader"><Data ss:Type="String">ម៉ោងបង្រៀន</Data></Cell>
+     <Cell ss:StyleID="ColHeader"><Data ss:Type="String">ច័ន្ទ</Data></Cell>
+     <Cell ss:StyleID="ColHeader"><Data ss:Type="String">អង្គារ</Data></Cell>
+     <Cell ss:StyleID="ColHeader"><Data ss:Type="String">ពុធ</Data></Cell>
+     <Cell ss:StyleID="ColHeader"><Data ss:Type="String">ព្រហស្បតិ៍</Data></Cell>
+     <Cell ss:StyleID="ColHeader"><Data ss:Type="String">សុក្រ</Data></Cell>
+     <Cell ss:StyleID="ColHeader"><Data ss:Type="String">សៅរ៍</Data></Cell>
+     <Cell ss:StyleID="ColHeader"><Data ss:Type="String">ផ្សេងៗ</Data></Cell>
+    </Row>
+
+    ${morningRows}
+
+    <Row ss:Height="24">
+     <Cell ss:MergeAcross="7" ss:StyleID="AfternoonBanner"><Data ss:Type="String">ពេលរសៀល</Data></Cell>
+    </Row>
+
+    ${afternoonRows}
+
+    <Row ss:Height="12"><Cell ss:MergeAcross="7"/></Row>
+
+    <Row ss:Height="20">
+     <Cell ss:MergeAcross="7" ss:StyleID="LegendHead"><Data ss:Type="String">* កំណត់សម្គាល់កូដមុខវិជ្ជាសម្រាប់ប្រធានថ្នាក់ក្នុងការបំពេញ៖</Data></Cell>
+    </Row>
+    <Row ss:Height="18">
+     <Cell ss:MergeAcross="7" ss:StyleID="LegendText"><Data ss:Type="String">K = ភាសាខ្មែរ | M = គណិតវិទ្យា | P = រូបវិទ្យា | C = គីមីវិទ្យា | B = ជីវវិទ្យា | H = ប្រវត្តិវិទ្យា | G = ភូមិវិទ្យា</Data></Cell>
+    </Row>
+    <Row ss:Height="18">
+     <Cell ss:MergeAcross="7" ss:StyleID="LegendText"><Data ss:Type="String">Es = ផែនដីវិទ្យា | E / I = ភាសាអង់គ្លេស | Ec = សេដ្ឋកិច្ច | Ed = អប់រំកាយ/កីឡា | It = ព័ត៌មានវិទ្យា | Ag = កសិកម្ម | X = ទំនេរ</Data></Cell>
+    </Row>
+    <Row ss:Height="18">
+     <Cell ss:MergeAcross="7" ss:StyleID="LegendHint"><Data ss:Type="String">(ប្រធានថ្នាក់អាចសរសេរកូដកាត់ ឧ. K3, M1, P1... ឬសរសេរឈ្មោះពេញ ឧ. ភាសាខ្មែរ - K3។ ប្រព័ន្ធនឹងស្គាល់មុខវិជ្ជា និងគ្រូស្វ័យប្រវត្តិ)</Data></Cell>
+    </Row>
+   </Table>
+  </Worksheet>`
+  }).join('\n')
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>${getCachedSchoolName()}</Author>
+  <Created>${new Date().toISOString()}</Created>
+ </DocumentProperties>
+ ${stylesXml}
+ ${worksheetsXml}
+</Workbook>`
 }
 
 export default function AdminTimetable() {
@@ -339,27 +767,53 @@ export default function AdminTimetable() {
     return {}
   })
 
+  const [classesList, setClassesList] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_classes_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch (e) {}
+    return []
+  })
+
   const [classOptions, setClassOptions] = useState(() => {
     try {
       const raw = localStorage.getItem('school_classes_cache')
       if (raw) {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed)) {
-          return parsed.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))
+          return parsed.map(c => ({ id: c.name, label: c.name.startsWith('ថ្នាក់') ? c.name : `ថ្នាក់ ${c.name}` }))
         }
       }
     } catch (e) {}
     return []
   })
 
+  // Subjects loaded dynamically from table subjects (academic.getSubjects)
+  const [subjectsList, setSubjectsList] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_subjects_cache')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) return parsed
+      }
+    } catch (e) {}
+    return []
+  })
+
+  const dynamicSubjects = subjectsList.map(s => typeof s === 'string' ? s : s.name).filter(Boolean)
+
   // Background SWR sync from Firestore
   useEffect(() => {
     let isMounted = true
     const fetchData = async () => {
       try {
-        const [ttRes, clRes] = await Promise.all([
+        const [ttRes, clRes, sbRes] = await Promise.all([
           api('timetable.getAll'),
-          api('academic.getClasses')
+          api('academic.getClasses'),
+          api('academic.getSubjects')
         ])
 
         if (isMounted) {
@@ -367,13 +821,25 @@ export default function AdminTimetable() {
             setTimetableData(ttRes.data)
           }
           if (clRes && clRes.success && Array.isArray(clRes.data)) {
-            const opts = clRes.data.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))
+            setClassesList(clRes.data)
+            const opts = clRes.data.map(c => ({ id: c.name, label: c.name.startsWith('ថ្នាក់') ? c.name : `ថ្នាក់ ${c.name}` }))
             setClassOptions(opts)
             if (clRes.data.length > 0) {
               setSelectedClass(prev => prev && clRes.data.some(c => c.name === prev) ? prev : clRes.data[0].name)
             } else {
               setSelectedClass('')
             }
+          } else {
+            setClassesList([])
+            setClassOptions([])
+            setSelectedClass('')
+          }
+
+          if (sbRes && sbRes.success && Array.isArray(sbRes.data)) {
+            setSubjectsList(sbRes.data)
+            try {
+              localStorage.setItem('school_subjects_cache', JSON.stringify(sbRes.data))
+            } catch (e) {}
           }
         }
       } catch (err) {
@@ -405,12 +871,17 @@ export default function AdminTimetable() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Import Modal State
+  // Import Modal State with Multi-Sheet & Paste support
   const [importModal, setImportModal] = useState({
     open: false,
     parsedData: [],
     isUploaded: false,
-    fileName: ''
+    fileName: '',
+    availableSheets: [],
+    selectedSheet: '',
+    rawWorkbookData: null,
+    pasteMode: false,
+    pasteText: ''
   })
   const fileInputRef = useRef(null)
 
@@ -428,7 +899,13 @@ export default function AdminTimetable() {
   const totalStudyHours = studySlots.reduce((acc, s) => acc + (s.duration || 1), 0)
   const uniqueSubjects = new Set(studySlots.map(s => s.subject)).size
   const uniqueTeachers = new Set(studySlots.filter(s => s.teacher).map(s => s.teacher)).size
-  const homeroomTeacher = CLASS_HOMEROOM_MAP[selectedClass] || 'លោកគ្រូ សាន វិបុល'
+  const currentClassObj = classesList.find(c => 
+    c.name === selectedClass || 
+    c.name === `ថ្នាក់ ${selectedClass}` || 
+    c.name?.replace('ថ្នាក់ ', '') === selectedClass ||
+    c.id === selectedClass
+  )
+  const homeroomTeacher = selectedClass ? (currentClassObj?.teacher || 'មិនទាន់មានគ្រូបន្ទុក') : '—'
 
   // Modal Form State & Mode ('full' from top button, 'cell' from timetable cell click)
   const [modalMode, setModalMode] = useState('full')
@@ -437,22 +914,22 @@ export default function AdminTimetable() {
     period: 'm1',
     duration: 1, // 1 or 2 (2H merged)
     isLibre: false,
-    subject: 'គណិតវិទ្យា',
-    teacher: 'លោកគ្រូ សាន វិបុល'
+    subject: '',
+    teacher: ''
   })
 
   // Open Full Add Modal from Top Button (with Day & Time Pickers)
   const handleOpenAdd = (day = 'mon', period = 'm1') => {
     setEditingSlot(null)
     setModalMode('full')
-    const defaultSubj = 'គណិតវិទ្យា'
+    const defaultSubj = dynamicSubjects.length > 0 ? dynamicSubjects[0] : ''
     setForm({
       day,
       period: period.startsWith('break') ? 'm1' : period,
       duration: 1,
       isLibre: false,
       subject: defaultSubj,
-      teacher: DEFAULT_SUBJECT_TEACHERS[defaultSubj] || 'លោកគ្រូ សាន វិបុល'
+      teacher: ''
     })
     setModalOpen(true)
   }
@@ -461,14 +938,14 @@ export default function AdminTimetable() {
   const handleOpenCellAdd = (day, period) => {
     setEditingSlot(null)
     setModalMode('cell')
-    const defaultSubj = 'គណិតវិទ្យា'
+    const defaultSubj = dynamicSubjects.length > 0 ? dynamicSubjects[0] : ''
     setForm({
       day,
       period: period.startsWith('break') ? 'm1' : period,
       duration: 1,
       isLibre: false,
       subject: defaultSubj,
-      teacher: DEFAULT_SUBJECT_TEACHERS[defaultSubj] || 'លោកគ្រូ សាន វិបុល'
+      teacher: ''
     })
     setModalOpen(true)
   }
@@ -478,7 +955,7 @@ export default function AdminTimetable() {
     setForm(prev => ({
       ...prev,
       subject: subj,
-      teacher: DEFAULT_SUBJECT_TEACHERS[subj] || prev.teacher
+      teacher: prev.teacher
     }))
   }
 
@@ -525,8 +1002,8 @@ export default function AdminTimetable() {
   // Save Slot (Add or Edit, with optional save-and-next)
   const handleSaveSlot = (e, andNext = false) => {
     if (e && e.preventDefault) e.preventDefault()
-    if (!form.isLibre && (!form.subject.trim() || !form.teacher.trim())) {
-      showToast('សូមបំពេញឈ្មោះមុខវិជ្ជា និងគ្រូបង្រៀន')
+    if (!form.isLibre && !form.subject.trim()) {
+      showToast('សូមជ្រើសរើស ឬវាយបញ្ចូលឈ្មោះមុខវិជ្ជា')
       return
     }
 
@@ -535,11 +1012,11 @@ export default function AdminTimetable() {
       period: form.period,
       duration: Number(form.duration) || 1,
       isLibre: form.isLibre,
-      subject: form.isLibre ? 'ម៉ោងលីប' : form.subject,
-      teacher: form.isLibre ? '' : form.teacher
+      subject: form.isLibre ? 'ម៉ោងលីប' : form.subject.trim(),
+      teacher: form.isLibre ? '' : (form.teacher ? form.teacher.trim() : '')
     }
 
-    const conflict = checkTeacherConflict(payload, selectedClass, timetableData, editingSlot ? editingSlot.id : null)
+    const conflict = payload.teacher ? checkTeacherConflict(payload, selectedClass, timetableData, editingSlot ? editingSlot.id : null) : null
 
     let updatedSlots
     if (editingSlot) {
@@ -579,14 +1056,14 @@ export default function AdminTimetable() {
         })
       } else {
         setEditingSlot(null)
-        const defaultSubj = form.isLibre ? 'គណិតវិទ្យា' : form.subject
+        const defaultSubj = form.isLibre ? (dynamicSubjects[0] || '') : form.subject
         setForm({
           day: next.day,
           period: next.period,
           duration: 1,
           isLibre: false,
           subject: defaultSubj,
-          teacher: DEFAULT_SUBJECT_TEACHERS[defaultSubj] || 'លោកគ្រូ សាន វិបុល'
+          teacher: ''
         })
       }
     } else {
@@ -644,79 +1121,47 @@ export default function AdminTimetable() {
     const subtitle = `ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | គ្រូបន្ទុកថ្នាក់៖ ${homeroomTeacher || 'មិនទាន់កំណត់'} | សរុបម៉ោងសិក្សា៖ ${totalStudyHours} ម៉ោង/សប្តាហ៍`
 
     if (type === 'Excel') {
-      // Build Weekly Matrix Grid CSV (with UTF-8 BOM) matching Word/PDF & user's timetable grid
-      const dayHeaders = ['ពេលវេលា', ...DAYS.map(d => d.label)]
-      
-      const headerRows = [
-        [`"វិទ្យាល័យអង្គរកា - ${title}"`, '', '', '', '', '', ''],
-        [`"${subtitle}"`, '', '', '', '', '', ''],
-        ['', '', '', '', '', '', ''],
-        dayHeaders.map(h => `"${h}"`)
-      ]
-
-      const twoHourContinuations = {} // key: `${day.id}_${period.id}`
-
-      const gridRows = []
-      PERIODS.forEach(period => {
-        if (period.isLunch) {
-          gridRows.push([
-            `"${period.label}"`,
-            `"—"`, `"—"`, `"—"`, `"—"`, `"—"`, `"—"`
-          ])
-          return
-        }
-
-        const row = [`"${period.time}"`]
-
-        DAYS.forEach(day => {
-          if (twoHourContinuations[`${day.id}_${period.id}`]) {
-            const cont = twoHourContinuations[`${day.id}_${period.id}`]
-            row.push(`"${cont.subject} (ត)"`)
-            return
-          }
-
-          const slot = currentClassSlots.find(s => s.day === day.id && s.period === period.id)
-          if (!slot) {
-            row.push(`"—"`)
-          } else if (slot.isLibre) {
-            row.push(`"ម៉ោងលីប"`)
-          } else {
-            const is2H = slot.duration === 2
-            const teacherStr = slot.teacher ? `\n${slot.teacher}` : ''
-            const cellText = `${slot.subject}${is2H ? ' (២ ម៉ោង)' : ''}${teacherStr}`
-            row.push(`"${cellText}"`)
-
-            if (is2H) {
-              const pIdx = PERIODS.findIndex(p => p.id === period.id)
-              if (pIdx !== -1 && pIdx + 1 < PERIODS.length) {
-                const nextP = PERIODS[pIdx + 1]
-                if (!nextP.isBreak) {
-                  twoHourContinuations[`${day.id}_${nextP.id}`] = { subject: slot.subject, teacher: slot.teacher }
-                }
-              }
-            }
-          }
-        })
-
-        gridRows.push(row)
-      })
-
-      const csvContent = '\uFEFF' + [
-        ...headerRows.map(r => r.join(',')),
-        ...gridRows.map(r => r.join(','))
-      ].join('\n')
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const sheet = {
+        name: selectedClass,
+        teacher: homeroomTeacher !== '—' && homeroomTeacher !== 'មិនទាន់មានគ្រូបន្ទុក' ? homeroomTeacher : '',
+        slots: currentClassSlots
+      }
+      const xmlContent = generateSpreadsheetMLWorkbook([sheet])
+      const blob = new Blob([xmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.setAttribute('href', url)
-      link.setAttribute('download', `កាលវិភាគ_ថ្នាក់_${selectedClass}_${new Date().toISOString().slice(0, 10)}.csv`)
+      link.setAttribute('download', `កាលវិភាគ_ថ្នាក់_${selectedClass}_${new Date().toISOString().slice(0, 10)}.xls`)
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
 
-      showToast(`បានទាញយកកាលវិភាគថ្នាក់ ${selectedClass} ជា Excel តាមទម្រង់ក្រឡាជាក់ស្តែង`)
+      showToast(`បានទាញយកកាលវិភាគថ្នាក់ ${selectedClass} ជា Excel (.xls) តាមទម្រង់ក្រដាសសាលា`)
+      return
+    }
+
+    if (type === 'ExcelAllSheets') {
+      const allClassSheets = (classOptions && classOptions.length > 0 ? classOptions : CLASS_OPTIONS).map(c => {
+        const cObj = classesList.find(cls => cls.name === c.id)
+        return {
+          name: c.id,
+          teacher: cObj?.teacher || '',
+          slots: timetableData[c.id] || []
+        }
+      })
+      const xmlContent = generateSpreadsheetMLWorkbook(allClassSheets)
+      const blob = new Blob([xmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.setAttribute('href', url)
+      link.setAttribute('download', `កាលវិភាគ_គ្រប់ថ្នាក់_តាមSheets_${new Date().toISOString().slice(0, 10)}.xls`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      showToast('បានទាញយកកាលវិភាគគ្រប់ថ្នាក់ជា Excel (.xls) ដោយមាន Sheets សម្រាប់ថ្នាក់នីមួយៗ!')
       return
     }
 
@@ -814,7 +1259,7 @@ export default function AdminTimetable() {
 <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
 <head>
   <meta charset='utf-8'>
-  <title>${title} - វិទ្យាល័យអង្គរកា</title>
+  <title>${title} - ${getCachedSchoolName()}</title>
   <!--[if gte mso 9]>
   <xml>
     <w:WordDocument>
@@ -847,7 +1292,7 @@ export default function AdminTimetable() {
         <td style="width: 50%; vertical-align: top;">
           <strong>ក្រសួងអប់រំ យុវជន និងកីឡា</strong><br>
           <strong>មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ</strong><br>
-          <strong>វិទ្យាល័យអង្គរកា</strong>
+          <strong>${getCachedSchoolName()}</strong>
         </td>
         <td style="width: 50%; vertical-align: top;">
           <div class="kingdom-title">ព្រះរាជាណាចក្រកម្ពុជា</div>
@@ -869,7 +1314,7 @@ export default function AdminTimetable() {
         <td style="width: 50%; vertical-align: top;">
           <br>
           <strong>បានឃើញ និងឯកភាព</strong><br>
-          នាយកវិទ្យាល័យអង្គរកា
+          នាយក${getCachedSchoolName()}
         </td>
         <td style="width: 50%; vertical-align: top;">
           ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
@@ -906,7 +1351,7 @@ export default function AdminTimetable() {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${title} - វិទ្យាល័យអង្គរកា</title>
+  <title>${title} - ${getCachedSchoolName()}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Moul&display=swap');
     @page { size: A4 landscape; margin: 1cm; }
@@ -936,7 +1381,7 @@ export default function AdminTimetable() {
     <div class="school-title">
       ក្រសួងអប់រំ យុវជន និងកីឡា<br>
       មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ<br>
-      វិទ្យាល័យអង្គរកា
+      ${getCachedSchoolName()}
     </div>
     <div class="kingdom-box">
       <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
@@ -956,7 +1401,7 @@ export default function AdminTimetable() {
     <div class="sign-col">
       <br>
       <strong>បានឃើញ និងឯកភាព</strong><br>
-      នាយកវិទ្យាល័យអង្គរកា
+      នាយក${getCachedSchoolName()}
     </div>
     <div class="sign-col">
       ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
@@ -977,201 +1422,178 @@ export default function AdminTimetable() {
   // Backward compatibility alias
   const handleExportCSV = () => handleExport('Excel')
 
-  // Download Sample Template (.csv) with Auto-ID column
-  const handleDownloadTemplate = () => {
-    const headers = ['កូដម៉ោង (ទុកទទេ - ប្រព័ន្ធបង្កើតអូតូ)', 'ថ្នាក់', 'ថ្ងៃ', 'ពេលវេលា', 'រយៈពេល', 'មុខវិជ្ជា', 'គ្រូបង្រៀន']
-    const sampleRows = [
-      ['', `${selectedClass}`, 'ច័ន្ទ', '07:00 - 08:00', '១ ម៉ោង', 'គណិតវិទ្យា', 'លោកគ្រូ សាន វិបុល'],
-      ['', `${selectedClass}`, 'ច័ន្ទ', '08:00 - 09:00', '១ ម៉ោង', 'រូបវិទ្យា', 'អ្នកគ្រូ ចាន់ សុភា'],
-      ['', `${selectedClass}`, 'ច័ន្ទ', '09:00 - 10:00', '១ ម៉ោង', 'ម៉ោងលីប (ទំនេរ)', '—'],
-      ['', `${selectedClass}`, 'អង្គារ', '07:00 - 08:00', '២ ម៉ោង', 'គីមីវិទ្យា', 'លោកគ្រូ កែវ រតនៈ'],
-      ['', `${selectedClass}`, 'ពុធ', '14:00 - 15:00', '១ ម៉ោង', 'ភាសាខ្មែរ', 'អ្នកគ្រូ ស៊ុន ណារី']
-    ]
-    const csvContent = '\uFEFF' + [headers.join(','), ...sampleRows.map(r => r.map(c => `"${c}"`).join(','))].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  // Download Sample Template with School Paper Styling (.xls)
+  const handleDownloadTemplate = (mode = 'all') => {
+    const targetSheets = mode === 'single'
+      ? [{
+          name: selectedClass,
+          teacher: homeroomTeacher !== '—' && homeroomTeacher !== 'មិនទាន់មានគ្រូបន្ទុក' ? homeroomTeacher : '',
+          slots: currentClassSlots
+        }]
+      : (classOptions && classOptions.length > 0 ? classOptions : CLASS_OPTIONS).map(c => {
+          const cObj = classesList.find(cls => cls.name === c.id)
+          return {
+            name: c.id,
+            teacher: cObj?.teacher || '',
+            slots: timetableData[c.id] || []
+          }
+        })
+
+    const xmlContent = generateSpreadsheetMLWorkbook(targetSheets)
+    const blob = new Blob([xmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.setAttribute('href', url)
-    link.setAttribute('download', `ទម្រង់គំរូនាំចូលកាលវិភាគ_${selectedClass}.csv`)
+    link.setAttribute('download', mode === 'single' ? `គំរូកាលវិភាគ_ថ្នាក់_${selectedClass}.xls` : `គំរូកាលវិភាគ_គ្រប់ថ្នាក់_តាមSheets.xls`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
-    showToast('បានទាញយកឯកសារគំរូនាំចូលកាលវិភាគ')
+    showToast('បានទាញយកឯកសារគំរូ Excel (.xls) តាមទម្រង់ក្រដាសសាលា')
   }
 
   // Load Demo Data for Quick Preview with Auto-ID
   const handleLoadDemoImport = () => {
     const demo = [
-      { autoCode: `SCH-${selectedClass}-001`, day: 'mon', period: 'm1', dayLabel: 'ច័ន្ទ', timeLabel: '07:00 - 08:00', duration: 1, subject: 'គណិតវិទ្យា', teacher: 'លោកគ្រូ សាន វិបុល', isLibre: false },
-      { autoCode: `SCH-${selectedClass}-002`, day: 'mon', period: 'm2', dayLabel: 'ច័ន្ទ', timeLabel: '08:00 - 09:00', duration: 1, subject: 'រូបវិទ្យា', teacher: 'អ្នកគ្រូ ចាន់ សុភា', isLibre: false },
-      { autoCode: `SCH-${selectedClass}-003`, day: 'tue', period: 'm1', dayLabel: 'អង្គារ', timeLabel: '07:00 - 08:00', duration: 2, subject: 'គីមីវិទ្យា', teacher: 'លោកគ្រូ កែវ រតនៈ', isLibre: false },
-      { autoCode: `SCH-${selectedClass}-004`, day: 'wed', period: 'm3', dayLabel: 'ពុធ', timeLabel: '09:00 - 10:00', duration: 1, subject: 'ភាសាខ្មែរ', teacher: 'អ្នកគ្រូ ស៊ុន ណារី', isLibre: false },
-      { autoCode: `SCH-${selectedClass}-005`, day: 'thu', period: 'm1', dayLabel: 'ព្រហស្បតិ៍', timeLabel: '07:00 - 08:00', duration: 1, subject: 'ម៉ោងលីប (ទំនេរ)', teacher: '—', isLibre: true }
+      { autoCode: `SCH-${selectedClass}-001`, day: 'mon', period: 'm1', dayLabel: 'ច័ន្ទ', timeLabel: '07:00 - 08:00', duration: 2, subject: 'ភាសាខ្មែរ', teacher: 'K3', isLibre: false },
+      { autoCode: `SCH-${selectedClass}-002`, day: 'mon', period: 'm3', dayLabel: 'ច័ន្ទ', timeLabel: '09:00 - 10:00', duration: 2, subject: 'គណិតវិទ្យា', teacher: 'M1', isLibre: false },
+      { autoCode: `SCH-${selectedClass}-003`, day: 'mon', period: 'a1', dayLabel: 'ច័ន្ទ', timeLabel: '14:00 - 15:00', duration: 2, subject: 'រូបវិទ្យា', teacher: 'P1', isLibre: false },
+      { autoCode: `SCH-${selectedClass}-004`, day: 'tue', period: 'm1', dayLabel: 'អង្គារ', timeLabel: '07:00 - 08:00', duration: 1, subject: 'ភាសាអង់គ្លេស', teacher: 'I1', isLibre: false },
+      { autoCode: `SCH-${selectedClass}-005`, day: 'tue', period: 'm2', dayLabel: 'អង្គារ', timeLabel: '08:00 - 09:00', duration: 1, subject: 'ភាសាខ្មែរ', teacher: 'K3', isLibre: false }
     ]
     setImportModal({
       open: true,
       parsedData: demo,
       isUploaded: true,
-      fileName: 'គំរូកាលវិភាគ_សាកល្បង.xlsx'
+      fileName: 'គំរូកាលវិភាគ_សាកល្បង.xls',
+      availableSheets: [selectedClass],
+      selectedSheet: selectedClass,
+      rawWorkbookData: { [selectedClass]: [] },
+      pasteMode: false,
+      pasteText: ''
     })
   }
 
-  // Select File & Parse with Auto-ID
+  // Process Workbook Text (XML .xls, HTML .xls, or CSV/TSV)
+  const handleProcessWorkbookText = (text, fileName = '') => {
+    try {
+      if (!text || typeof text !== 'string') return
+
+      let availableSheets = []
+      let parsedSheetsData = {}
+
+      // 1. Is it XML Spreadsheet 2003 (.xls / .xml)?
+      if (text.includes('<Workbook') && text.includes('<Worksheet')) {
+        const xmlSheets = parseSpreadsheetXmlWorkbook(text)
+        if (xmlSheets && Object.keys(xmlSheets).length > 0) {
+          parsedSheetsData = xmlSheets
+          availableSheets = Object.keys(xmlSheets)
+        }
+      }
+
+      // 2. Is it HTML table (.xls)?
+      if (availableSheets.length === 0 && (text.includes('<table') || text.includes('<TABLE'))) {
+        const htmlDoc = new DOMParser().parseFromString(text, 'text/html')
+        const tables = Array.from(htmlDoc.querySelectorAll('table'))
+        if (tables.length > 0) {
+          tables.forEach((tbl, tIdx) => {
+            const sheetName = tbl.getAttribute('data-sheet') || (tIdx === 0 ? selectedClass : `Sheet${tIdx + 1}`)
+            const rows = Array.from(tbl.querySelectorAll('tr'))
+            const matrix = rows.map(r => Array.from(r.querySelectorAll('th, td')).map(cell => cell.textContent.trim()))
+            parsedSheetsData[sheetName] = matrix
+            availableSheets.push(sheetName)
+          })
+        }
+      }
+
+      // 3. Fallback: Parse as CSV / TSV
+      if (availableSheets.length === 0) {
+        const matrix = parseCSV(text)
+        if (matrix.length > 0) {
+          parsedSheetsData[selectedClass] = matrix
+          availableSheets = [selectedClass]
+        }
+      }
+
+      if (availableSheets.length === 0) {
+        showToast('ឯកសារគ្មានទិន្នន័យសម្រាប់នាំចូលទេ')
+        return
+      }
+
+      // Default sheet: matching selectedClass or first available
+      const defaultSheet = availableSheets.find(s => 
+        s.toLowerCase().trim() === selectedClass.toLowerCase().trim() ||
+        s.toLowerCase().includes(selectedClass.toLowerCase()) || 
+        selectedClass.toLowerCase().includes(s.toLowerCase())
+      ) || availableSheets[0]
+
+      const activeMatrix = parsedSheetsData[defaultSheet] || []
+      const parsedSlots = convertMatrixToSlots(activeMatrix, defaultSheet)
+
+      if (parsedSlots.length === 0) {
+        showToast('មិនអាចស្រង់ទិន្នន័យម៉ោងសិក្សាបានទេ សូមពិនិត្យទម្រង់តារាង')
+        return
+      }
+
+      setImportModal({
+        open: true,
+        parsedData: parsedSlots,
+        isUploaded: true,
+        fileName: fileName || 'ឯកសារកាលវិភាគ',
+        availableSheets,
+        selectedSheet: defaultSheet,
+        rawWorkbookData: parsedSheetsData,
+        pasteMode: false,
+        pasteText: ''
+      })
+    } catch (err) {
+      console.error('Process workbook error:', err)
+      showToast('មានបញ្ហាក្នុងការអានឯកសារ')
+    }
+  }
+
+  // Switch Sheet inside Import Modal
+  const handleSwitchSheet = (sheetName) => {
+    if (!importModal.rawWorkbookData || !importModal.rawWorkbookData[sheetName]) return
+    const matrix = importModal.rawWorkbookData[sheetName]
+    const parsedSlots = convertMatrixToSlots(matrix, sheetName)
+    setImportModal(prev => ({
+      ...prev,
+      selectedSheet: sheetName,
+      parsedData: parsedSlots
+    }))
+  }
+
+  // Paste Text Handler from Excel/Google Sheets
+  const handlePasteChange = (val) => {
+    setImportModal(prev => ({ ...prev, pasteText: val }))
+    if (!val || !val.trim()) return
+    const matrix = parseCSV(val)
+    if (matrix.length > 0) {
+      const parsedSlots = convertMatrixToSlots(matrix, selectedClass)
+      if (parsedSlots.length > 0) {
+        setImportModal(prev => ({
+          ...prev,
+          parsedData: parsedSlots,
+          isUploaded: true,
+          fileName: 'បិទភ្ជាប់ (Paste) ពី Excel',
+          availableSheets: [selectedClass],
+          selectedSheet: selectedClass
+        }))
+      }
+    }
+  }
+
+  // Select File & Parse
   const handleSelectFile = (e) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     const reader = new FileReader()
     reader.onload = (event) => {
-      try {
-        const text = event.target?.result
-        if (typeof text !== 'string') return
-
-        const rows = parseCSV(text)
-        if (rows.length === 0) {
-          showToast('ឯកសារគ្មានទិន្នន័យសម្រាប់នាំចូលទេ')
-          return
-        }
-
-        const dayMap = {
-          'ច័ន្ទ': 'mon', 'mon': 'mon', 'monday': 'mon',
-          'អង្គារ': 'tue', 'tue': 'tue', 'tuesday': 'tue',
-          'ពុធ': 'wed', 'wed': 'wed', 'wednesday': 'wed',
-          'ព្រហស្បតិ៍': 'thu', 'thu': 'thu', 'thursday': 'thu',
-          'សុក្រ': 'fri', 'fri': 'fri', 'friday': 'fri',
-          'សៅរ៍': 'sat', 'sat': 'sat', 'saturday': 'sat'
-        }
-
-        const periodMap = {
-          '07:00 - 08:00': 'm1', 'm1': 'm1',
-          '08:00 - 09:00': 'm2', 'm2': 'm2',
-          '09:00 - 10:00': 'm3', 'm3': 'm3',
-          '10:00 - 11:00': 'm4', 'm4': 'm4',
-          '14:00 - 15:00': 'a1', 'a1': 'a1',
-          '15:00 - 16:00': 'a2', 'a2': 'a2',
-          '16:00 - 17:00': 'a3', 'a3': 'a3'
-        }
-
-        const parsed = []
-
-        // Check if file is a Weekly Matrix Grid CSV (exported from timetable)
-        const gridHeaderIdx = rows.findIndex(r => r.some(c => c && c.includes('ពេលវេលា')) && r.some(c => c && (c.includes('ច័ន្ទ') || c.includes('mon'))))
-
-        if (gridHeaderIdx !== -1) {
-          const headerRow = rows[gridHeaderIdx]
-          const colDayMap = {}
-          for (let c = 1; c < headerRow.length; c++) {
-            const txt = headerRow[c].trim().toLowerCase()
-            const foundDay = DAYS.find(d => d.label === txt || d.id === txt || d.label.toLowerCase() === txt)
-            if (foundDay) {
-              colDayMap[c] = foundDay.id
-            }
-          }
-
-          for (let r = gridHeaderIdx + 1; r < rows.length; r++) {
-            const row = rows[r]
-            if (!row || row.length < 2) continue
-            const timeRaw = (row[0] || '').trim()
-            if (!timeRaw || timeRaw.includes('សម្រាក') || timeRaw.includes('lunch')) continue
-
-            const foundPeriod = PERIODS.find(p => p.time === timeRaw)
-            const periodKey = foundPeriod ? foundPeriod.id : periodMap[timeRaw]
-            if (!periodKey) continue
-
-            for (let c = 1; c < row.length; c++) {
-              const dayKey = colDayMap[c]
-              if (!dayKey) continue
-
-              const cellText = (row[c] || '').trim()
-              if (!cellText || cellText === '—' || cellText === '-' || cellText.includes('(ត)')) {
-                continue
-              }
-
-              const isLibre = cellText.includes('លីប') || cellText.includes('ទំនេរ')
-              const duration = cellText.includes('២ ម៉ោង') || cellText.includes('2') ? 2 : 1
-
-              let subj = cellText
-              let teacher = ''
-              if (cellText.includes('\n')) {
-                const parts = cellText.split('\n').map(s => s.trim()).filter(Boolean)
-                subj = parts[0] || cellText
-                teacher = parts[1] || ''
-              } else if (cellText.includes(' - ')) {
-                const parts = cellText.split(' - ').map(s => s.trim())
-                subj = parts[0] || cellText
-                teacher = parts[1] || ''
-              }
-              subj = subj.replace(/\(២ ម៉ោង\)|\(2 ម៉ោង\)|\(1 ម៉ោង\)|\(១ ម៉ោង\)|\[២ ម៉ោង\]|\[1 ម៉ោង\]/g, '').trim()
-
-              const autoCode = `SCH-${selectedClass}-${String(parsed.length + 1).padStart(3, '0')}`
-              parsed.push({
-                autoCode,
-                day: dayKey,
-                period: periodKey,
-                dayLabel: DAYS.find(d => d.id === dayKey)?.label || dayKey,
-                timeLabel: foundPeriod?.time || timeRaw,
-                duration,
-                subject: isLibre ? 'ម៉ោងលីប' : subj,
-                teacher: isLibre ? '—' : (teacher || DEFAULT_SUBJECT_TEACHERS[subj] || 'លោកគ្រូ សាន វិបុល'),
-                isLibre
-              })
-            }
-          }
-        } else {
-          // Standard Columnar List format (legacy or template)
-          for (let i = 0; i < rows.length; i++) {
-            const raw = rows[i]
-            let dayRaw, timeRaw, durRaw, subjRaw, teacherRaw
-            if (raw.length >= 7) {
-              dayRaw = raw[2] || ''
-              timeRaw = raw[3] || ''
-              durRaw = raw[4] || '1'
-              subjRaw = raw[5] || ''
-              teacherRaw = raw[6] || ''
-            } else if (raw.length >= 5) {
-              dayRaw = raw[1] || ''
-              timeRaw = raw[2] || ''
-              durRaw = raw[3] || '1'
-              subjRaw = raw[4] || ''
-              teacherRaw = raw[5] || ''
-            } else {
-              continue
-            }
-
-            const dayKey = dayMap[dayRaw.toLowerCase()] || dayMap[dayRaw] || 'mon'
-            const periodKey = periodMap[timeRaw] || 'm1'
-            const duration = durRaw.includes('2') ? 2 : 1
-            const isLibre = subjRaw.includes('លីប') || subjRaw.includes('ទំនេរ')
-            const autoCode = `SCH-${selectedClass}-${String(parsed.length + 1).padStart(3, '0')}`
-
-            parsed.push({
-              autoCode,
-              day: dayKey,
-              period: periodKey,
-              dayLabel: DAYS.find(d => d.id === dayKey)?.label || dayRaw,
-              timeLabel: PERIODS.find(p => p.id === periodKey)?.time || timeRaw,
-              duration,
-              subject: isLibre ? 'ម៉ោងលីប' : subjRaw,
-              teacher: isLibre ? '—' : (teacherRaw || DEFAULT_SUBJECT_TEACHERS[subjRaw] || 'លោកគ្រូ សាន វិបុល'),
-              isLibre
-            })
-          }
-        }
-
-        if (parsed.length === 0) {
-          showToast('ទម្រង់ឯកសារមិនត្រឹមត្រូវ សូមពិនិត្យឯកសារគំរូ')
-          return
-        }
-
-        setImportModal({
-          open: true,
-          parsedData: parsed,
-          isUploaded: true,
-          fileName: file.name
-        })
-      } catch (err) {
-        showToast('មានបញ្ហាក្នុងការអានឯកសារ')
+      const text = event.target?.result
+      if (typeof text === 'string') {
+        handleProcessWorkbookText(text, file.name)
       }
     }
     reader.readAsText(file, 'utf-8')
@@ -1181,6 +1603,8 @@ export default function AdminTimetable() {
   // Confirm Import
   const handleConfirmImport = () => {
     if (importModal.parsedData.length === 0) return
+
+    const targetClass = importModal.selectedSheet || selectedClass
 
     const newSlots = importModal.parsedData.map((slot, idx) => ({
       id: slot.autoCode || `import_${Date.now()}_${idx}`,
@@ -1192,19 +1616,32 @@ export default function AdminTimetable() {
       teacher: slot.teacher
     }))
 
-    const existing = (timetableData[selectedClass] || []).filter(ex => 
+    const existing = (timetableData[targetClass] || []).filter(ex => 
       !newSlots.some(n => n.day === ex.day && n.period === ex.period)
     )
 
     const merged = [...newSlots, ...existing]
     setTimetableData(prev => ({
       ...prev,
-      [selectedClass]: merged
+      [targetClass]: merged
     }))
-    api('timetable.save', { classId: selectedClass, slots: merged })
+    api('timetable.save', { classId: targetClass, slots: merged })
 
-    showToast(`បាននាំចូលកាលវិភាគចំនួន ${newSlots.length} ម៉ោងសម្រាប់ថ្នាក់ ${selectedClass} ដោយជោគជ័យ!`)
-    setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })
+    showToast(`បាននាំចូលកាលវិភាគចំនួន ${newSlots.length} ម៉ោងសម្រាប់ថ្នាក់ ${targetClass} ដោយជោគជ័យ!`)
+    if (targetClass !== selectedClass) {
+      setSelectedClass(targetClass)
+    }
+    setImportModal({
+      open: false,
+      parsedData: [],
+      isUploaded: false,
+      fileName: '',
+      availableSheets: [],
+      selectedSheet: '',
+      rawWorkbookData: null,
+      pasteMode: false,
+      pasteText: ''
+    })
   }
 
   // Track covered slots for rowSpan (merging cells vertically)
@@ -1291,7 +1728,7 @@ export default function AdminTimetable() {
             {homeroomTeacher}
           </div>
           <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">
-            ថ្នាក់ {selectedClass} • បន្ទប់ {selectedClass}
+            {selectedClass ? `ថ្នាក់ ${selectedClass} • ${currentClassObj?.room ? `បន្ទប់ ${currentClassObj.room}` : 'បន្ទប់ទូទៅ'}` : 'មិនទាន់មានថ្នាក់រៀន'}
           </div>
         </div>
       </div>
@@ -1363,7 +1800,23 @@ export default function AdminTimetable() {
                 </button>
 
                 {exportOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-100 rounded-xl shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1">
+                  <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-xl z-50 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1">
+                    <button
+                      type="button"
+                      onClick={() => { handleExport('Excel'); setExportOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <FileSpreadsheet size={15} className="text-emerald-600" />
+                      <span>Excel (ថ្នាក់ {selectedClass})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { handleExport('ExcelAllSheets'); setExportOpen(false); }}
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                    >
+                      <Layers size={15} className="text-teal-600" />
+                      <span>Excel គ្រប់ថ្នាក់ (តាម Sheets)</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => { handleExport('PDF'); setExportOpen(false); }}
@@ -1371,14 +1824,6 @@ export default function AdminTimetable() {
                     >
                       <FileText size={15} className="text-rose-500" />
                       <span>ទាញយកជា PDF</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { handleExport('Excel'); setExportOpen(false); }}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                    >
-                      <FileCode size={15} className="text-emerald-500" />
-                      <span>ទាញយកជា Excel</span>
                     </button>
                     <button
                       type="button"
@@ -1671,8 +2116,8 @@ export default function AdminTimetable() {
                           onClick={() => setForm(prev => ({
                             ...prev,
                             isLibre: false,
-                            subject: prev.subject === 'ម៉ោងលីប' ? 'គណិតវិទ្យា' : prev.subject,
-                            teacher: prev.teacher || DEFAULT_SUBJECT_TEACHERS['គណិតវិទ្យា'] || 'លោកគ្រូ សាន វិបុល'
+                            subject: prev.subject === 'ម៉ោងលីប' ? (dynamicSubjects[0] || '') : prev.subject,
+                            teacher: prev.teacher || ''
                           }))}
                           className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-[12.5px] font-bold transition-all ${
                             !form.isLibre
@@ -1737,104 +2182,88 @@ export default function AdminTimetable() {
                           )}
                         </div>
 
-                        {/* 3. មុខវិជ្ជាសិក្សា */}
+                        {/* 3. មុខវិជ្ជាសិក្សា (ចាប់ពី table មុខវិជ្ជា) */}
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <label className="text-[12px] font-bold text-slate-700">
                               មុខវិជ្ជាសិក្សា <span className="text-rose-500">*</span>
                             </label>
-                            <span className="text-[11px] text-slate-400">ចុចរើស ១-Click</span>
+                            <span className="text-[11px] text-slate-400">
+                              {dynamicSubjects.length > 0 ? `ពីតារាងមុខវិជ្ជា (${dynamicSubjects.length})` : 'មិនទាន់មានក្នុងតារាង'}
+                            </span>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1.5 mb-2">
-                            {AVAILABLE_SUBJECTS.map(subj => {
-                              const theme = getSubjectTheme(subj)
-                              const isSelected = form.subject === subj
-                              return (
-                                <button
-                                  key={subj}
-                                  type="button"
-                                  onClick={() => handleSelectSubject(subj)}
-                                  className={`flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
-                                    isSelected
-                                      ? `${theme.bg} ${theme.border} ${theme.text} ring-2 ring-indigo-400/50 shadow-xs font-bold`
-                                      : 'bg-white hover:bg-slate-50 border-slate-200/80 text-slate-700'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <span
-                                      className={`w-2 h-2 rounded-full shrink-0 ${
-                                        isSelected ? 'bg-indigo-600' : 'bg-slate-300'
-                                      }`}
-                                    />
-                                    <span className="text-[12px] truncate">{subj}</span>
-                                  </div>
-                                  {isSelected && (
-                                    <Check size={13} className="text-indigo-600 shrink-0" />
-                                  )}
-                                </button>
-                              )
-                            })}
-                          </div>
+                          {dynamicSubjects.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-1.5 mb-2 max-h-[160px] overflow-y-auto custom-scrollbar p-0.5">
+                              {dynamicSubjects.map(subj => {
+                                const theme = getSubjectTheme(subj)
+                                const isSelected = form.subject === subj
+                                return (
+                                  <button
+                                    key={subj}
+                                    type="button"
+                                    onClick={() => handleSelectSubject(subj)}
+                                    className={`flex items-center justify-between p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                                      isSelected
+                                        ? `${theme.bg} ${theme.border} ${theme.text} ring-2 ring-indigo-400/50 shadow-xs font-bold`
+                                        : 'bg-white hover:bg-slate-50 border-slate-200/80 text-slate-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span
+                                        className={`w-2 h-2 rounded-full shrink-0 ${
+                                          isSelected ? 'bg-indigo-600' : 'bg-slate-300'
+                                        }`}
+                                      />
+                                      <span className="text-[12px] truncate">{subj}</span>
+                                    </div>
+                                    {isSelected && (
+                                      <Check size={13} className="text-indigo-600 shrink-0" />
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="p-2.5 mb-2 bg-amber-50 border border-amber-200/70 rounded-xl text-amber-800 text-[11.5px] leading-relaxed">
+                              មិនទាន់មានមុខវិជ្ជាក្នុងតារាងមុខវិជ្ជាទេ។ សូមវាយបញ្ចូលខាងក្រោម ឬបន្ថែមក្នុងផ្ទាំង «មុខវិជ្ជា»។
+                            </div>
+                          )}
 
                           {/* Custom Subject input fallback */}
                           <input
                             type="text"
                             placeholder="ឬវាយបញ្ចូលឈ្មោះមុខវិជ្ជាផ្សេង..."
-                            value={AVAILABLE_SUBJECTS.includes(form.subject) ? '' : form.subject}
+                            value={dynamicSubjects.includes(form.subject) ? '' : form.subject}
                             onChange={(e) => {
                               const val = e.target.value
                               setForm(prev => ({
                                 ...prev,
-                                subject: val,
-                                teacher: DEFAULT_SUBJECT_TEACHERS[val] || prev.teacher
+                                subject: val
                               }))
                             }}
                             className="w-full text-[12px] py-1.5 px-3 rounded-lg border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 placeholder:text-slate-400 font-medium"
                           />
                         </div>
 
-                        {/* 4. គ្រូបង្រៀនទទួលបន្ទុក */}
+                        {/* 4. គ្រូបង្រៀនទទួលបន្ទុក (Optional - មិន required) */}
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <label className="text-[12px] font-bold text-slate-700 flex items-center gap-1.5">
                               <User size={13} className="text-slate-400" />
                               <span>គ្រូបង្រៀនទទួលបន្ទុក</span>
-                              <span className="text-rose-500">*</span>
+                              <span className="text-[11px] font-normal text-slate-400">(មិនបង្ខំ / ស្រេចចិត្ត)</span>
                             </label>
-                            <span className="text-[11px] text-emerald-600 font-medium">
-                              បំពេញស្វ័យប្រវត្តិតាមមុខវិជ្ជា
-                            </span>
                           </div>
                           <div className="relative">
                             <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                               type="text"
-                              required={!form.isLibre}
                               value={form.teacher}
                               onChange={e => setForm(prev => ({ ...prev, teacher: e.target.value }))}
                               className="w-full bg-white border border-slate-200 text-slate-800 py-2 pl-9 pr-3 rounded-xl font-bold text-[12.5px] focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all shadow-2xs"
-                              placeholder="ឧ. លោកគ្រូ សាន វិបុល"
+                              placeholder="ឧ. ឈ្មោះគ្រូបង្រៀន (ទុកទំនេរក៏បាន)"
                             />
-                          </div>
-
-                          {/* Quick Teacher Chips */}
-                          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                            <span className="text-[10.5px] text-slate-400">គ្រូបង្រៀនលឿន:</span>
-                            {['លោកគ្រូ សាន វិបុល', 'អ្នកគ្រូ ហេង សុផល', 'លោកគ្រូ សុខ ផល្លា'].map(tName => (
-                              <button
-                                key={tName}
-                                type="button"
-                                onClick={() => setForm(prev => ({ ...prev, teacher: tName }))}
-                                className={`text-[10.5px] px-2 py-0.5 rounded-md border transition-all ${
-                                  form.teacher === tName
-                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold'
-                                    : 'bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100'
-                                }`}
-                              >
-                                {tName}
-                              </button>
-                            ))}
                           </div>
 
                           {/* Teacher Conflict Warning Banner */}
@@ -1948,8 +2377,8 @@ export default function AdminTimetable() {
                         onClick={() => setForm(prev => ({
                           ...prev,
                           isLibre: false,
-                          subject: prev.subject === 'ម៉ោងលីប' ? 'គណិតវិទ្យា' : prev.subject,
-                          teacher: prev.teacher || DEFAULT_SUBJECT_TEACHERS['គណិតវិទ្យា'] || 'លោកគ្រូ សាន វិបុល'
+                          subject: prev.subject === 'ម៉ោងលីប' ? (dynamicSubjects[0] || '') : prev.subject,
+                          teacher: prev.teacher || ''
                         }))}
                         className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-[12.5px] font-bold transition-all ${
                           !form.isLibre
@@ -2266,104 +2695,88 @@ export default function AdminTimetable() {
                           <span>មុខវិជ្ជា & គ្រូបង្រៀន</span>
                         </div>
 
-                        {/* Quick Subject Grid (2 cols x 5 rows) */}
+                        {/* Quick Subject Grid (ចាប់ពី table មុខវិជ្ជា) */}
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <label className="text-[12px] font-bold text-slate-700">
                               មុខវិជ្ជាសិក្សា <span className="text-rose-500">*</span>
                             </label>
-                            <span className="text-[11px] text-slate-400">ចុចរើស ១-Click</span>
+                            <span className="text-[11px] text-slate-400">
+                              {dynamicSubjects.length > 0 ? `ពីតារាងមុខវិជ្ជា (${dynamicSubjects.length})` : 'មិនទាន់មានក្នុងតារាង'}
+                            </span>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-1.5 mb-2">
-                            {AVAILABLE_SUBJECTS.map(subj => {
-                              const theme = getSubjectTheme(subj)
-                              const isSelected = form.subject === subj
-                              return (
-                                <button
-                                  key={subj}
-                                  type="button"
-                                  onClick={() => handleSelectSubject(subj)}
-                                  className={`flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
-                                    isSelected
-                                      ? `${theme.bg} ${theme.border} ${theme.text} ring-2 ring-indigo-400/50 shadow-xs font-bold`
-                                      : 'bg-white hover:bg-slate-50 border-slate-200/80 text-slate-700'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-1.5 min-w-0">
-                                    <span
-                                      className={`w-2 h-2 rounded-full shrink-0 ${
-                                        isSelected ? 'bg-indigo-600' : 'bg-slate-300'
-                                      }`}
-                                    />
-                                    <span className="text-[12px] truncate">{subj}</span>
-                                  </div>
-                                  {isSelected && (
-                                    <Check size={13} className="text-indigo-600 shrink-0" />
-                                  )}
-                                </button>
-                              )
-                            })}
-                          </div>
+                          {dynamicSubjects.length > 0 ? (
+                            <div className="grid grid-cols-2 gap-1.5 mb-2 max-h-[160px] overflow-y-auto custom-scrollbar p-0.5">
+                              {dynamicSubjects.map(subj => {
+                                const theme = getSubjectTheme(subj)
+                                const isSelected = form.subject === subj
+                                return (
+                                  <button
+                                    key={subj}
+                                    type="button"
+                                    onClick={() => handleSelectSubject(subj)}
+                                    className={`flex items-center justify-between p-2 rounded-xl border text-left transition-all cursor-pointer ${
+                                      isSelected
+                                        ? `${theme.bg} ${theme.border} ${theme.text} ring-2 ring-indigo-400/50 shadow-xs font-bold`
+                                        : 'bg-white hover:bg-slate-50 border-slate-200/80 text-slate-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5 min-w-0">
+                                      <span
+                                        className={`w-2 h-2 rounded-full shrink-0 ${
+                                          isSelected ? 'bg-indigo-600' : 'bg-slate-300'
+                                        }`}
+                                      />
+                                      <span className="text-[12px] truncate">{subj}</span>
+                                    </div>
+                                    {isSelected && (
+                                      <Check size={13} className="text-indigo-600 shrink-0" />
+                                    )}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            <div className="p-2.5 mb-2 bg-amber-50 border border-amber-200/70 rounded-xl text-amber-800 text-[11.5px] leading-relaxed">
+                              មិនទាន់មានមុខវិជ្ជាក្នុងតារាងមុខវិជ្ជាទេ។ សូមវាយបញ្ចូលខាងក្រោម ឬបន្ថែមក្នុងផ្ទាំង «មុខវិជ្ជា»។
+                            </div>
+                          )}
 
                           {/* Custom Subject input fallback */}
                           <input
                             type="text"
                             placeholder="ឬវាយបញ្ចូលឈ្មោះមុខវិជ្ជាផ្សេង..."
-                            value={AVAILABLE_SUBJECTS.includes(form.subject) ? '' : form.subject}
+                            value={dynamicSubjects.includes(form.subject) ? '' : form.subject}
                             onChange={(e) => {
                               const val = e.target.value
                               setForm(prev => ({
                                 ...prev,
-                                subject: val,
-                                teacher: DEFAULT_SUBJECT_TEACHERS[val] || prev.teacher
+                                subject: val
                               }))
                             }}
                             className="w-full text-[12px] py-1.5 px-3 rounded-lg border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 placeholder:text-slate-400 font-medium"
                           />
                         </div>
 
-                        {/* Teacher Input & Suggestions */}
+                        {/* Teacher Input & Suggestions (Optional - មិន required) */}
                         <div>
                           <div className="flex items-center justify-between mb-1.5">
                             <label className="text-[12px] font-bold text-slate-700 flex items-center gap-1.5">
                               <User size={13} className="text-slate-400" />
                               <span>គ្រូបង្រៀនទទួលបន្ទុក</span>
-                              <span className="text-rose-500">*</span>
+                              <span className="text-[11px] font-normal text-slate-400">(មិនបង្ខំ / ស្រេចចិត្ត)</span>
                             </label>
-                            <span className="text-[11px] text-emerald-600 font-medium">
-                              បំពេញស្វ័យប្រវត្តិ
-                            </span>
                           </div>
                           <div className="relative">
                             <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                             <input
                               type="text"
-                              required={!form.isLibre}
                               value={form.teacher}
                               onChange={e => setForm(prev => ({ ...prev, teacher: e.target.value }))}
                               className="w-full bg-white border border-slate-200 text-slate-800 py-2 pl-9 pr-3 rounded-xl font-bold text-[12.5px] focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all shadow-2xs"
-                              placeholder="ឧ. លោកគ្រូ សាន វិបុល"
+                              placeholder="ឧ. ឈ្មោះគ្រូបង្រៀន (ទុកទំនេរក៏បាន)"
                             />
-                          </div>
-
-                          {/* Quick Teacher Chips */}
-                          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                            <span className="text-[10.5px] text-slate-400">គ្រូបង្រៀនលឿន:</span>
-                            {['លោកគ្រូ សាន វិបុល', 'អ្នកគ្រូ ហេង សុផល', 'លោកគ្រូ សុខ ផល្លា'].map(tName => (
-                              <button
-                                key={tName}
-                                type="button"
-                                onClick={() => setForm(prev => ({ ...prev, teacher: tName }))}
-                                className={`text-[10.5px] px-2 py-0.5 rounded-md border transition-all ${
-                                  form.teacher === tName
-                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold'
-                                    : 'bg-slate-50 border-slate-200/80 text-slate-600 hover:bg-slate-100'
-                                }`}
-                              >
-                                {tName}
-                              </button>
-                            ))}
                           </div>
 
                           {/* Teacher Conflict Warning Banner */}
@@ -2579,118 +2992,222 @@ export default function AdminTimetable() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 flex flex-col gap-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            <div className="p-6 flex flex-col gap-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
 
-              {/* Step 1: Download Sample Template Card */}
-              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              {/* Step 1: Download Sample Templates (Single Class or All Classes via Sheets) */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-slate-600 shrink-0 shadow-xs">
-                    <Download size={14} />
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0 shadow-xs">
+                    <FileSpreadsheet size={20} />
                   </div>
                   <div>
-                    <p className="text-[13px] font-bold text-slate-700">ទាញយកឯកសារគំរូ (Template)</p>
-                    <p className="text-[11px] text-slate-400">ឯកសារគំរូមានកូដម៉ោងស្វ័យប្រវត្តិនឹងជួយបំពេញទិន្នន័យឱ្យត្រូវទម្រង់</p>
+                    <p className="text-[13.5px] font-bold text-slate-800">ទាញយកឯកសារគំរូ Excel (.xls) តាមទម្រង់ក្រដាស</p>
+                    <p className="text-[11.5px] text-slate-500">តារាងមានទម្រង់ ៧ ម៉ោង (ព្រឹក-រសៀល) ដូចក្រដាសកាលវិភាគវិទ្យាល័យបេះបិទ</p>
                   </div>
                 </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadTemplate('all')}
+                    className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-bold shadow-xs transition-all flex items-center justify-center gap-1.5"
+                    title="ទាញយក Excel ដែលមាន Sheets សម្រាប់គ្រប់ថ្នាក់"
+                  >
+                    <Layers size={13} />
+                    <span>គ្រប់ថ្នាក់ (តាម Sheets)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadTemplate('single')}
+                    className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-[12px] font-bold shadow-xs transition-all flex items-center justify-center gap-1.5"
+                    title="ទាញយក Excel សម្រាប់តែថ្នាក់នេះ"
+                  >
+                    <Download size={13} />
+                    <span>ថ្នាក់ {selectedClass}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Input Mode Toggle: File Upload vs Direct Paste */}
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
                 <button
                   type="button"
-                  onClick={handleDownloadTemplate}
-                  className="px-3.5 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-700 hover:text-emerald-700 hover:border-emerald-300 text-[12px] font-bold shadow-xs transition-all whitespace-nowrap"
+                  onClick={() => setImportModal(prev => ({ ...prev, pasteMode: false }))}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[12.5px] font-bold transition-all ${
+                    !importModal.pasteMode
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                  }`}
                 >
-                  ទាញយកគំរូ (.csv)
+                  <Upload size={14} />
+                  <span>ជ្រើសរើសឯកសារ (.xls, .csv)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportModal(prev => ({ ...prev, pasteMode: true }))}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[12.5px] font-bold transition-all ${
+                    importModal.pasteMode
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                  }`}
+                >
+                  <Clipboard size={14} />
+                  <span>បិទភ្ជាប់ (Paste) ពី Excel</span>
                 </button>
               </div>
 
-              {/* Step 2: Upload Dropzone */}
-              <div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleSelectFile}
-                  accept=".csv, .xlsx, .xls"
-                  className="hidden"
-                />
+              {/* Upload Dropzone OR Direct Paste Box */}
+              {!importModal.pasteMode ? (
+                <div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleSelectFile}
+                    accept=".xls, .xlsx, .csv, .xml, application/vnd.ms-excel"
+                    className="hidden"
+                  />
 
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-200 hover:border-emerald-400 bg-slate-50/50 hover:bg-emerald-50/20 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
-                >
-                  <div className="w-11 h-11 rounded-2xl bg-emerald-50 group-hover:bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2.5 transition-colors">
-                    <Upload size={20} />
-                  </div>
-                  <p className="text-[13.5px] font-bold text-slate-700 group-hover:text-emerald-700 transition-colors">
-                    {importModal.fileName ? importModal.fileName : 'ចុចដើម្បីជ្រើសរើសឯកសារ ឬអូសទម្លាក់ទីនេះ'}
-                  </p>
-                  <p className="text-[11.5px] text-slate-400 mt-1">
-                    ឯកសារ CSV ឬ Excel (.csv, .xlsx)
-                  </p>
-                </div>
-
-                {/* Quick Demo Button */}
-                <div className="mt-2 flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={handleLoadDemoImport}
-                    className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800 underline underline-offset-2 flex items-center gap-1"
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-200 hover:border-emerald-400 bg-slate-50/50 hover:bg-emerald-50/20 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
                   >
-                    <span>ចុចទីនេះដើម្បីសាកល្បងផ្ទុកទិន្នន័យគំរូ 5 ម៉ោងភ្លាមៗ</span>
-                    <ArrowRight size={11} />
-                  </button>
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 group-hover:bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2.5 transition-colors">
+                      <Upload size={22} />
+                    </div>
+                    <p className="text-[14px] font-bold text-slate-700 group-hover:text-emerald-700 transition-colors">
+                      {importModal.fileName ? importModal.fileName : 'ចុចដើម្បីជ្រើសរើសឯកសារ ឬអូសទម្លាក់ទីនេះ'}
+                    </p>
+                    <p className="text-[12px] text-slate-400 mt-1">
+                      គាំទ្រឯកសារ Excel (.xls, .xlsx) ឬ CSV
+                    </p>
+                  </div>
                 </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <textarea
+                    rows={4}
+                    value={importModal.pasteText || ''}
+                    onChange={(e) => handlePasteChange(e.target.value)}
+                    placeholder="ចម្លង (Copy) តារាងពី Excel ឬ Google Sheets រួចចុច Ctrl+V បិទភ្ជាប់ទីនេះ... (ប្រព័ន្ធនឹងស្គាល់ដោយស្វ័យប្រវត្តិ)"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-[12px] font-mono focus:outline-none focus:border-emerald-500 focus:bg-white transition-all custom-scrollbar"
+                  />
+                  <p className="text-[11px] text-slate-400 italic">
+                    * គន្លឹះ៖ គ្រាន់តែ Select table ក្នុង Excel រួចចុច Ctrl+C ហើយយកមក Paste ទីនេះ។
+                  </p>
+                </div>
+              )}
+
+              {/* Multi-Sheet Selector Pills (if file contains multiple sheets) */}
+              {importModal.availableSheets && importModal.availableSheets.length > 1 && (
+                <div className="p-3 bg-emerald-50/70 border border-emerald-200/70 rounded-2xl flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[12.5px] font-bold text-emerald-950 flex items-center gap-1.5">
+                      <Layers size={14} className="text-emerald-600" />
+                      សន្លឹក Sheets ក្នុងឯកសារ ({importModal.availableSheets.length} ថ្នាក់)៖
+                    </span>
+                    <span className="text-[11px] text-emerald-700 font-medium">ចុចលើ Sheet ដើម្បីប្តូរថ្នាក់ដែលត្រូវនាំចូល</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {importModal.availableSheets.map(sheetName => {
+                      const isSelected = importModal.selectedSheet === sheetName
+                      return (
+                        <button
+                          key={sheetName}
+                          type="button"
+                          onClick={() => handleSwitchSheet(sheetName)}
+                          className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all flex items-center gap-1 ${
+                            isSelected
+                              ? 'bg-emerald-600 text-white shadow-xs scale-105'
+                              : 'bg-white border border-emerald-200 text-slate-700 hover:bg-emerald-100/60'
+                          }`}
+                        >
+                          {isSelected && <Check size={12} strokeWidth={2.5} />}
+                          <span>{sheetName}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Demo Button */}
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={handleLoadDemoImport}
+                  className="text-[11px] font-bold text-emerald-600 hover:text-emerald-800 underline underline-offset-2 flex items-center gap-1"
+                >
+                  <span>ចុចទីនេះដើម្បីសាកល្បងផ្ទុកទិន្នន័យគំរូ 12B ភ្លាមៗ</span>
+                  <ArrowRight size={11} />
+                </button>
               </div>
 
               {/* Step 3: Preview Parsed Data */}
               {importModal.isUploaded && importModal.parsedData.length > 0 && (
                 <div className="flex flex-col gap-2.5 animate-in fade-in duration-200">
-                  <div className="p-3 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100/80 rounded-xl flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
-                      <Sparkles size={14} />
+                  <div className="p-3 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/80 rounded-xl flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                      <Sparkles size={16} />
                     </div>
-                    <p className="text-[11.5px] text-indigo-900 leading-relaxed">
-                      <span className="font-bold">ព័ត៌មានកូដស្វ័យប្រវត្តិ (Auto-ID)៖</span> ប្រព័ន្ធបានបង្កើតកូដម៉ោងសិក្សា <span className="font-bold">SCH-***</span> ដោយស្វ័យប្រវត្តិដើម្បីធានាមិនឱ្យជាន់លេខសម្គាល់ក្នុងប្រព័ន្ធ។
-                    </p>
+                    <div className="flex-1">
+                      <p className="text-[12px] text-emerald-950 font-bold">
+                        បានផ្ទៀងផ្ទាត់ដោយជោគជ័យសម្រាប់ថ្នាក់៖ <span className="text-emerald-700 underline underline-offset-2 text-[13px]">{importModal.selectedSheet || selectedClass}</span>
+                      </p>
+                      <p className="text-[11px] text-emerald-800 mt-0.5">
+                        ប្រព័ន្ធបានបកប្រែកូដ (K3, M1, P1...) ទៅជាមុខវិជ្ជា និងគ្រូស្វ័យប្រវត្តិ ដោយគ្មានកំហុស Field ឡើយ។
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-                      <span className="text-[13px] font-bold text-slate-700">
-                        ទិន្នន័យដែលបានផ្ទៀងផ្ទាត់ ({importModal.parsedData.length} ម៉ោង)
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
+                      <span className="text-[13px] font-bold text-slate-800">
+                        ទិន្នន័យដែលបានស្រង់ ({importModal.parsedData.length} ម៉ោងសិក្សា)
                       </span>
                     </div>
-                    <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-100">
+                    <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100/70 px-2.5 py-0.5 rounded-full border border-emerald-200">
                       រួចរាល់សម្រាប់ការនាំចូល
                     </span>
                   </div>
 
-                  <div className="border border-slate-200/80 rounded-xl overflow-hidden max-h-52 overflow-y-auto custom-scrollbar">
+                  <div className="border border-slate-200/80 rounded-xl overflow-hidden max-h-56 overflow-y-auto custom-scrollbar shadow-xs">
                     <table className="w-full text-left border-collapse text-[12px]">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-bold">
-                          <th className="py-2 px-3 text-center w-12">ល.រ</th>
-                          <th className="py-2 px-3">កូដ (Auto)</th>
-                          <th className="py-2 px-3">ថ្ងៃ</th>
-                          <th className="py-2 px-3">ពេលវេលា</th>
-                          <th className="py-2 px-3">មុខវិជ្ជា</th>
-                          <th className="py-2 px-3">គ្រូបង្រៀន</th>
-                          <th className="py-2 px-3 text-center">រយៈពេល</th>
+                        <tr className="bg-slate-50 border-b border-slate-200/80 text-slate-500 font-bold sticky top-0 bg-slate-50">
+                          <th className="py-2.5 px-3 text-center w-12">ល.រ</th>
+                          <th className="py-2.5 px-3">ថ្ងៃ</th>
+                          <th className="py-2.5 px-3">ពេលវេលា</th>
+                          <th className="py-2.5 px-3">មុខវិជ្ជា</th>
+                          <th className="py-2.5 px-3">គ្រូបង្រៀន</th>
+                          <th className="py-2.5 px-3 text-center">រយៈពេល</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
                         {importModal.parsedData.map((row, i) => (
-                          <tr key={i} className="hover:bg-slate-50/50">
+                          <tr key={i} className="hover:bg-slate-50/70 transition-colors">
                             <td className="py-2 px-3 text-center text-slate-400 font-bold">{i + 1}</td>
-                            <td className="py-2 px-3 font-mono font-bold text-indigo-600 text-[11px]">
-                              {row.autoCode || `SCH-${selectedClass}-${String(i + 1).padStart(3, '0')}`}
+                            <td className="py-2 px-3 font-bold text-slate-800">{row.dayLabel}</td>
+                            <td className="py-2 px-3 font-mono text-[11px] text-slate-600">{row.timeLabel}</td>
+                            <td className="py-2 px-3 font-bold text-slate-900">
+                              {row.isLibre ? (
+                                <span className="text-amber-600 font-medium bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">ម៉ោងលីប (ទំនេរ)</span>
+                              ) : (
+                                <span className="text-indigo-700">{row.subject}</span>
+                              )}
                             </td>
-                            <td className="py-2 px-3 font-bold">{row.dayLabel}</td>
-                            <td className="py-2 px-3 font-mono text-[11px]">{row.timeLabel}</td>
-                            <td className="py-2 px-3 font-bold text-slate-800">
-                              {row.isLibre ? <span className="text-amber-600 font-medium">ម៉ោងលីប (ទំនេរ)</span> : row.subject}
+                            <td className="py-2 px-3">
+                              {row.teacher ? (
+                                <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[11px] border border-slate-200/60">
+                                  {row.teacher}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
                             </td>
-                            <td className="py-2 px-3 text-slate-600">{row.teacher}</td>
                             <td className="py-2 px-3 text-center">
-                              <span className="inline-block px-1.5 py-0.5 text-[10px] font-bold rounded bg-slate-100 text-slate-600">
+                              <span className={`inline-block px-2 py-0.5 text-[10.5px] font-bold rounded-md ${
+                                row.duration === 2 ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                              }`}>
                                 {row.duration === 2 ? '២ ម៉ោង' : '១ ម៉ោង'}
                               </span>
                             </td>
@@ -2705,23 +3222,38 @@ export default function AdminTimetable() {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-[13px] font-bold transition-all"
-              >
-                បោះបង់
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmImport}
-                disabled={!importModal.isUploaded || importModal.parsedData.length === 0}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-[13px] font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Check size={15} />
-                <span>បញ្ជាក់ការនាំចូល ({importModal.parsedData.length})</span>
-              </button>
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between gap-3">
+              <p className="text-[11.5px] text-slate-400 hidden sm:block">
+                នាំចូលទៅកាន់៖ <span className="font-bold text-slate-700">ថ្នាក់ {importModal.selectedSheet || selectedClass}</span>
+              </p>
+              <div className="flex items-center gap-2.5 ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setImportModal({
+                    open: false,
+                    parsedData: [],
+                    isUploaded: false,
+                    fileName: '',
+                    availableSheets: [],
+                    selectedSheet: '',
+                    rawWorkbookData: null,
+                    pasteMode: false,
+                    pasteText: ''
+                  })}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-[13px] font-bold transition-all"
+                >
+                  បោះបង់
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmImport}
+                  disabled={!importModal.isUploaded || importModal.parsedData.length === 0}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-[13px] font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Check size={16} strokeWidth={2.5} />
+                  <span>បញ្ជាក់ការនាំចូល ({importModal.parsedData.length} ម៉ោង ទៅថ្នាក់ {importModal.selectedSheet || selectedClass})</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

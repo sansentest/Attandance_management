@@ -5,7 +5,7 @@ import {
   RefreshCw, Loader2, Image as ImageIcon, FileCheck, HardDrive, 
   ArrowRight, X, AlertCircle, Trash2
 } from 'lucide-react'
-import { api } from '../../../utils/api'
+import { api, verifyPassword } from '../../../utils/api'
 
 export default function AdminSettings({ initialTab = 'school' }) {
   const [activeTab, setActiveTab] = useState(initialTab)
@@ -14,7 +14,6 @@ export default function AdminSettings({ initialTab = 'school' }) {
   const [toast, setToast] = useState(null)
   
   // File input refs
-  const fileInputRef = useRef(null)
   const backupFileInputRef = useRef(null)
 
   // Form States
@@ -122,6 +121,9 @@ export default function AdminSettings({ initialTab = 'school' }) {
       }
       const res = await api('settings.save', { settings: payload })
       if (res?.success) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('school_settings_updated', { detail: payload }));
+        }
         setSaveSuccess(true)
         showToast('បានរក្សាទុកការកំណត់ជោគជ័យទៅកាន់ Firebase Cloud!', 'success')
         setTimeout(() => setSaveSuccess(false), 3000)
@@ -152,13 +154,21 @@ export default function AdminSettings({ initialTab = 'school' }) {
       // Find current user in users list or session
       const rawSession = localStorage.getItem('att_session')
       const session = rawSession ? JSON.parse(rawSession) : null
-      const username = session?.user?.username || 'admin_sys'
+      const username = session?.username || session?.user?.username || 'admin'
 
       // Update in user list
       const resUsers = await api('users.getAll')
       if (resUsers?.success && Array.isArray(resUsers.data)) {
         const user = resUsers.data.find(u => u.username?.toLowerCase() === username?.toLowerCase())
         if (user) {
+          if (security.currentPassword) {
+            const isMatch = await verifyPassword(security.currentPassword, user.password)
+            if (!isMatch) {
+              showToast('ពាក្យសម្ងាត់បច្ចុប្បន្នមិនត្រឹមត្រូវទេ', 'error')
+              setPasswordUpdating(false)
+              return
+            }
+          }
           await api('users.save', { user: { ...user, password: security.newPassword } })
         }
       }
@@ -172,25 +182,6 @@ export default function AdminSettings({ initialTab = 'school' }) {
     }
   }
 
-  // Logo Upload
-  const handleLogoUpload = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        showToast('ទំហំរូបភាពមិនត្រូវលើសពី 2MB ឡើយ', 'error')
-        return
-      }
-      const reader = new FileReader()
-      reader.onload = () => {
-        setSchoolInfo(prev => ({ ...prev, logo: reader.result }))
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
-  const triggerFileInput = () => {
-    fileInputRef.current?.click()
-  }
 
   // Backup Export Action
   const handleExportBackup = async () => {
@@ -265,7 +256,12 @@ export default function AdminSettings({ initialTab = 'school' }) {
         // Refresh local form states if settings were in backup
         if (pendingRestoreData.data?.settings) {
           const s = pendingRestoreData.data.settings
-          if (s.school) setSchoolInfo(s.school)
+          if (s.school) {
+            setSchoolInfo(s.school)
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('school_settings_updated', { detail: { school: s.school } }))
+            }
+          }
           if (s.academic) setAcademic(s.academic)
           if (s.discipline) setDiscipline(s.discipline)
         }
@@ -328,10 +324,10 @@ export default function AdminSettings({ initialTab = 'school' }) {
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-indigo-200">
             <Settings size={22} strokeWidth={2.5} />
           </div>
-          ការកំណត់ទូទៅ (Settings)
+          ការកំណត់ទូទៅ
         </h2>
         <p className="text-slate-500 font-medium text-[13px] lg:text-sm sm:ml-13">
-          គ្រប់គ្រងព័ត៌មានសាលារៀន ឆ្នាំសិក្សា គោលការណ៍វិន័យ និងការបម្រុងទុកទិន្នន័យពពក Firebase
+          គ្រប់គ្រងព័ត៌មានសាលារៀន ឆ្នាំសិក្សា គោលការណ៍វិន័យ និងការបម្រុងទុកទិន្នន័យ
         </p>
       </div>
 
@@ -422,43 +418,11 @@ export default function AdminSettings({ initialTab = 'school' }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-                {/* Logo Upload Section */}
-                <div className="md:col-span-4 flex flex-col items-center gap-4">
-                  <div 
-                    onClick={triggerFileInput}
-                    className="w-40 h-40 rounded-full border-4 border-slate-50 bg-slate-100 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-slate-200 transition-colors shadow-inner overflow-hidden relative group"
-                  >
-                    {schoolInfo.logo ? (
-                      <>
-                        <img src={schoolInfo.logo} alt="School Logo" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Upload className="text-white" size={24} />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <ImageIcon size={32} className="text-slate-400" strokeWidth={1.5} />
-                        <span className="text-[12px] font-bold text-slate-500">បញ្ចូលឡូហ្គោ</span>
-                      </>
-                    )}
-                    <input 
-                      type="file" 
-                      ref={fileInputRef}
-                      onChange={handleLogoUpload}
-                      accept="image/*"
-                      className="hidden" 
-                    />
-                  </div>
-                  <p className="text-[12px] font-medium text-slate-400 text-center max-w-[200px]">
-                    ទំហំរូបភាពណែនាំគឺ 500x500px ក្នុងទម្រង់ PNG ឬ JPG (មិនលើសពី 2MB)
-                  </p>
-                </div>
-
-                {/* Input Fields */}
-                <div className="md:col-span-8 grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="bg-slate-50/60 rounded-2xl border border-slate-200/80 p-6 sm:p-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* School Name */}
                   <div className="flex flex-col gap-2">
-                    <label className="text-[13px] font-bold text-slate-600 ml-1">ឈ្មោះសាលា <span className="text-rose-500">*</span></label>
+                    <label className="text-[13px] font-bold text-slate-700 ml-1">ឈ្មោះសាលា <span className="text-rose-500">*</span></label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <School size={16} className="text-slate-400" />
@@ -467,13 +431,14 @@ export default function AdminSettings({ initialTab = 'school' }) {
                         type="text" 
                         value={schoolInfo.name}
                         onChange={(e) => setSchoolInfo({...schoolInfo, name: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 pl-10 pr-4 rounded-xl font-bold text-[14px] focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400"
+                        className="w-full bg-white border border-slate-200 text-slate-800 py-3 pl-10 pr-4 rounded-xl font-bold text-[14px] focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400 shadow-xs"
                       />
                     </div>
                   </div>
 
+                  {/* Principal */}
                   <div className="flex flex-col gap-2">
-                    <label className="text-[13px] font-bold text-slate-600 ml-1">នាយកសាលា</label>
+                    <label className="text-[13px] font-bold text-slate-700 ml-1">នាយកសាលា</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <User size={16} className="text-slate-400" />
@@ -482,13 +447,14 @@ export default function AdminSettings({ initialTab = 'school' }) {
                         type="text" 
                         value={schoolInfo.principal}
                         onChange={(e) => setSchoolInfo({...schoolInfo, principal: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 pl-10 pr-4 rounded-xl font-bold text-[14px] focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400"
+                        className="w-full bg-white border border-slate-200 text-slate-800 py-3 pl-10 pr-4 rounded-xl font-bold text-[14px] focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400 shadow-xs"
                       />
                     </div>
                   </div>
 
+                  {/* Phone */}
                   <div className="flex flex-col gap-2 sm:col-span-2">
-                    <label className="text-[13px] font-bold text-slate-600 ml-1">លេខទូរស័ព្ទ</label>
+                    <label className="text-[13px] font-bold text-slate-700 ml-1">លេខទូរស័ព្ទ</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                         <Phone size={16} className="text-slate-400" />
@@ -497,13 +463,14 @@ export default function AdminSettings({ initialTab = 'school' }) {
                         type="text" 
                         value={schoolInfo.phone}
                         onChange={(e) => setSchoolInfo({...schoolInfo, phone: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 pl-10 pr-4 rounded-xl font-bold text-[14px] focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400"
+                        className="w-full bg-white border border-slate-200 text-slate-800 py-3 pl-10 pr-4 rounded-xl font-bold text-[14px] focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400 shadow-xs"
                       />
                     </div>
                   </div>
 
+                  {/* Address */}
                   <div className="flex flex-col gap-2 sm:col-span-2">
-                    <label className="text-[13px] font-bold text-slate-600 ml-1">អាសយដ្ឋាន</label>
+                    <label className="text-[13px] font-bold text-slate-700 ml-1">អាសយដ្ឋាន</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 pt-3.5 pointer-events-none">
                         <MapPin size={16} className="text-slate-400" />
@@ -512,7 +479,7 @@ export default function AdminSettings({ initialTab = 'school' }) {
                         value={schoolInfo.address}
                         onChange={(e) => setSchoolInfo({...schoolInfo, address: e.target.value})}
                         rows="3"
-                        className="w-full bg-slate-50 border border-slate-200 text-slate-800 py-3 pl-10 pr-4 rounded-xl font-bold text-[14px] focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400 resize-none"
+                        className="w-full bg-white border border-slate-200 text-slate-800 py-3 pl-10 pr-4 rounded-xl font-bold text-[14px] focus:outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-400 transition-all placeholder:text-slate-400 resize-none shadow-xs"
                       ></textarea>
                     </div>
                   </div>
@@ -710,8 +677,8 @@ export default function AdminSettings({ initialTab = 'school' }) {
                   <Database size={20} />
                 </div>
                 <div>
-                  <h3 className="text-[16px] font-black text-slate-800">ការបម្រុងទុក និងស្ដារទិន្នន័យ (Cloud Database Backup)</h3>
-                  <p className="text-[13px] text-slate-500 mt-0.5 font-medium">គ្រប់គ្រងការទាញយក Backup រក្សាទុកក្នុងកុំព្យូទ័រ និងការស្ដារទិន្នន័យចូល Firebase</p>
+                  <h3 className="text-[16px] font-black text-slate-800">ការបម្រុងទុក និងស្ដារទិន្នន័យ</h3>
+                  <p className="text-[13px] text-slate-500 mt-0.5 font-medium">គ្រប់គ្រងការទាញយក Backup រក្សាទុកក្នុងកុំព្យូទ័រ និងការស្ដារទិន្នន័យ</p>
                 </div>
               </div>
 
@@ -757,19 +724,19 @@ export default function AdminSettings({ initialTab = 'school' }) {
 
                   <div className="bg-slate-50 rounded-xl p-4 mb-6 border border-slate-100 space-y-2 text-[12px] font-bold text-slate-600">
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">👨‍🎓 បញ្ជីសិស្ស</span>
+                      <span className="flex items-center gap-2">បញ្ជីសិស្ស</span>
                       <span className="text-indigo-600 font-extrabold">រួមបញ្ចូល</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">📋 កំណត់ត្រាវត្តមានទាំងអស់</span>
+                      <span className="flex items-center gap-2">កំណត់ត្រាវត្តមានទាំងអស់</span>
                       <span className="text-indigo-600 font-extrabold">រួមបញ្ចូល</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">🏫 ថ្នាក់ មុខវិជ្ជា និងកាលវិភាគ</span>
+                      <span className="flex items-center gap-2">ថ្នាក់ មុខវិជ្ជា និងកាលវិភាគ</span>
                       <span className="text-indigo-600 font-extrabold">រួមបញ្ចូល</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">⚙️ ការកំណត់ & Telegram Bots</span>
+                      <span className="flex items-center gap-2">ការកំណត់ & Telegram Bots</span>
                       <span className="text-indigo-600 font-extrabold">រួមបញ្ចូល</span>
                     </div>
                   </div>
@@ -829,9 +796,9 @@ export default function AdminSettings({ initialTab = 'school' }) {
                   </div>
 
                   <div className="mt-auto">
-                    <div className="bg-amber-50 border border-amber-200/60 rounded-xl p-3 flex items-start gap-2.5">
-                      <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-                      <p className="text-[11px] font-medium text-amber-800 leading-relaxed">
+                    <div className="bg-gradient-to-br from-red-100 to-rose-50 text-danger rounded-xl p-3 flex items-start gap-2.5">
+                      <AlertTriangle size={16} className="text-danger shrink-0 mt-0.5" />
+                      <p className="text-[11px] font-medium text-danger leading-relaxed">
                         ការ Restore នឹងបញ្ចូល ឬធ្វើបច្ចុប្បន្នភាពទិន្នន័យដែលមានស្រាប់។ លោកអ្នកនឹងអាចមើលចំនួនទិន្នន័យផ្ទៀងផ្ទាត់មុនពេលអនុវត្ត។
                       </p>
                     </div>
@@ -845,13 +812,13 @@ export default function AdminSettings({ initialTab = 'school' }) {
                       <Trash2 size={20} />
                     </div>
                     <div>
-                      <h4 className="text-[15px] font-black text-rose-950">សម្អាតទិន្នន័យតេស្ត និងកំណត់ប្រព័ន្ធឡើងវិញ (Clean / Reset Data)</h4>
+                      <h4 className="text-[15px] font-black text-rose-950">សម្អាតទិន្នន័យតេស្ត និងកំណត់ប្រព័ន្ធឡើងវិញ</h4>
                       <span className="text-[11px] font-bold text-rose-500">Wipe Test Records for Fresh School Deployment</span>
                     </div>
                   </div>
 
                   <p className="text-[13px] font-medium text-slate-600 leading-relaxed mb-5">
-                    ប្រើមុខងារនេះដើម្បីសម្អាតរាល់កំណត់ត្រាវត្តមានសាកល្បង ឬកំណត់ត្រាសិស្សតេស្តទាំងអស់ចេញពី Firebase Cloud Firestore និង Cache ក្នុង Browser ដើម្បីឱ្យសាលាអាចចាប់ផ្តើមកត់ត្រាវត្តមានពិតប្រាកដពីលេខ ០ ឡើងវិញ។
+                    ប្រើមុខងារនេះដើម្បីសម្អាតរាល់កំណត់ត្រាវត្តមានសាកល្បង ឬកំណត់ត្រាសិស្សតេស្តទាំងអស់ចេញពី database និង Cache ក្នុង Browser ដើម្បីឱ្យសាលាអាចចាប់ផ្តើមកត់ត្រាវត្តមានពិតប្រាកដពីលេខ ០ ឡើងវិញ។
                   </p>
 
                   <div className="flex flex-col sm:flex-row gap-4">
@@ -860,7 +827,7 @@ export default function AdminSettings({ initialTab = 'school' }) {
                       className="flex-1 flex items-center justify-center gap-2 py-3.5 px-5 bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-300 text-rose-700 hover:text-rose-800 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow cursor-pointer"
                     >
                       <Trash2 size={16} />
-                      <span>សម្អាតទិន្នន័យវត្តមានតេស្តទាំងអស់ (Clear Attendance Records)</span>
+                      <span>សម្អាតទិន្នន័យវត្តមានតេស្តទាំងអស់ </span>
                     </button>
 
                     <button 
@@ -868,7 +835,7 @@ export default function AdminSettings({ initialTab = 'school' }) {
                       className="flex-1 flex items-center justify-center gap-2 py-3.5 px-5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow cursor-pointer"
                     >
                       <AlertTriangle size={16} />
-                      <span>សម្អាតទាំងអស់ (វត្តមាន + បញ្ជីសិស្សតេស្ត)</span>
+                      <span>សម្អាតទាំងអស់ដែលមានក្នុងប្រព័ន្ធ</span>
                     </button>
                   </div>
                 </div>

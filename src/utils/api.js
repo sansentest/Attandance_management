@@ -36,12 +36,15 @@ import {
   saveTimetableToFirestore,
   copyTimetableInFirestore,
   clearTimetableInFirestore,
+  deleteTimetableFromFirestore,
   getTelegramBotsFromFirestore,
   saveTelegramBotToFirestore,
   updateTelegramBotInFirestore,
   deleteTelegramBotFromFirestore,
   getGlobalTelegramTokensFromFirestore,
   saveGlobalTelegramTokensToFirestore,
+  isDummyTelegramToken,
+  isDummyTelegramBot,
   getSchoolSettingsFromFirestore,
   saveSchoolSettingsToFirestore,
   exportCompleteDatabaseBackup,
@@ -54,6 +57,52 @@ import {
   testTelegramBotConnection,
   dispatchAttendanceNotification
 } from '../services/telegram'
+
+const PASSWORD_SALT = 'angroka_school_salt_2026';
+
+/**
+ * Hash password with SHA-256 and salt using native Web Crypto API
+ */
+export async function hashPassword(plainPassword, salt = PASSWORD_SALT) {
+  if (!plainPassword) return '';
+  if (typeof plainPassword !== 'string') plainPassword = String(plainPassword);
+  // Avoid re-hashing already hashed password
+  if (plainPassword.startsWith('sha256$')) return plainPassword;
+
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(plainPassword + salt);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return `sha256$${hex}`;
+  } catch (err) {
+    console.error('[Crypto] Hash error, fallback:', err);
+    return plainPassword;
+  }
+}
+
+/**
+ * Verify password against stored hash or legacy plaintext with automatic backward compatibility
+ */
+export async function verifyPassword(inputPassword, storedPassword, salt = PASSWORD_SALT) {
+  if (!inputPassword || !storedPassword) return false;
+  
+  // 1. Plaintext backward-compatibility match
+  if (storedPassword === inputPassword) return true;
+  
+  // 2. Salted SHA-256 hash match
+  if (storedPassword.startsWith('sha256$')) {
+    const computed = await hashPassword(inputPassword, salt);
+    return computed === storedPassword;
+  }
+  
+  // 3. Fallback check without prefix
+  const computed = await hashPassword(inputPassword, salt);
+  if (storedPassword === computed.replace('sha256$', '')) return true;
+
+  return false;
+}
 
 function getLocalAttendanceRecords() {
   try {
@@ -70,12 +119,11 @@ function getLocalClassStudentCount(className) {
     if (raw) {
       const list = JSON.parse(raw);
       if (Array.isArray(list)) {
-        const count = list.filter(s => (s.className || s.class) === className).length;
-        if (count > 0) return count;
+        return list.filter(s => (s.className || s.class) === className).length;
       }
     }
   } catch (e) {}
-  return 7;
+  return 0;
 }
 
 function calculateLocalReport(period, className = '12A', refDate = null) {
@@ -103,30 +151,41 @@ function calculateLocalReport(period, className = '12A', refDate = null) {
       { key: 6, date: 'សៅរ៍', absent: 0 }
     ];
 
+    const dayMap = {};
+    records.forEach(r => {
+      if (r.class && r.class !== className) return;
+      if (!r.date || r.date < startStr || r.date > endStr) return;
+      const key = `${r.name || 'សិស្ស'}_${r.date}`;
+      if (!dayMap[key]) dayMap[key] = [];
+      dayMap[key].push(r);
+    });
+
     const studentMap = {};
     let totalAbsences = 0;
     let totalLeaves = 0;
 
-    records.forEach(r => {
-      if (r.class && r.class !== className) return;
-      if (!r.date || r.date < startStr || r.date > endStr) return;
-
-      const name = r.name || 'សិស្ស';
+    Object.keys(dayMap).forEach(key => {
+      const recs = dayMap[key];
+      const name = recs[0].name || 'សិស្ស';
       if (!studentMap[name]) {
         studentMap[name] = { name, absences: 0, leaves: 0 };
       }
 
-      if (r.status === 'LEAVE') {
-        studentMap[name].leaves += 1;
-        totalLeaves += 1;
-      } else {
+      const hasAbsent = recs.some(r => r.status === 'ABSENT');
+      const hasLeave = recs.some(r => r.status === 'LEAVE');
+      const isFullDay = recs.some(r => Boolean(r.isFullDay));
+      const totalHrs = recs.reduce((sum, r) => sum + (Number(r.hours) || 1), 0);
+
+      if (hasAbsent) {
         studentMap[name].absences += 1;
         totalAbsences += 1;
-
-        const rDate = new Date(r.date + 'T00:00:00');
+        const rDate = new Date(recs[0].date + 'T00:00:00');
         const rDay = rDate.getDay();
         const found = weekDays.find(w => w.key === rDay);
         if (found) found.absent += 1;
+      } else if (hasLeave) {
+        studentMap[name].leaves += 1;
+        totalLeaves += 1;
       }
     });
 
@@ -165,29 +224,40 @@ function calculateLocalReport(period, className = '12A', refDate = null) {
       { label: 'សប្តាហ៍៥', min: 29, max: 31, absent: 0 }
     ];
 
+    const dayMap = {};
+    records.forEach(r => {
+      if (r.class && r.class !== className) return;
+      if (!r.date || r.date < startStr || r.date > endStr) return;
+      const key = `${r.name || 'សិស្ស'}_${r.date}`;
+      if (!dayMap[key]) dayMap[key] = [];
+      dayMap[key].push(r);
+    });
+
     const studentMap = {};
     let totalAbsences = 0;
     let totalLeaves = 0;
 
-    records.forEach(r => {
-      if (r.class && r.class !== className) return;
-      if (!r.date || r.date < startStr || r.date > endStr) return;
-
-      const name = r.name || 'សិស្ស';
+    Object.keys(dayMap).forEach(key => {
+      const recs = dayMap[key];
+      const name = recs[0].name || 'សិស្ស';
       if (!studentMap[name]) {
         studentMap[name] = { name, absences: 0, leaves: 0 };
       }
 
-      if (r.status === 'LEAVE') {
-        studentMap[name].leaves += 1;
-        totalLeaves += 1;
-      } else {
+      const hasAbsent = recs.some(r => r.status === 'ABSENT');
+      const hasLeave = recs.some(r => r.status === 'LEAVE');
+      const isFullDay = recs.some(r => Boolean(r.isFullDay));
+      const totalHrs = recs.reduce((sum, r) => sum + (Number(r.hours) || 1), 0);
+
+      if (hasAbsent) {
         studentMap[name].absences += 1;
         totalAbsences += 1;
-
-        const dayOfMonth = parseInt(r.date.split('-')[2], 10);
+        const dayOfMonth = parseInt(recs[0].date.split('-')[2], 10);
         const found = monthWeeks.find(w => dayOfMonth >= w.min && dayOfMonth <= w.max);
         if (found) found.absent += 1;
+      } else if (hasLeave) {
+        studentMap[name].leaves += 1;
+        totalLeaves += 1;
       }
     });
 
@@ -221,29 +291,40 @@ function calculateLocalReport(period, className = '12A', refDate = null) {
       absent: 0
     }));
 
+    const dayMap = {};
+    records.forEach(r => {
+      if (r.class && r.class !== className) return;
+      if (!r.date || r.date < startStr || r.date > endStr) return;
+      const key = `${r.name || 'សិស្ស'}_${r.date}`;
+      if (!dayMap[key]) dayMap[key] = [];
+      dayMap[key].push(r);
+    });
+
     const studentMap = {};
     let totalAbsences = 0;
     let totalLeaves = 0;
 
-    records.forEach(r => {
-      if (r.class && r.class !== className) return;
-      if (!r.date || r.date < startStr || r.date > endStr) return;
-
-      const name = r.name || 'សិស្ស';
+    Object.keys(dayMap).forEach(key => {
+      const recs = dayMap[key];
+      const name = recs[0].name || 'សិស្ស';
       if (!studentMap[name]) {
         studentMap[name] = { name, absences: 0, leaves: 0 };
       }
 
-      if (r.status === 'LEAVE') {
-        studentMap[name].leaves += 1;
-        totalLeaves += 1;
-      } else {
+      const hasAbsent = recs.some(r => r.status === 'ABSENT');
+      const hasLeave = recs.some(r => r.status === 'LEAVE');
+      const isFullDay = recs.some(r => Boolean(r.isFullDay));
+      const totalHrs = recs.reduce((sum, r) => sum + (Number(r.hours) || 1), 0);
+
+      if (hasAbsent) {
         studentMap[name].absences += 1;
         totalAbsences += 1;
-
-        const m = parseInt(r.date.split('-')[1], 10);
+        const m = parseInt(recs[0].date.split('-')[1], 10);
         const found = yearMonths.find(ym => ym.mIndex === m);
         if (found) found.absent += 1;
+      } else if (hasLeave) {
+        studentMap[name].leaves += 1;
+        totalLeaves += 1;
       }
     });
 
@@ -280,84 +361,489 @@ export async function api(action, body = {}, token = null) {
   // Real-time direct dispatch (no artificial delay)
   switch (action) {
     case 'auth.login': {
-      let usersList = [];
+      const usernameInput = (body.username || '').trim().toLowerCase();
+      const passwordInput = body.password || '';
+
+      if (!usernameInput) {
+        return { success: false, error: 'សូមបញ្ចូលឈ្មោះអ្នកប្រើប្រាស់' };
+      }
+
+      // 1. Anti-Brute-Force Rate Limiting (Lock after 5 consecutive failed attempts)
+      const attemptKey = `login_attempts_${usernameInput}`;
+      let attempts = { count: 0, lockedUntil: null };
       try {
-        if (isFirebaseConfigured()) {
-          usersList = await getUsersFromFirestore();
-        }
+        const rawAttempts = localStorage.getItem(attemptKey);
+        if (rawAttempts) attempts = JSON.parse(rawAttempts);
       } catch (e) {}
+
+      if (attempts.lockedUntil && Date.now() < attempts.lockedUntil) {
+        const remainingMinutes = Math.max(1, Math.ceil((attempts.lockedUntil - Date.now()) / 60000));
+        return {
+          success: false,
+          error: `គណនីនេះត្រូវបានផ្អាកជាបណ្ដោះអាសន្ន ដោយសារបញ្ចូលពាក្យសម្ងាត់ខុសច្រើនដង។ សូមរង់ចាំ ${remainingMinutes} នាទីទៀត ឬទាក់ទង Admin។`
+        };
+      }
+
+      let usersList = [];
+      if (isFirebaseConfigured()) {
+        try {
+          const fbUsers = await getUsersFromFirestore(true);
+          if (Array.isArray(fbUsers)) {
+            usersList = fbUsers;
+            try {
+              localStorage.setItem('school_users_cache', JSON.stringify(fbUsers));
+            } catch (e) {}
+          }
+        } catch (e) {
+          console.warn('[Firebase] auth.login getUsers fallback:', e);
+        }
+      }
 
       if (!usersList || usersList.length === 0) {
         try {
           const raw = localStorage.getItem('school_users_cache');
-          if (raw) usersList = JSON.parse(raw);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) usersList = parsed;
+          }
         } catch (e) {}
       }
 
-      const foundUser = usersList && usersList.find(u => 
-        u.username?.toLowerCase() === body.username?.toLowerCase()
+      let foundUser = usersList && usersList.find(u => 
+        (u.username || '').trim().toLowerCase() === usernameInput
       );
 
-      const todayStr = new Date().toISOString().slice(0, 10);
+      // Auto-create & persist default admin if logging in with default credentials and user does not exist yet
+      if (!foundUser && (usernameInput === 'admin' || usernameInput === 'admin_sys') && passwordInput === 'admin123') {
+        const securePass = await hashPassword('admin123');
+        foundUser = {
+          id: 'USR-ADMIN',
+          username: 'admin',
+          name: 'អ្នកគ្រប់គ្រងប្រព័ន្ធ',
+          role: 'admin',
+          class: 'ALL',
+          status: 'active',
+          email: 'admin@angroka.edu.kh',
+          phone: '012 345 678',
+          password: securePass,
+          lastLogin: 'មិនទាន់ចូលប្រើ',
+          createdAt: new Date().toISOString()
+        };
+        try {
+          const raw = localStorage.getItem('school_users_cache');
+          let uList = raw ? JSON.parse(raw) : [];
+          if (!uList.some(u => u.username === 'admin')) {
+            uList.unshift(foundUser);
+            localStorage.setItem('school_users_cache', JSON.stringify(uList));
+          }
+        } catch (e) {}
+        if (isFirebaseConfigured()) {
+          saveUserToFirestore(foundUser).catch(() => {});
+        }
+      }
+
+      // Session Duration: 30 days (1 month) for convenient access for class monitors & admins
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
       if (foundUser) {
+        if (foundUser.status === 'inactive') {
+          return {
+            success: false,
+            error: 'គណនីនេះត្រូវបានផ្អាកដំណើរការ (Inactive)។ សូមទាក់ទងអ្នកគ្រប់គ្រង។'
+          };
+        }
+
+        const isMatch = await verifyPassword(passwordInput, foundUser.password);
+        if (!isMatch) {
+          // Increment failed attempt counter
+          attempts.count = (attempts.count || 0) + 1;
+          if (attempts.count >= 5) {
+            attempts.lockedUntil = Date.now() + 10 * 60 * 1000; // 10 minutes lockout
+            try {
+              localStorage.setItem(attemptKey, JSON.stringify(attempts));
+            } catch (e) {}
+            return {
+              success: false,
+              error: 'អ្នកបានបញ្ចូលពាក្យសម្ងាត់ខុស ៥ ដង។ គណនីនេះត្រូវបានចាក់សោរយៈពេល ១០ នាទី ដើម្បីសុវត្ថិភាព។'
+            };
+          } else {
+            try {
+              localStorage.setItem(attemptKey, JSON.stringify(attempts));
+            } catch (e) {}
+            const remaining = 5 - attempts.count;
+            return {
+              success: false,
+              error: `ពាក្យសម្ងាត់មិនត្រឹមត្រូវទេ។ សូមព្យាយាមម្តងទៀត (នៅសល់ ${remaining} ដង)។`
+            };
+          }
+        }
+
+        // Login Succeeded: Reset failed login attempt counter
+        try {
+          localStorage.removeItem(attemptKey);
+        } catch (e) {}
+
+        // Automatic security migration: If stored password was plaintext, securely hash it now
+        if (foundUser.password && !foundUser.password.startsWith('sha256$')) {
+          const secureHash = await hashPassword(passwordInput);
+          foundUser.password = secureHash;
+          if (isFirebaseConfigured()) {
+            saveUserToFirestore(foundUser).catch(e => console.warn('Auto-migrate password failed:', e));
+          }
+          try {
+            const raw = localStorage.getItem('school_users_cache');
+            if (raw) {
+              const list = JSON.parse(raw);
+              const idx = list.findIndex(item => item.id === foundUser.id);
+              if (idx >= 0) {
+                list[idx].password = secureHash;
+                localStorage.setItem('school_users_cache', JSON.stringify(list));
+              }
+            }
+          } catch (e) {}
+        }
+
+        // Validate monitor assigned class against active classes
+        let assignedClass = foundUser.class || '';
+        if (foundUser.role === 'monitor' && assignedClass && assignedClass !== '-') {
+          try {
+            const rawCls = localStorage.getItem('school_classes_cache');
+            if (rawCls) {
+              const activeCls = JSON.parse(rawCls);
+              if (Array.isArray(activeCls) && activeCls.length > 0) {
+                const classExists = activeCls.some(c => c.name === assignedClass || c.id === assignedClass);
+                if (!classExists) {
+                  // Class was deleted by admin! Unlink user from deleted class
+                  foundUser.class = '-';
+                  assignedClass = '';
+                  if (isFirebaseConfigured()) {
+                    saveUserToFirestore(foundUser).catch(() => {});
+                  }
+                  try {
+                    const rawUsers = localStorage.getItem('school_users_cache');
+                    if (rawUsers) {
+                      const uList = JSON.parse(rawUsers);
+                      const uIdx = uList.findIndex(u => u.id === foundUser.id);
+                      if (uIdx >= 0) {
+                        uList[uIdx].class = '-';
+                        localStorage.setItem('school_users_cache', JSON.stringify(uList));
+                      }
+                    }
+                  } catch (e) {}
+                }
+              }
+            }
+          } catch (e) {}
+        }
+
+        const todayStr = new Date().toISOString().slice(0, 10);
         if (isFirebaseConfigured()) {
           saveUserToFirestore({ ...foundUser, lastLogin: todayStr }).catch(() => {});
         }
+
         return {
           success: true,
           data: {
             token: `token_${foundUser.id}_${Date.now()}`,
+            id: foundUser.id,
             username: foundUser.username,
-            role: foundUser.role,
-            className: foundUser.role === 'admin' ? 'ALL' : (foundUser.class || '12A'),
-            fullName: foundUser.name,
-            expiresAt: Date.now() + 86400000
+            role: foundUser.role || 'monitor',
+            className: foundUser.role === 'admin' ? 'ALL' : (foundUser.class === '-' ? '' : (foundUser.class || '')),
+            fullName: foundUser.name || foundUser.username,
+            email: foundUser.email || '',
+            phone: foundUser.phone || '',
+            avatar: foundUser.avatar || null,
+            expiresAt: Date.now() + THIRTY_DAYS_MS
           }
         };
       }
 
+      // Default initial admin setup ONLY if database has no users at all
+      const hasAnyUsers = Array.isArray(usersList) && usersList.length > 0;
+      if (!hasAnyUsers && (usernameInput === 'admin' || usernameInput === 'admin_sys') && passwordInput === 'admin123') {
+        try {
+          localStorage.removeItem(attemptKey);
+        } catch (e) {}
+        return {
+          success: true,
+          data: {
+            token: `token_admin_${Date.now()}`,
+            id: 'USR-ADMIN',
+            username: 'admin',
+            role: 'admin',
+            className: 'ALL',
+            fullName: 'អ្នកគ្រប់គ្រងប្រព័ន្ធ',
+            email: 'admin@angroka.edu.kh',
+            phone: '012 345 678',
+            avatar: null,
+            expiresAt: Date.now() + THIRTY_DAYS_MS
+          }
+        };
+      }
+
+      // Invalid username attempt: count attempts to prevent brute force
+      attempts.count = (attempts.count || 0) + 1;
+      if (attempts.count >= 5) {
+        attempts.lockedUntil = Date.now() + 10 * 60 * 1000;
+        try {
+          localStorage.setItem(attemptKey, JSON.stringify(attempts));
+        } catch (e) {}
+        return {
+          success: false,
+          error: 'អ្នកបានបញ្ចូលព័ត៌មានខុស ៥ ដង។ ការចូលត្រូវបានផ្អាករយៈពេល ១០ នាទី ដើម្បីសុវត្ថិភាព។'
+        };
+      } else {
+        try {
+          localStorage.setItem(attemptKey, JSON.stringify(attempts));
+        } catch (e) {}
+      }
+
       return {
-        success: true,
-        data: {
-          token: 'mock_token_123',
-          username: body.username,
-          role: body.username === 'admin' ? 'admin' : 'monitor',
-          className: body.username === 'admin' ? 'ALL' : '12A',
-          fullName: body.username === 'admin' ? 'អ្នកគ្រប់គ្រងប្រព័ន្ធ' : 'ស៊ុន ដារ៉ា',
-          expiresAt: Date.now() + 86400000
-        }
+        success: false,
+        error: 'ឈ្មោះអ្នកប្រើប្រាស់ ឬពាក្យសម្ងាត់មិនត្រឹមត្រូវទេ (គណនីនេះមិនមានក្នុងប្រព័ន្ធ ឬត្រូវបានលុប)'
       };
     }
 
     case 'schedule.current': {
-      if (body.className === 'ALL' || !body.className) {
+      const cls = body.className;
+      if (cls === 'ALL' || !cls) {
         return { success: true, data: { currentPeriod: null } };
       }
+
+      // 0. Active class verification & orphan pruning with name normalization
+      const cleanCls = String(cls).replace(/^ថ្នាក់\s*/i, '').trim();
+      const khmerCls = cleanCls.startsWith('ថ្នាក់') ? cleanCls : `ថ្នាក់ ${cleanCls}`;
+      let activeClasses = [];
+      try {
+        const rawCls = localStorage.getItem('school_classes_cache');
+        if (rawCls) {
+          const parsed = JSON.parse(rawCls);
+          if (Array.isArray(parsed) && parsed.length > 0) activeClasses = parsed;
+        }
+      } catch (e) {}
+
+      if (activeClasses.length > 0) {
+        const exists = activeClasses.some(c => {
+          const cNameClean = String(c.name || '').replace(/^ថ្នាក់\s*/i, '').trim();
+          const cIdClean = String(c.id || '').replace(/^cls_/i, '').replace(/^ថ្នាក់\s*/i, '').trim();
+          return c.name === cls || c.id === cls || cNameClean === cleanCls || cIdClean === cleanCls;
+        });
+        if (!exists) {
+          // Class was deleted by admin! Clean up any orphan timetable cache & firestore document
+          try {
+            const rawTt = localStorage.getItem('school_timetable_cache');
+            if (rawTt) {
+              const ttCache = JSON.parse(rawTt);
+              if (ttCache[cls]) delete ttCache[cls];
+              if (ttCache[cleanCls]) delete ttCache[cleanCls];
+              if (ttCache[khmerCls]) delete ttCache[khmerCls];
+              localStorage.setItem('school_timetable_cache', JSON.stringify(ttCache));
+            }
+          } catch (e) {}
+          if (isFirebaseConfigured()) {
+            deleteTimetableFromFirestore(cls).catch(() => {});
+            if (cleanCls !== cls) deleteTimetableFromFirestore(cleanCls).catch(() => {});
+          }
+          return {
+            success: true,
+            data: {
+              currentPeriod: null,
+              isClassDeleted: true,
+              noClassMsg: `ថ្នាក់ ${cls} ត្រូវបានលុបចេញពីប្រព័ន្ធដោយ Admin ហើយ`,
+              subtitle: 'សូមទាក់ទង Admin ដើម្បីកំណត់ថ្នាក់ថ្មី'
+            }
+          };
+        }
+      }
+
       const now = new Date();
+      const dayOfWeek = now.getDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+      const dayKeys = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+      const dayNamesKhmer = ['អាទិត្យ', 'ច័ន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហស្បតិ៍', 'សុក្រ', 'សៅរ៍'];
+      const todayKey = dayKeys[dayOfWeek];
+      const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      const isAfternoon = currentMinutes >= 720;
+
+      let classSlots = null;
+      if (isFirebaseConfigured()) {
+        try {
+          let fbSlots = await getTimetablesFromFirestore(cls);
+          if ((!fbSlots || fbSlots.length === 0) && cleanCls !== cls) {
+            fbSlots = await getTimetablesFromFirestore(cleanCls);
+          }
+          if (!fbSlots || fbSlots.length === 0) {
+            fbSlots = await getTimetablesFromFirestore(khmerCls);
+          }
+          if (Array.isArray(fbSlots) && fbSlots.length > 0) {
+            classSlots = fbSlots;
+            try {
+              const raw = localStorage.getItem('school_timetable_cache');
+              const cache = raw ? JSON.parse(raw) : {};
+              cache[cls] = fbSlots;
+              cache[cleanCls] = fbSlots;
+              cache[khmerCls] = fbSlots;
+              localStorage.setItem('school_timetable_cache', JSON.stringify(cache));
+            } catch (e) {}
+          }
+        } catch (e) {
+          console.warn('[Firebase] schedule.current getTimetables fallback:', e);
+        }
+      }
+
+      if (!classSlots || classSlots.length === 0) {
+        try {
+          const raw = localStorage.getItem('school_timetable_cache');
+          if (raw) {
+            const cache = JSON.parse(raw);
+            if (cache) {
+              classSlots = cache[cls] || cache[cleanCls] || cache[khmerCls];
+            }
+          }
+        } catch (e) {}
+      }
+
+      // If no timetable configured for this class at all
+      if (!classSlots || classSlots.length === 0) {
+        return {
+          success: true,
+          data: {
+            currentTime: currentTimeStr,
+            dayOfWeek: dayNamesKhmer[dayOfWeek],
+            currentPeriod: null,
+            noClassMsg: 'ថ្នាក់នេះមិនទាន់មានកាលវិភាគនៅឡើយទេ',
+            subtitle: 'Admin មិនទាន់បានបញ្ចូលកាលវិភាគសម្រាប់ថ្នាក់នេះនៅឡើយទេ'
+          }
+        };
+      }
+
+      // Filter slots for today
+      const todaySlots = classSlots.filter(s => s.day === todayKey);
+      if (todaySlots.length === 0) {
+        return {
+          success: true,
+          data: {
+            currentTime: currentTimeStr,
+            dayOfWeek: dayNamesKhmer[dayOfWeek],
+            currentPeriod: null,
+            noClassMsg: `ថ្ងៃ${dayNamesKhmer[dayOfWeek]}នេះ គ្មានម៉ោងសិក្សាទេ`,
+            subtitle: dayOfWeek === 0 ? 'ថ្ងៃអាទិត្យ ជាថ្ងៃឈប់សម្រាកចុងសប្តាហ៍' : 'គ្មានមុខវិជ្ជាកំណត់ក្នុងកាលវិភាគសម្រាប់ថ្ងៃនេះទេ'
+          }
+        };
+      }
+
+      const periodTimes = {
+        m1: { startTime: '07:00', endTime: '08:00', startMinutes: 420, endMinutes: 480, shift: 'morning', label: 'ម៉ោងទី ១' },
+        m2: { startTime: '08:00', endTime: '09:00', startMinutes: 480, endMinutes: 540, shift: 'morning', label: 'ម៉ោងទី ២' },
+        m3: { startTime: '09:00', endTime: '10:00', startMinutes: 540, endMinutes: 600, shift: 'morning', label: 'ម៉ោងទី ៣' },
+        m4: { startTime: '10:00', endTime: '11:00', startMinutes: 600, endMinutes: 660, shift: 'morning', label: 'ម៉ោងទី ៤' },
+        a1: { startTime: '14:00', endTime: '15:00', startMinutes: 840, endMinutes: 900, shift: 'afternoon', label: 'ម៉ោងទី ៥' },
+        a2: { startTime: '15:00', endTime: '16:00', startMinutes: 900, endMinutes: 960, shift: 'afternoon', label: 'ម៉ោងទី ៦' },
+        a3: { startTime: '16:00', endTime: '17:00', startMinutes: 960, endMinutes: 1020, shift: 'afternoon', label: 'ម៉ោងទី ៧' }
+      };
+
+      const periodsList = [];
+      todaySlots.forEach(s => {
+        const def = periodTimes[s.period] || { startTime: '07:00', endTime: '08:00', startMinutes: 420, endMinutes: 480, shift: 'morning', label: s.period };
+        const duration = s.duration || 1;
+        const isDouble = duration === 2;
+
+        let finalEndTime = def.endTime;
+        let finalEndMinutes = def.endMinutes;
+        let finalPeriodLabel = def.label;
+
+        if (isDouble) {
+          if (s.period === 'm1') {
+            finalEndTime = '09:00';
+            finalEndMinutes = 540;
+            finalPeriodLabel = 'ម៉ោងទី ១-២';
+          } else if (s.period === 'm3') {
+            finalEndTime = '11:00';
+            finalEndMinutes = 660;
+            finalPeriodLabel = 'ម៉ោងទី ៣-៤';
+          } else if (s.period === 'a1') {
+            finalEndTime = '16:00';
+            finalEndMinutes = 960;
+            finalPeriodLabel = 'ម៉ោងទី ៥-៦';
+          }
+        }
+
+        periodsList.push({
+          period: isDouble ? (s.period === 'm1' ? '1-2' : s.period === 'm3' ? '3-4' : '5-6') : (s.period.startsWith('m') ? String(parseInt(s.period.slice(1))) : String(parseInt(s.period.slice(1)) + 4)),
+          periodLabel: finalPeriodLabel,
+          hours: duration,
+          subject: s.subject || (s.isLibre ? 'ម៉ោងទំនេរ' : ''),
+          teacher: s.teacher || '',
+          startTime: def.startTime,
+          endTime: finalEndTime,
+          startMinutes: def.startMinutes,
+          endMinutes: finalEndMinutes,
+          shift: def.shift,
+          isLibre: Boolean(s.isLibre || s.subject === 'ម៉ោងលីប')
+        });
+      });
+
+      periodsList.sort((a, b) => a.startMinutes - b.startMinutes);
+
+      // Determine active period
+      // 1. Exact match where now is between startMinutes and endMinutes
+      const exact = periodsList.find(p => currentMinutes >= p.startMinutes && currentMinutes < p.endMinutes);
+      if (exact) {
+        return {
+          success: true,
+          data: {
+            currentTime: currentTimeStr,
+            dayOfWeek: dayNamesKhmer[dayOfWeek],
+            currentPeriod: {
+              ...exact,
+              isLive: true
+            }
+          }
+        };
+      }
+
+      // 2. If before the first period of today
+      if (periodsList.length > 0 && currentMinutes < periodsList[0].startMinutes) {
+        return {
+          success: true,
+          data: {
+            currentTime: currentTimeStr,
+            dayOfWeek: dayNamesKhmer[dayOfWeek],
+            currentPeriod: {
+              ...periodsList[0],
+              isUpcoming: true
+            }
+          }
+        };
+      }
+
+      // 3. If between periods during school hours
+      const nextUpcoming = periodsList.find(p => currentMinutes < p.startMinutes);
+      if (nextUpcoming) {
+        return {
+          success: true,
+          data: {
+            currentTime: currentTimeStr,
+            dayOfWeek: dayNamesKhmer[dayOfWeek],
+            currentPeriod: {
+              ...nextUpcoming,
+              isUpcoming: true
+            }
+          }
+        };
+      }
+
+      // 4. After all periods today have ended or closed for the night (18:00 to 06:30)
+      const isNightClosed = (currentMinutes >= 18 * 60 || currentMinutes < 6 * 60 + 30);
       return {
         success: true,
         data: {
-          currentTime: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
-          dayOfWeek: ['អាទិត្យ', 'ច័ន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហស្បតិ៍', 'សុក្រ', 'សៅរ៍'][now.getDay()],
-          currentPeriod: isAfternoon ? {
-            period: '5',
-            periodLabel: 'ម៉ោងទី ៥',
-            hours: 1,
-            subject: 'គីមីវិទ្យា',
-            startTime: '14:00',
-            endTime: '15:00',
-            teacher: 'អ្នកគ្រូ នីតា'
-          } : {
-            period: '1-2',
-            periodLabel: 'ម៉ោងទី ១-២',
-            hours: 2,
-            subject: 'គណិតវិទ្យា',
-            startTime: '07:00',
-            endTime: '09:00',
-            teacher: 'លោកគ្រូ សាន វិបុល'
-          }
+          currentTime: currentTimeStr,
+          dayOfWeek: dayNamesKhmer[dayOfWeek],
+          currentPeriod: null,
+          noClassMsg: isNightClosed ? 'ប្រព័ន្ធបានបិទការស្រង់វត្តមាន (បិទម៉ោង ៦:០០ យប់)' : 'ម៉ោងសិក្សាថ្ងៃនេះត្រូវបានបញ្ចប់ហើយ',
+          subtitle: isNightClosed
+            ? `ប្រព័ន្ធបិទរៀងរាល់ម៉ោង ០៦:០០ យប់ និងបើកដំណើរការឡើងវិញនៅម៉ោង ០៦:៣០ ព្រឹក (ម៉ោងបច្ចុប្បន្ន៖ ${currentTimeStr})`
+            : `ម៉ោងសិក្សានៅសាលាគឺ ០៧:០០–១១:០០ ព្រឹក និង ១៤:០០–១៧:០០ រសៀល (ម៉ោងបច្ចុប្បន្ន៖ ${currentTimeStr})`
         }
       };
     }
@@ -384,27 +870,33 @@ export async function api(action, body = {}, token = null) {
         if (raw) {
           const records = JSON.parse(raw);
           const todayRecords = records.filter(r => r.date === today && (!r.class || r.class === cls));
-          const studentStatusMap = {};
+          const studentRecordsMap = {};
           todayRecords.forEach(r => {
-            if (!studentStatusMap[r.name]) {
-              studentStatusMap[r.name] = r.status;
-            } else if (r.status === 'ABSENT') {
-              studentStatusMap[r.name] = 'ABSENT';
-            }
+            if (!studentRecordsMap[r.name]) studentRecordsMap[r.name] = [];
+            studentRecordsMap[r.name].push(r);
           });
-          Object.keys(studentStatusMap).forEach(name => {
-            absentNames.push(name);
-            if (studentStatusMap[name] === 'ABSENT') absentCount++;
-            else leaveCount++;
+          Object.keys(studentRecordsMap).forEach(name => {
+            const recs = studentRecordsMap[name];
+            const hasUnexcused = recs.some(r => r.status === 'ABSENT');
+            const hasLeave = recs.some(r => r.status === 'LEAVE');
+            const isFullDay = recs.some(r => Boolean(r.isFullDay));
+            const totalHrs = recs.reduce((sum, r) => sum + (Number(r.hours) || 1), 0);
+
+            if (hasUnexcused) {
+              absentCount++;
+              absentNames.push({ name, status: 'ABSENT' });
+            } else if (hasLeave) {
+              leaveCount++;
+              absentNames.push({ name, status: 'LEAVE', isFullDay: true });
+            }
           });
         }
       } catch (e) {
         console.error(e);
       }
 
-      const totalStudents = 7;
-      const totalMissed = absentCount + leaveCount;
-      const presentCount = Math.max(0, totalStudents - totalMissed);
+      const totalStudents = getLocalClassStudentCount(cls);
+      const presentCount = Math.max(0, totalStudents - absentCount - leaveCount);
       const rate = totalStudents > 0 ? `${Math.round((presentCount / totalStudents) * 100)}%` : '100%';
 
       return {
@@ -413,7 +905,7 @@ export async function api(action, body = {}, token = null) {
           className: cls,
           date: today,
           present: presentCount,
-          absent: totalMissed,
+          absent: absentCount,
           leave: leaveCount,
           totalStudents,
           attendanceRate: rate,
@@ -422,17 +914,38 @@ export async function api(action, body = {}, token = null) {
       };
     }
 
-    case 'reports.allClasses':
+    case 'reports.allClasses': {
+      let classes = [];
+      let records = [];
+      try {
+        const cRaw = localStorage.getItem('school_classes_cache');
+        if (cRaw) classes = JSON.parse(cRaw) || [];
+        const rRaw = localStorage.getItem('school_attendance_records');
+        if (rRaw) records = JSON.parse(rRaw) || [];
+      } catch (e) {}
+
+      const today = new Date().toISOString().split('T')[0];
+      const summaries = classes.map(c => {
+        const clsName = c.name;
+        const clsRecords = records.filter(r => r.date === today && r.class === clsName);
+        const absent = clsRecords.filter(r => r.status === 'ABSENT').length;
+        const leave = clsRecords.filter(r => r.status === 'LEAVE').length;
+        const count = c.students || 0;
+        const rate = count > 0 ? `${Math.round(((count - absent) / count) * 100)}%` : '100%';
+        return {
+          className: clsName,
+          present: Math.max(0, count - absent),
+          absent,
+          leave,
+          rate
+        };
+      });
+
       return {
         success: true,
-        data: {
-          summaries: [
-            { className: '12A', present: 25, absent: 3, leave: 2, rate: '83%' },
-            { className: '12B', present: 28, absent: 0, leave: 2, rate: '93%' },
-            { className: '11A', present: 30, absent: 1, leave: 0, rate: '96%' }
-          ]
-        }
+        data: { summaries }
       };
+    }
 
     case 'reports.weekly': {
       const cls = body.className || '12A';
@@ -650,8 +1163,8 @@ export async function api(action, body = {}, token = null) {
               period: periodVal,
               hours: student.hours || hoursMissed,
               time: `${body.startTime || '07:00'} - ${body.endTime || '08:00'}`,
-              subject: body.subject || 'គណិតវិទ្យា',
-              teacher: body.teacher || 'លោកគ្រូ សាន វិបុល',
+              subject: body.subject || '',
+              teacher: body.teacher || '',
               status: student.status,
               reason: student.reason || (student.status === 'LEAVE' ? 'មានច្បាប់ត្រឹមត្រូវ' : 'គ្មានច្បាប់ / គេចម៉ោង'),
               isFullDay: Boolean(student.isFullDay),
@@ -841,39 +1354,52 @@ export async function api(action, body = {}, token = null) {
         }
       } catch (e) {}
 
-      // Fallback dashboard calculation
+      // Dynamic calculation from local cache
+      let localStudents = [];
+      let localAttendance = [];
+      try {
+        const sRaw = localStorage.getItem('school_students_cache');
+        if (sRaw) localStudents = JSON.parse(sRaw) || [];
+        const aRaw = localStorage.getItem('school_attendance_records');
+        if (aRaw) localAttendance = JSON.parse(aRaw) || [];
+      } catch (e) {}
+
+      const totalStudents = localStudents.length;
+      const today = new Date().toISOString().split('T')[0];
+      const todayRecords = localAttendance.filter(r => r.date === today);
+      const todayStudentMap = {};
+      todayRecords.forEach(r => {
+        if (!todayStudentMap[r.name]) todayStudentMap[r.name] = [];
+        todayStudentMap[r.name].push(r);
+      });
+      let todayAbsent = 0;
+      let todayLeave = 0;
+      Object.values(todayStudentMap).forEach(recs => {
+        const hasUnexcused = recs.some(r => r.status === 'ABSENT');
+        const hasLeave = recs.some(r => r.status === 'LEAVE');
+        const isFullDay = recs.some(r => Boolean(r.isFullDay));
+        const totalHrs = recs.reduce((sum, r) => sum + (Number(r.hours) || 1), 0);
+        if (hasUnexcused) {
+          todayAbsent++;
+        } else if (hasLeave) {
+          todayLeave++;
+        }
+      });
+      const globalRate = totalStudents > 0 
+        ? Math.max(0, Math.round(((totalStudents - (todayAbsent + todayLeave)) / totalStudents) * 100))
+        : 100;
+
       return {
         success: true,
         data: {
-          totalStudents: 14,
-          totalAbsent: 6,
-          totalLeave: 2,
-          globalRate: 86,
-          weeklyTrend: [
-            { date: 'ច័ន្ទ', absent: 2 },
-            { date: 'អង្គារ', absent: 4 },
-            { date: 'ពុធ', absent: 1 },
-            { date: 'ព្រហ', absent: 3 },
-            { date: 'សុក្រ', absent: 0 }
-          ],
-          monthlyTrend: [
-            { month: 'មករា', absent: 15 },
-            { month: 'កុម្ភៈ', absent: 20 },
-            { month: 'មីនា', absent: 10 },
-            { month: 'មេសា', absent: 5 },
-            { month: 'ឧសភា', absent: 18 }
-          ],
-          gradeTrend: [
-            { name: 'ថ្នាក់ទី១០', absent: 8, fill: '#8b5cf6' },
-            { name: 'ថ្នាក់ទី១១', absent: 12, fill: '#3b82f6' },
-            { name: 'ថ្នាក់ទី១២', absent: 22, fill: '#f43f5e' }
-          ],
-          classTrend: [
-            { name: '12A', absent: 15 },
-            { name: '12B', absent: 7 },
-            { name: '11A', absent: 8 },
-            { name: '11B', absent: 4 }
-          ]
+          totalStudents,
+          totalAbsent: todayAbsent,
+          totalLeave: todayLeave,
+          globalRate,
+          weeklyTrend: [],
+          monthlyTrend: [],
+          gradeTrend: [],
+          classTrend: []
         }
       };
     }
@@ -1123,29 +1649,57 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'academic.getClasses': {
+      let activeClasses = [];
       if (isFirebaseConfigured()) {
         try {
           const fbClasses = await getClassesFromFirestore();
-          if (fbClasses) {
+          if (fbClasses && Array.isArray(fbClasses)) {
+            activeClasses = fbClasses;
             try {
               localStorage.setItem('school_classes_cache', JSON.stringify(fbClasses));
             } catch (e) {}
-            return { success: true, data: fbClasses };
           }
         } catch (e) {
           console.warn('[Firebase] getClasses fallback:', e);
         }
       }
 
-      try {
-        const raw = localStorage.getItem('school_classes_cache');
-        if (raw !== null) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) return { success: true, data: parsed };
-        }
-      } catch (e) {}
+      if (activeClasses.length === 0) {
+        try {
+          const raw = localStorage.getItem('school_classes_cache');
+          if (raw !== null) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) activeClasses = parsed;
+          }
+        } catch (e) {}
+      }
 
-      return { success: true, data: [] };
+      // Automatically prune orphan timetables in cache & firestore for classes that no longer exist
+      if (activeClasses && activeClasses.length > 0) {
+        try {
+          const validNames = new Set(activeClasses.map(c => c.name));
+          activeClasses.forEach(c => validNames.add(c.id));
+          const rawTt = localStorage.getItem('school_timetable_cache');
+          if (rawTt) {
+            const ttCache = JSON.parse(rawTt);
+            let changed = false;
+            Object.keys(ttCache).forEach(k => {
+              if (!validNames.has(k)) {
+                delete ttCache[k];
+                changed = true;
+                if (isFirebaseConfigured()) {
+                  deleteTimetableFromFirestore(k).catch(() => {});
+                }
+              }
+            });
+            if (changed) {
+              localStorage.setItem('school_timetable_cache', JSON.stringify(ttCache));
+            }
+          }
+        } catch (e) {}
+      }
+
+      return { success: true, data: activeClasses };
     }
 
     case 'academic.saveClass': {
@@ -1171,25 +1725,100 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'academic.deleteClass': {
-      const { classId } = body;
-      if (isFirebaseConfigured() && classId) {
+      const { classId, className } = body;
+      let targetClassName = className;
+
+      // Find class name from cache if not provided
+      try {
+        const raw = localStorage.getItem('school_classes_cache');
+        if (raw) {
+          const list = JSON.parse(raw);
+          const found = list.find(c => c.id === classId || c.name === classId || (className && c.name === className));
+          if (found && !targetClassName) {
+            targetClassName = found.name;
+          }
+          const filtered = list.filter(c => c.id !== classId && c.name !== classId && (targetClassName ? c.name !== targetClassName : true));
+          localStorage.setItem('school_classes_cache', JSON.stringify(filtered));
+        }
+      } catch (e) {}
+
+      if (isFirebaseConfigured() && (classId || targetClassName)) {
         try {
-          await deleteClassFromFirestore(classId);
+          await deleteClassFromFirestore(classId, targetClassName);
         } catch (e) {
           console.warn('[Firebase] deleteClass failed:', e);
         }
       }
 
+      // Cascade delete timetable from school_timetable_cache
       try {
-        const raw = localStorage.getItem('school_classes_cache');
+        const raw = localStorage.getItem('school_timetable_cache');
         if (raw) {
-          const list = JSON.parse(raw);
-          const filtered = list.filter(c => c.id !== classId);
-          localStorage.setItem('school_classes_cache', JSON.stringify(filtered));
+          const cache = JSON.parse(raw);
+          let changed = false;
+          if (targetClassName && cache[targetClassName]) {
+            delete cache[targetClassName];
+            changed = true;
+          }
+          if (classId && cache[classId]) {
+            delete cache[classId];
+            changed = true;
+          }
+          if (changed) {
+            localStorage.setItem('school_timetable_cache', JSON.stringify(cache));
+          }
         }
       } catch (e) {}
 
-      return { success: true, message: 'បានលុបថ្នាក់រៀនដោយជោគជ័យ' };
+      // Clean up rosters and period states
+      try {
+        if (targetClassName) {
+          localStorage.removeItem(`school_roster_cache_${targetClassName}`);
+        }
+        if (classId) {
+          localStorage.removeItem(`school_roster_cache_${classId}`);
+        }
+        Object.keys(localStorage).forEach(key => {
+          if ((targetClassName && key.includes(`_${targetClassName}_`)) || (classId && key.includes(`_${classId}_`))) {
+            localStorage.removeItem(key);
+          }
+        });
+      } catch (e) {}
+
+      // Unlink users associated with this deleted class so they don't remain as ghost monitors
+      try {
+        const rawUsers = localStorage.getItem('school_users_cache');
+        if (rawUsers) {
+          const uList = JSON.parse(rawUsers);
+          let usersChanged = false;
+          uList.forEach(u => {
+            if (u.role === 'monitor' && (u.class === targetClassName || u.class === classId)) {
+              u.class = '-';
+              usersChanged = true;
+              if (isFirebaseConfigured()) {
+                saveUserToFirestore(u).catch(() => {});
+              }
+            }
+          });
+          if (usersChanged) {
+            localStorage.setItem('school_users_cache', JSON.stringify(uList));
+          }
+        }
+      } catch (e) {}
+
+      // Update current active session if the logged in user was in this deleted class
+      try {
+        const rawSession = localStorage.getItem('att_session');
+        if (rawSession) {
+          const activeSess = JSON.parse(rawSession);
+          if (activeSess.className === targetClassName || activeSess.className === classId) {
+            activeSess.className = '';
+            localStorage.setItem('att_session', JSON.stringify(activeSess));
+          }
+        }
+      } catch (e) {}
+
+      return { success: true, message: 'បានលុបថ្នាក់រៀន និងកាលវិភាគដោយជោគជ័យ' };
     }
 
     case 'academic.getSubjects': {
@@ -1263,40 +1892,59 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'users.getAll': {
+      let usersList = [];
       if (isFirebaseConfigured()) {
         try {
           const fbUsers = await getUsersFromFirestore();
-          if (fbUsers && fbUsers.length > 0) {
-            try {
-              localStorage.setItem('school_users_cache', JSON.stringify(fbUsers));
-            } catch (e) {}
-            return { success: true, data: fbUsers };
-          }
+          if (Array.isArray(fbUsers)) usersList = fbUsers;
         } catch (e) {
           console.warn('[Firebase] getUsers fallback:', e);
         }
       }
 
-      try {
-        const raw = localStorage.getItem('school_users_cache');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return { success: true, data: parsed };
+      if (usersList.length === 0) {
+        try {
+          const raw = localStorage.getItem('school_users_cache');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) usersList = parsed;
+          }
+        } catch (e) {}
+      }
+
+      const hasAdmin = usersList.some(u => u.role === 'admin' || u.username === 'admin');
+      if (!hasAdmin) {
+        const defaultAdmin = {
+          id: 'USR-ADMIN',
+          username: 'admin',
+          name: 'អ្នកគ្រប់គ្រងប្រព័ន្ធ',
+          role: 'admin',
+          class: 'ALL',
+          status: 'active',
+          email: 'admin@angroka.edu.kh',
+          phone: '012 345 678',
+          password: 'admin123',
+          lastLogin: 'មិនទាន់ចូលប្រើ'
+        };
+        usersList.unshift(defaultAdmin);
+        if (isFirebaseConfigured()) {
+          saveUserToFirestore(defaultAdmin).catch(() => {});
         }
+      }
+
+      try {
+        localStorage.setItem('school_users_cache', JSON.stringify(usersList));
       } catch (e) {}
 
-      const defaultUsers = [
-        { id: 'USR-001', name: 'San Vandy', username: 'vandy12A', role: 'monitor', class: '12A', status: 'active', lastLogin: '2026-06-30' },
-        { id: 'USR-002', name: 'Sok Mean', username: 'mean11B', role: 'monitor', class: '11B', status: 'active', lastLogin: '2026-06-29' },
-        { id: 'USR-003', name: 'Admin Chhen', username: 'admin_sys', role: 'admin', class: '-', status: 'active', lastLogin: '2026-07-01' },
-        { id: 'USR-004', name: 'Keo Rotha', username: 'rotha10A', role: 'monitor', class: '10A', status: 'inactive', lastLogin: '2026-05-15' },
-        { id: 'USR-005', name: 'Somnang', username: 'somnang1', role: 'monitor', class: '11A', status: 'active', lastLogin: '2026-06-20' },
-      ];
-      return { success: true, data: defaultUsers };
+      return { success: true, data: usersList };
     }
 
     case 'users.save': {
-      const u = body.user;
+      let u = { ...(body.user || {}) };
+      // Securely hash password with SHA-256 before storing to Firestore & Cache
+      if (u.password && typeof u.password === 'string' && !u.password.startsWith('sha256$')) {
+        u.password = await hashPassword(u.password);
+      }
       if (isFirebaseConfigured() && u) {
         try {
           await saveUserToFirestore(u);
@@ -1336,6 +1984,17 @@ export async function api(action, body = {}, token = null) {
         }
       } catch (e) {}
 
+      // Invalidate session if current logged in user was deleted
+      try {
+        const rawSession = localStorage.getItem('att_session');
+        if (rawSession) {
+          const activeSess = JSON.parse(rawSession);
+          if (activeSess?.id === userId || activeSess?.token?.includes(userId)) {
+            clearSession();
+          }
+        }
+      } catch (e) {}
+
       return { success: true, message: 'បានលុបអ្នកប្រើប្រាស់ដោយជោគជ័យ' };
     }
 
@@ -1344,6 +2003,36 @@ export async function api(action, body = {}, token = null) {
     // ─────────────────────────────────────────────
     case 'timetable.get': {
       const { classId } = body;
+      if (!classId) return { success: true, data: [] };
+
+      // Check if class exists in active classes
+      try {
+        const rawCls = localStorage.getItem('school_classes_cache');
+        if (rawCls) {
+          const parsed = JSON.parse(rawCls);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const exists = parsed.some(c => c.name === classId || c.id === classId);
+            if (!exists) {
+              // It's a deleted class! Prune and return empty
+              try {
+                const raw = localStorage.getItem('school_timetable_cache');
+                if (raw) {
+                  const cache = JSON.parse(raw);
+                  if (cache[classId]) {
+                    delete cache[classId];
+                    localStorage.setItem('school_timetable_cache', JSON.stringify(cache));
+                  }
+                }
+              } catch (e) {}
+              if (isFirebaseConfigured()) {
+                deleteTimetableFromFirestore(classId).catch(() => {});
+              }
+              return { success: true, data: [], isClassDeleted: true };
+            }
+          }
+        }
+      } catch (e) {}
+
       if (isFirebaseConfigured() && classId) {
         try {
           const slots = await getTimetablesFromFirestore(classId);
@@ -1373,29 +2062,60 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'timetable.getAll': {
+      let activeClassNames = null;
+      try {
+        const rawCls = localStorage.getItem('school_classes_cache');
+        if (rawCls) {
+          const parsed = JSON.parse(rawCls);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            activeClassNames = new Set(parsed.map(c => c.name));
+            parsed.forEach(c => activeClassNames.add(c.id));
+          }
+        }
+      } catch (e) {}
+
+      let allTimetables = {};
       if (isFirebaseConfigured()) {
         try {
           const all = await getTimetablesFromFirestore();
           if (all) {
-            try {
-              localStorage.setItem('school_timetable_cache', JSON.stringify(all));
-            } catch (e) {}
-            return { success: true, data: all };
+            allTimetables = all;
           }
         } catch (e) {
           console.warn('[Firebase] getAllTimetables fallback:', e);
         }
       }
 
+      if (Object.keys(allTimetables).length === 0) {
+        try {
+          const raw = localStorage.getItem('school_timetable_cache');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') allTimetables = parsed;
+          }
+        } catch (e) {}
+      }
+
+      // Filter out orphan timetables
+      if (activeClassNames && activeClassNames.size > 0) {
+        const cleaned = {};
+        Object.keys(allTimetables).forEach(k => {
+          if (activeClassNames.has(k)) {
+            cleaned[k] = allTimetables[k];
+          } else {
+            if (isFirebaseConfigured()) {
+              deleteTimetableFromFirestore(k).catch(() => {});
+            }
+          }
+        });
+        allTimetables = cleaned;
+      }
+
       try {
-        const raw = localStorage.getItem('school_timetable_cache');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === 'object') return { success: true, data: parsed };
-        }
+        localStorage.setItem('school_timetable_cache', JSON.stringify(allTimetables));
       } catch (e) {}
 
-      return { success: true, data: {} };
+      return { success: true, data: allTimetables };
     }
 
     case 'timetable.save': {
@@ -1470,11 +2190,12 @@ export async function api(action, body = {}, token = null) {
       if (isFirebaseConfigured()) {
         try {
           const bots = await getTelegramBotsFromFirestore();
-          if (bots && bots.length > 0) {
+          if (Array.isArray(bots)) {
+            const cleanBots = bots.filter(b => !isDummyTelegramBot(b));
             try {
-              localStorage.setItem('school_telegram_bots_cache', JSON.stringify(bots));
+              localStorage.setItem('school_telegram_bots_cache', JSON.stringify(cleanBots));
             } catch (e) {}
-            return { success: true, data: bots };
+            return { success: true, data: cleanBots };
           }
         } catch (e) {
           console.warn('[Firebase] getTelegramBots fallback:', e);
@@ -1485,7 +2206,13 @@ export async function api(action, body = {}, token = null) {
         const raw = localStorage.getItem('school_telegram_bots_cache');
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return { success: true, data: parsed };
+          if (Array.isArray(parsed)) {
+            const cleanBots = parsed.filter(b => !isDummyTelegramBot(b));
+            if (cleanBots.length !== parsed.length) {
+              localStorage.setItem('school_telegram_bots_cache', JSON.stringify(cleanBots));
+            }
+            return { success: true, data: cleanBots };
+          }
         }
       } catch (e) {}
 
@@ -1536,7 +2263,7 @@ export async function api(action, body = {}, token = null) {
         const raw = localStorage.getItem('school_telegram_bots_cache');
         if (raw) {
           let list = JSON.parse(raw);
-          const idx = list.findIndex(b => b.id === botId);
+          const idx = list.findIndex(b => b.id === botId || b.docId === botId);
           if (idx >= 0) {
             list[idx] = { ...list[idx], ...bot, lastUpdated: new Date().toISOString().split('T')[0] };
             localStorage.setItem('school_telegram_bots_cache', JSON.stringify(list));
@@ -1561,7 +2288,7 @@ export async function api(action, body = {}, token = null) {
         const raw = localStorage.getItem('school_telegram_bots_cache');
         if (raw) {
           let list = JSON.parse(raw);
-          const filtered = list.filter(b => b.id !== botId);
+          const filtered = list.filter(b => b.id !== botId && b.docId !== botId);
           localStorage.setItem('school_telegram_bots_cache', JSON.stringify(filtered));
         }
       } catch (e) {}
@@ -1573,11 +2300,12 @@ export async function api(action, body = {}, token = null) {
       if (isFirebaseConfigured()) {
         try {
           const tokens = await getGlobalTelegramTokensFromFirestore();
-          if (tokens && tokens.length > 0) {
+          if (Array.isArray(tokens)) {
+            const cleanTokens = tokens.filter(t => !isDummyTelegramToken(t));
             try {
-              localStorage.setItem('school_telegram_global_tokens_cache', JSON.stringify(tokens));
+              localStorage.setItem('school_telegram_global_tokens_cache', JSON.stringify(cleanTokens));
             } catch (e) {}
-            return { success: true, data: tokens };
+            return { success: true, data: cleanTokens };
           }
         } catch (e) {
           console.warn('[Firebase] getGlobalTelegramTokens fallback:', e);
@@ -1588,7 +2316,13 @@ export async function api(action, body = {}, token = null) {
         const raw = localStorage.getItem('school_telegram_global_tokens_cache');
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) return { success: true, data: parsed };
+          if (Array.isArray(parsed)) {
+            const cleanTokens = parsed.filter(t => !isDummyTelegramToken(t));
+            if (cleanTokens.length !== parsed.length) {
+              localStorage.setItem('school_telegram_global_tokens_cache', JSON.stringify(cleanTokens));
+            }
+            return { success: true, data: cleanTokens };
+          }
         }
       } catch (e) {}
 
@@ -1680,6 +2414,9 @@ export async function api(action, body = {}, token = null) {
         if (payload.discipline) {
           localStorage.setItem('disciplineThresholds', JSON.stringify(payload.discipline));
         }
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('school_settings_updated', { detail: payload }));
+        }
       } catch (e) {}
 
       return { success: true, data: payload, message: 'បានរក្សាទុកការកំណត់ដោយជោគជ័យ' };
@@ -1744,6 +2481,11 @@ export function loadSession() {
       clearSession();
       return null;
     }
+    // Auto-extend session to 30 days so class monitors & admins don't experience unexpected logouts
+    if (!s.expiresAt || s.expiresAt < Date.now() + 7 * 86400000) {
+      s.expiresAt = Date.now() + (30 * 24 * 60 * 60 * 1000);
+      saveSession(s);
+    }
     return s;
   } catch (e) {
     return null;
@@ -1752,6 +2494,27 @@ export function loadSession() {
 
 export function clearSession() {
   localStorage.removeItem('att_session');
+}
+
+export function getCachedSchoolSettings() {
+  try {
+    const raw = localStorage.getItem('school_settings_cache');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.school) return parsed.school;
+    }
+  } catch (e) {}
+  return {
+    name: 'វិទ្យាល័យអង្គរកា',
+    principal: 'លោកនាយក សុខ សាន',
+    phone: '012 345 678',
+    address: 'ភូមិអង្គរកា ឃុំអង្គរកា ស្រុកត្រាំកក់ ខេត្តតាកែវ',
+    logo: null
+  };
+}
+
+export function getCachedSchoolName() {
+  return getCachedSchoolSettings()?.name || 'វិទ្យាល័យអង្គរកា';
 }
 
 export default api;

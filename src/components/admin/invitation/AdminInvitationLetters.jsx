@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Mail, Printer, CheckCircle2, Search, Filter, Calendar, Users, FileText, RefreshCw } from 'lucide-react';
 import InvitationLetterPrint from './InvitationLetterPrint';
-import { api } from '../../../utils/api';
+import { api, getCachedSchoolName } from '../../../utils/api';
 
 export default function AdminInvitationLetters() {
   const [activeTab, setActiveTab] = useState('pending');
@@ -13,7 +13,7 @@ export default function AdminInvitationLetters() {
     reference: '',
     meetingDate: '',
     meetingTime: '08:00',
-    location: 'វិទ្យាល័យអង្គរកា'
+    location: getCachedSchoolName()
   });
   const printRef = useRef(null);
 

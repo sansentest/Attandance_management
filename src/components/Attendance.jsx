@@ -9,7 +9,7 @@ import {
   ChevronLeft, GraduationCap, Clock, RotateCcw, Users,
   User, Check, X, FileText, AlertCircle, CheckCircle2,
   Loader2, Send, LogOut, Search, BookOpen, ChevronDown,
-  ArrowLeftRight, Calendar, WifiOff, CloudUpload, RefreshCw, Wifi
+  ArrowLeftRight, Calendar, WifiOff, CloudUpload, RefreshCw, Wifi, Lock
 } from 'lucide-react'
 
 // Helper to format today's date in polite, complete Khmer text
@@ -42,11 +42,53 @@ function getTodaySchedule(className = '12A') {
   const dayNamesKhmer = ['អាទិត្យ', 'ច័ន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហស្បតិ៍', 'សុក្រ', 'សៅរ៍']
   const todayKey = dayKeys[dayOfWeek]
 
+  const cleanCls = String(className || '').replace(/^ថ្នាក់\s*/i, '').trim()
+  const khmerCls = cleanCls ? `ថ្នាក់ ${cleanCls}` : ''
+
+  // Verify whether the class exists in active classes cache
+  let isClassDeleted = false
+  try {
+    const rawCls = localStorage.getItem('school_classes_cache')
+    if (rawCls) {
+      const parsedCls = JSON.parse(rawCls)
+      if (Array.isArray(parsedCls) && parsedCls.length > 0) {
+        const found = parsedCls.some(c => {
+          const cNameClean = String(c.name || '').replace(/^ថ្នាក់\s*/i, '').trim()
+          const cIdClean = String(c.id || '').replace(/^cls_/i, '').replace(/^ថ្នាក់\s*/i, '').trim()
+          return c.name === className || c.id === className || cNameClean === cleanCls || cIdClean === cleanCls
+        })
+        if (!found) isClassDeleted = true
+      }
+    }
+  } catch (e) {}
+
+  if (isClassDeleted) {
+    // Prune orphan timetable from cache
+    try {
+      const raw = localStorage.getItem('school_timetable_cache')
+      if (raw) {
+        const cache = JSON.parse(raw)
+        if (cache[className]) delete cache[className]
+        if (cache[cleanCls]) delete cache[cleanCls]
+        if (khmerCls && cache[khmerCls]) delete cache[khmerCls]
+        localStorage.setItem('school_timetable_cache', JSON.stringify(cache))
+      }
+    } catch (e) {}
+
+    return {
+      dayName: dayNamesKhmer[dayOfWeek],
+      morning: [],
+      afternoon: [],
+      hasTimetable: false,
+      isClassDeleted: true
+    }
+  }
+
   try {
     const raw = localStorage.getItem('school_timetable_cache')
     if (raw) {
       const allTimetables = JSON.parse(raw)
-      const classSlots = allTimetables[className]
+      const classSlots = allTimetables[className] || allTimetables[cleanCls] || (khmerCls ? allTimetables[khmerCls] : null)
       if (Array.isArray(classSlots) && classSlots.length > 0) {
         const todaySlots = classSlots.filter(s => s.day === todayKey)
         if (todaySlots.length > 0) {
@@ -143,21 +185,23 @@ function detectCurrentPeriod(className = '12A') {
   const shiftPeriods = (todaySchedule && todaySchedule[currentShift]) || []
   const fallbackPeriods = (shiftPeriods.length > 0) ? shiftPeriods : ((todaySchedule?.morning?.length > 0) ? todaySchedule.morning : (todaySchedule?.afternoon || []))
 
-  // If no timetable configured by Admin for this class
+  // If class was deleted or no timetable configured by Admin for this class
   if (!todaySchedule || !todaySchedule.hasTimetable || fallbackPeriods.length === 0) {
+    const isDeleted = Boolean(todaySchedule?.isClassDeleted)
     return {
       className,
       period: 'none',
-      periodLabel: 'មិនទាន់មានកាលវិភាគ',
+      periodLabel: isDeleted ? 'ថ្នាក់ត្រូវបានលុប' : 'មិនទាន់មានកាលវិភាគ',
       hours: 1,
-      subject: 'មិនទាន់មានកាលវិភាគ',
+      subject: isDeleted ? 'ថ្នាក់ត្រូវបានលុបចេញពីប្រព័ន្ធ' : 'មិនទាន់មានកាលវិភាគ',
       teacher: '',
       startTime: '--:--',
       endTime: '--:--',
       shift: currentShift,
       isLibre: false,
       dayName: todaySchedule?.dayName || 'ច័ន្ទ',
-      hasTimetable: false
+      hasTimetable: false,
+      isClassDeleted: isDeleted
     }
   }
 
@@ -247,7 +291,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
   }
   const schoolStatus = getSchoolStatus()
 
-  const currentClass = session.className === 'ALL' || !session.className ? '12A' : session.className
+  const currentClass = session.className === 'ALL' || !session.className ? (session.class || '') : session.className
   const today = new Date().toISOString().split('T')[0]
 
   // Auto-detect period or restore last active period user worked on today
@@ -284,7 +328,33 @@ export default function Attendance({ session, onNavigate, onLogout }) {
   const hasTimetable = Boolean(periodInfo.hasTimetable !== false && ((todaySchedule.morning && todaySchedule.morning.length > 0) || (todaySchedule.afternoon && todaySchedule.afternoon.length > 0)))
   const isOffDisabled = Boolean(!schoolStatus.isOpen && !allowHolidayOverride)
   const isLibreDisabled = Boolean(periodInfo.isLibre && !isSubstituted)
-  const isActionDisabled = isLibreDisabled || isOffDisabled || !hasTimetable
+
+  // ── Outside Class Hours / Nighttime Locking (Option B) ──
+  const [allowPastHoursOverride, setAllowPastHoursOverrideState] = useState(() => {
+    try {
+      return sessionStorage.getItem('school_pasthours_override') === 'true'
+    } catch {
+      return false
+    }
+  })
+  const setAllowPastHoursOverride = (val) => {
+    try {
+      sessionStorage.setItem('school_pasthours_override', String(val))
+    } catch {}
+    setAllowPastHoursOverrideState(val)
+  }
+
+  // System Schedule Window: Closes every evening at 18:00 (6:00 PM) and reopens at 06:30 AM
+  const now = new Date()
+  const currentMinutes = now.getHours() * 60 + now.getMinutes()
+  const SYSTEM_CLOSE_MINUTES = 18 * 60 // 18:00 (6:00 PM) = 1080 min
+  const SYSTEM_OPEN_MINUTES = 6 * 60 + 30 // 06:30 AM = 390 min
+
+  // Closed between 18:00 (6:00 PM) and 06:30 AM
+  const isPastSchoolHours = (currentMinutes >= SYSTEM_CLOSE_MINUTES || currentMinutes < SYSTEM_OPEN_MINUTES)
+  const isTimeDisabled = Boolean(isPastSchoolHours && !allowPastHoursOverride)
+
+  const isActionDisabled = isLibreDisabled || isOffDisabled || !hasTimetable || isTimeDisabled
 
   // Helper to check if a specific period has already been submitted today
   const isPeriodSubmitted = (periodNum) => {
@@ -507,6 +577,40 @@ export default function Attendance({ session, onNavigate, onLogout }) {
   }, [currentClass])
 
   const loadStudents = async (cls = currentClass, targetPeriod = periodInfo) => {
+    // 0. Verify active class state from server/cache
+    try {
+      const clsRes = await api('academic.getClasses')
+      if (clsRes?.success && Array.isArray(clsRes.data) && clsRes.data.length > 0) {
+        const exists = clsRes.data.some(c => c.name === cls || c.id === cls)
+        if (!exists) {
+          setStudents([])
+          setLoading(false)
+          setPeriodInfo(prev => ({
+            ...prev,
+            hasTimetable: false,
+            isClassDeleted: true,
+            periodLabel: 'ថ្នាក់ត្រូវបានលុប',
+            subject: 'ថ្នាក់ត្រូវបានលុបចេញពីប្រព័ន្ធ'
+          }))
+          return
+        }
+      }
+    } catch (e) {}
+
+    const sched = getTodaySchedule(cls)
+    if (sched.isClassDeleted) {
+      setStudents([])
+      setLoading(false)
+      setPeriodInfo(prev => ({
+        ...prev,
+        hasTimetable: false,
+        isClassDeleted: true,
+        periodLabel: 'ថ្នាក់ត្រូវបានលុប',
+        subject: 'ថ្នាក់ត្រូវបានលុបចេញពីប្រព័ន្ធ'
+      }))
+      return
+    }
+
     // 1. Instant offline cache render (0ms instant response)
     const cached = getCachedStudentRoster(cls)
     if (cached && cached.length > 0) {
@@ -531,6 +635,33 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       }
     } catch (e) {
       console.warn('[Attendance] Network fetch error, fallback to offline cache:', e)
+    }
+
+    // 3. Sync timetable from network/Firebase to ensure latest period schedule
+    try {
+      const tbResult = await api('timetable.get', { classId: cls })
+      if (tbResult?.isClassDeleted) {
+        setStudents([])
+        setPeriodInfo(prev => ({
+          ...prev,
+          hasTimetable: false,
+          isClassDeleted: true,
+          periodLabel: 'ថ្នាក់ត្រូវបានលុប',
+          subject: 'ថ្នាក់ត្រូវបានលុបចេញពីប្រព័ន្ធ'
+        }))
+        return
+      }
+      if (tbResult && tbResult.success && Array.isArray(tbResult.data)) {
+        const fresh = detectCurrentPeriod(cls)
+        setPeriodInfo(prev => {
+          if (!prev || prev.hasTimetable !== fresh.hasTimetable || prev.isClassDeleted !== fresh.isClassDeleted || prev.period !== fresh.period || prev.teacher !== fresh.teacher || prev.subject !== fresh.subject) {
+            return fresh
+          }
+          return prev
+        })
+      }
+    } catch (e) {
+      console.warn('[Attendance] Timetable sync error:', e)
     } finally {
       setLoading(false)
     }
@@ -669,11 +800,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       let reason = ''
       if (status === 'LEAVE') {
         const customReason = (leaveReasons[s.id] || '').trim()
-        if (customReason) {
-          reason = isFullDay ? `${customReason} (ពេញមួយថ្ងៃ)` : customReason
-        } else {
-          reason = isFullDay ? 'សុំច្បាប់ពេញមួយថ្ងៃ' : 'មានច្បាប់ត្រឹមត្រូវ'
-        }
+        reason = customReason || 'មានច្បាប់ត្រឹមត្រូវ'
       } else if (status === 'ABSENT') {
         reason = 'គ្មានច្បាប់'
       }
@@ -927,6 +1054,61 @@ export default function Attendance({ session, onNavigate, onLogout }) {
           </div>
         )}
 
+        {/* ── Outside School Hours Notice Banner (Option B: ផុតម៉ោងសិក្សា) ── */}
+        {schoolStatus.isOpen && isTimeDisabled && (
+          <div className="mb-3.5 sm:mb-6 rounded-xl sm:rounded-2xl bg-white border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-3.5 sm:p-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="flex items-start gap-2.5 sm:gap-3.5">
+                <span className="text-xl sm:text-2xl shrink-0 p-2 sm:p-2.5 bg-gradient-to-br from-rose-100 to-rose-50 text-rose-700 rounded-xl sm:rounded-2xl shadow-xs border border-rose-200/60 flex items-center justify-center">
+                  <Lock size={22} className="sm:w-6 sm:h-6" />
+                </span>
+                <div>
+                  <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                    <h3 className="text-[14px] sm:text-[17px] font-extrabold text-rose-700">
+                      ផុតម៉ោងស្រង់វត្តមានហើយ (បិទប្រព័ន្ធម៉ោង ៦ យប់)
+                    </h3>
+                   
+                  </div>
+                  <p className="text-[12px] sm:text-[13px] text-slate-500 font-medium mt-0.5 sm:mt-1 leading-relaxed">
+                    ប្រព័ន្ធបិទការស្រង់វត្តមានរៀងរាល់ម៉ោង ៦:០០ យប់ (18:00) និងបើកដំណើរការឡើងវិញនៅម៉ោង ៦:៣០ ព្រឹក (06:30)។
+                  </p>
+                  <div className="text-[11px] sm:text-[12px] text-rose-700 font-bold mt-1 sm:mt-1.5 flex items-center gap-1.5">
+                    <span>ម៉ោងបើកដំណើរការស្រង់វត្តមាន៖ ០៦:៣០ ព្រឹក ដល់ ០៦:០០ យប់</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={() => setAllowPastHoursOverride(true)}
+                  className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-[11px] sm:text-[13px] px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                  title="បើកដំណើរការស្រង់វត្តមានសាកល្បងក្រៅម៉ោង"
+                >
+                  <span>+ ស្រង់សាកល្បង</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Compact reminder when past-hours testing mode is actively turned on */}
+        {schoolStatus.isOpen && isPastSchoolHours && allowPastHoursOverride && (
+          <div className="mb-4 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200/80 px-3.5 py-2 flex items-center justify-between text-[12px] text-amber-900 animate-in fade-in duration-150">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <span>កំពុងស្ថិតក្នុង <strong>របៀបស្រង់វត្តមានសាកល្បង (ក្រៅម៉ោងសិក្សា)</strong>។</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAllowPastHoursOverride(false)}
+              className="text-amber-800 hover:text-amber-950 underline font-bold cursor-pointer text-[11px]"
+            >
+              ចាក់សោឡើងវិញ
+            </button>
+          </div>
+        )}
+
         {/* ── Period Info Card (Point 1: Auto-detect, Point 2: Quick Switcher, Point 5: Substitution) ── */}
         {!hasTimetable ? (
           <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 mb-3.5 sm:mb-6">
@@ -937,14 +1119,25 @@ export default function Attendance({ session, onNavigate, onLogout }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5 sm:gap-2 mb-1 sm:mb-1.5 flex-wrap">
                   <span className="flex items-center gap-1 bg-slate-50 text-slate-700 border border-slate-100 px-2.5 py-0.5 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider">
-                    <GraduationCap size={12} className="sm:w-[13px] sm:h-[13px] text-indigo-500" /> ថ្នាក់ {periodInfo.className}
+                    <GraduationCap size={12} className="sm:w-[13px] sm:h-[13px] text-indigo-500" /> {periodInfo.className ? `ថ្នាក់ ${periodInfo.className}` : 'មិនទាន់មានថ្នាក់'}
                   </span>
+                  {periodInfo.isClassDeleted && (
+                    <span className="bg-red-50 text-danger border border-red-200 px-2.5 py-0.5 rounded-full text-[11px] font-bold">
+                      ថ្នាក់ត្រូវបានលុប
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-[14px] sm:text-[16px] font-bold text-slate-800 mb-1">
-                  ថ្នាក់ {periodInfo.className} មិនទាន់មានកាលវិភាគនៅឡើយទេ
+                  {!periodInfo.className
+                    ? 'គណនីរបស់អ្នកមិនទាន់មានថ្នាក់រៀននៅឡើយទេ'
+                    : periodInfo.isClassDeleted
+                    ? `ថ្នាក់ ${periodInfo.className} ត្រូវបានលុបចេញពីប្រព័ន្ធហើយ`
+                    : `ថ្នាក់ ${periodInfo.className} មិនទាន់មានកាលវិភាគនៅឡើយទេ`}
                 </h3>
                 <p className="text-[12px] sm:text-[13px] text-slate-500 leading-relaxed max-w-2xl">
-                  សូមទាក់ទងគណៈគ្រប់គ្រងសាលាដើម្បីបញ្ចូលកាលវិភាគ ទើបអាចស្រង់វត្តមានតាមម៉ោងនីមួយៗបាន។
+                  {!periodInfo.className || periodInfo.isClassDeleted
+                    ? 'ថ្នាក់រៀននេះមិនមាន ឬត្រូវបានអ្នកគ្រប់គ្រង (Admin) លុបចេញពីប្រព័ន្ធ។ សូមទាក់ទង Admin ដើម្បីកំណត់ថ្នាក់ថ្មីសម្រាប់គណនីរបស់អ្នក។'
+                    : 'សូមទាក់ទងគណៈគ្រប់គ្រងសាលាដើម្បីបញ្ចូលកាលវិភាគ ទើបអាចស្រង់វត្តមានតាមម៉ោងនីមួយៗបាន។'}
                 </p>
               </div>
             </div>
@@ -958,7 +1151,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-1 sm:mb-1.5 flex-wrap gap-1.5 sm:gap-2">
               <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <span className="flex items-center gap-1 bg-indigo-50 text-accent border border-indigo-100 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider">
+                <span className="flex items-center gap-1 text-accent px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                   <GraduationCap size={13} className="sm:w-3.5 sm:h-3.5" /> ថ្នាក់ {periodInfo.className} 
                 </span>
 
@@ -970,16 +1163,9 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                 )}
 
                 {/* Point 5: Substitution Badge if swapped */}
-                {isSubstituted && (
-                  <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold animate-in fade-in duration-200">
-                    <ArrowLeftRight size={11} /> ម៉ោងប្តូរជាក់ស្តែង
-                  </span>
-                )}
-
-                {/* Submitted Indicator Badge */}
                 {isPeriodSubmitted(periodInfo.period) && (
-                  <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold animate-in fade-in duration-150">
-                    <CheckCircle2 size={11} className="text-emerald-600" /> បានស្រង់រួច
+                  <span className="inline-flex items-center gap-1  text-emerald-700 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold animate-in fade-in duration-150">
+                    បានស្រង់រួច
                   </span>
                 )}
               </div>
@@ -1100,18 +1286,18 @@ export default function Attendance({ session, onNavigate, onLogout }) {
             )}
 
             {/* Point 5: Quick Button to Swap Teacher / Subject */}
-            <div className="flex items-center justify-between mt-2.5 sm:mt-3 pt-2.5 sm:pt-3 border-t border-slate-100">
+            <div className="flex items-center justify-between mt-2.5 sm:mt-3 pt-2.5 sm:pt-3 ">
               <button
                 type="button"
                 onClick={openSubModal}
-                className={`text-[11px] sm:text-[12px] font-bold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer ${isSubstituted
-                  ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200'
+                className={`text-[11px] sm:text-[12px] font-bold px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl flex items-center gap-1.5 transition-all cursor-pointer ${isSubstituted
+                  ? ' text-blue-600 ' 
+                  : ' text-slate-600 '
                   }`}
                 title="ចុចដើម្បីប្តូរមុខវិជ្ជា ឬគ្រូបង្រៀនជាក់ស្តែងសម្រាប់ម៉ោងនេះ"
               >
-                <ArrowLeftRight size={12} className={isSubstituted ? 'text-white' : 'text-slate-500'} />
-                <span>{isSubstituted ? 'បានប្តូរម៉ោង/គ្រូជាក់ស្តែង' : (periodInfo.isLibre ? '+ បញ្ចូលគ្រូបង្រៀនជំនួស' : 'ប្តូរម៉ោង / គ្រូជំនួស')}</span>
+                <ArrowLeftRight size={12} className={isSubstituted ? 'text-blue-600' : 'text-slate-500'} />
+                <span>{isSubstituted ? 'បានប្តូរម៉ោង' : (periodInfo.isLibre ? '+ បញ្ចូលគ្រូបង្រៀនជំនួស' : 'ប្តូរម៉ោង')}</span>
               </button>
 
               {isSubstituted && (
@@ -1119,9 +1305,9 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                   type="button"
                   onClick={resetToTimetableDefault}
                   className="text-[10px] sm:text-[11px] font-bold text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                  title="កំណត់ត្រឡប់មកកាលវិភាគដើមវិញ"
+                  title="កាលវិភាគដើមវិញ"
                 >
-                  (កំណត់មកកាលវិភាគដើមវិញ)
+                  កាលវិភាគដើមវិញ
                 </button>
               )}
             </div>
@@ -1222,25 +1408,6 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                       </span>
                     </div>
                   </div>
-
-                  {/* Point 4: Full-Day Leave Toggle Badge (Only appears when LEAVE is chosen) */}
-                  {isLeave && (
-                    <button
-                      type="button"
-                      disabled={isActionDisabled}
-                      onClick={() => toggleFullDay(s.id)}
-                      className={`text-[10px] sm:text-[11px] font-bold px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg border transition-all whitespace-nowrap shadow-xs ${
-                        isActionDisabled
-                          ? 'opacity-40 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200'
-                          : isFullDay
-                          ? 'bg-amber-500 text-white border-amber-600 cursor-pointer'
-                          : 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50 cursor-pointer'
-                      }`}
-                      title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចកែប្រែបានទេ' : 'ចុចដើម្បីកំណត់សុំច្បាប់ពេញមួយថ្ងៃ (គ្រប់ម៉ោងសិក្សា)'}
-                    >
-                      {isFullDay ? '✓ ពេញមួយថ្ងៃ' : '+ ពេញមួយថ្ងៃ'}
-                    </button>
-                  )}
                 </div>
 
                 {/* Status Selection Buttons (Old UI 3 buttons) */}
@@ -1256,7 +1423,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                         ? 'bg-success/10 border-success text-success shadow-xs cursor-pointer'
                         : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
                     }`}
-                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
+                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
                   >
                     <Check size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={!isAbsent && !isLeave ? 3 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">វត្តមាន</span>
@@ -1273,7 +1440,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                         ? 'bg-danger/10 border-danger text-danger shadow-xs cursor-pointer'
                         : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
                     }`}
-                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
+                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
                   >
                     <X size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={isAbsent ? 3 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">អវត្តមាន</span>
@@ -1290,7 +1457,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                         ? 'bg-amber-500/10 border-amber-500 text-amber-600 shadow-xs cursor-pointer'
                         : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
                     }`}
-                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
+                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
                   >
                     <FileText size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={isLeave ? 3 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">ច្បាប់</span>
@@ -1391,12 +1558,22 @@ export default function Attendance({ session, onNavigate, onLogout }) {
         >
           <span>ឈប់សម្រាក ({schoolStatus.badgeText})</span>
         </button>
+      ) : isTimeDisabled ? (
+        <button
+          type="button"
+          disabled
+          className="bg-slate-100 border border-slate-200 text-slate-400 font-bold py-1.5 sm:py-2 px-3 sm:px-4 rounded-lg sm:rounded-xl flex items-center gap-1.5 cursor-not-allowed text-[11px] sm:text-[13px]"
+          title="ប្រព័ន្ធបិទការស្រង់វត្តមានពីម៉ោង ៦:០០ យប់ ដល់ ៦:៣០ ព្រឹក"
+        >
+          <Lock size={13} className="text-slate-400" />
+          <span>ផុតម៉ោង (បិទម៉ោង ៦ យប់)</span>
+        </button>
       ) : (
         <button
           type="button"
           className="bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-1.5 sm:py-2 px-3 sm:px-5 rounded-lg sm:rounded-xl shadow-[0_4px_12px_0_rgb(99,102,241,0.3)] hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-1.5 cursor-pointer text-[11px] sm:text-[13px]"
           onClick={saveAttendance}
-          disabled={saving || loading || students.length === 0 || !hasTimetable}
+          disabled={saving || loading || students.length === 0 || !hasTimetable || isActionDisabled}
         >
           {saving ? (
             <><Loader2 size={14} className="animate-spin sm:w-4 sm:h-4" /> រក្សាទុក...</>

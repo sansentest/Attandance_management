@@ -11,10 +11,32 @@ import SearchableDropdown from '../../common/SearchableDropdown'
 import { api } from '../../../utils/api'
 import { triggerDailySummary, isDailySummarySentToday, getDailySummarySentLog } from '../../../services/dailySummaryScheduler'
 
+const isDummyToken = (t) => {
+  if (!t) return false;
+  const tok = t.token || '';
+  const id = t.id || '';
+  const name = t.name || '';
+  if (id === 'gt_1' || id === 'gt_2') return true;
+  if (tok.includes('123456789:ABC') || tok.includes('987654321:XYZ') || tok.includes('555555555:QWE')) return true;
+  if ((name === 'Bot សាលាកណ្តាល' || name === 'Bot បណ្ណាល័យ') && (tok.includes('123456789') || tok.includes('987654321') || !tok)) return true;
+  return false;
+};
+
+const isDummyBot = (b) => {
+  if (!b) return false;
+  const tok = b.token || '';
+  const id = b.id || '';
+  const name = b.name || '';
+  if (id === 'BOT-001' || id === 'BOT-002') return true;
+  if (tok.includes('123456789:ABC') || tok.includes('987654321:XYZ') || tok.includes('555555555:QWE')) return true;
+  if ((name === 'Bot សាលាកណ្តាល' || name === 'Bot បណ្ណាល័យ') && (tok.includes('123456789') || tok.includes('987654321') || !tok)) return true;
+  return false;
+};
+
 export default function AdminTelegramBot() {
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  
+
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -37,20 +59,23 @@ export default function AdminTelegramBot() {
       const raw = localStorage.getItem('school_telegram_global_tokens_cache')
       if (raw) {
         const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter(t => !isDummyToken(t))
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('school_telegram_global_tokens_cache', JSON.stringify(cleaned))
+          }
+          return cleaned
+        }
       }
-    } catch (e) {}
-    return [
-      { id: 'gt_1', token: '123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', name: 'Bot សាលាកណ្តាល', isActive: true },
-      { id: 'gt_2', token: '987654321:XYZ-UVW9876abCde-rqp98L4m0n987ew22', name: 'Bot បណ្ណាល័យ', isActive: false }
-    ]
+    } catch (e) { }
+    return []
   })
   const [isGlobalTokenModalOpen, setIsGlobalTokenModalOpen] = useState(false)
 
   // Custom Filter States
   const [filterClass, setFilterClass] = useState('ALL')
   const [filterStatus, setFilterStatus] = useState('ALL')
-  
+
   const [classOptions, setClassOptions] = useState(() => {
     try {
       const raw = localStorage.getItem('school_classes_cache')
@@ -60,30 +85,32 @@ export default function AdminTelegramBot() {
           return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }, ...parsed.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))]
         }
       }
-    } catch (e) {}
+    } catch (e) { }
     return [{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }]
   })
-  
+
   const statusOptions = [
     { id: 'ALL', label: 'គ្រប់ស្ថានភាព' },
     { id: 'active', label: 'ដំណើរការ' },
     { id: 'inactive', label: 'ផ្អាក' },
   ]
-  
+
   // Bots Data State (SWR Instant Cache)
   const [bots, setBots] = useState(() => {
     try {
       const raw = localStorage.getItem('school_telegram_bots_cache')
       if (raw) {
         const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter(b => !isDummyBot(b))
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('school_telegram_bots_cache', JSON.stringify(cleaned))
+          }
+          return cleaned
+        }
       }
-    } catch (e) {}
-    return [
-      { id: 'BOT-001', class: '12A', name: 'Bot ថ្នាក់ ១២A', token: '123456789:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', chatId: '-1001234567890', status: 'active', notifyOnAttendance: true, lastUpdated: '2026-07-01' },
-      { id: 'BOT-002', class: '12B', name: 'Bot ថ្នាក់ ១២B', token: '987654321:XYZ-DEF1234ghIkl-zyx57W2v1u123ew22', chatId: '-1009876543210', status: 'active', notifyOnAttendance: true, lastUpdated: '2026-06-25' },
-      { id: 'BOT-003', class: '11A', name: 'Bot ថ្នាក់ ១១A', token: '555555555:QWE-DEF1234ghIkl-zyx57W2v1u123ew33', chatId: '-1005555555555', status: 'inactive', notifyOnAttendance: true, lastUpdated: '2026-05-10' },
-    ]
+    } catch (e) { }
+    return []
   })
 
   // Background SWR sync with Firestore
@@ -99,10 +126,15 @@ export default function AdminTelegramBot() {
 
         if (isMounted) {
           if (botsRes && botsRes.success && botsRes.data) {
-            setBots(botsRes.data)
+            const cleanBots = botsRes.data.filter(b => !isDummyBot(b))
+            setBots(cleanBots)
           }
           if (tokRes && tokRes.success && tokRes.data) {
-            setGlobalTokens(tokRes.data)
+            const cleanTokens = tokRes.data.filter(t => !isDummyToken(t))
+            setGlobalTokens(cleanTokens)
+            if (cleanTokens.length !== tokRes.data.length) {
+              api('telegram.saveGlobalTokens', { tokens: cleanTokens }).catch(() => {})
+            }
           }
           if (clRes && clRes.success && clRes.data && clRes.data.length > 0) {
             setClassOptions([{ id: 'ALL', label: 'គ្រប់ថ្នាក់' }, ...clRes.data.map(c => ({ id: c.name, label: `ថ្នាក់ ${c.name}` }))])
@@ -211,19 +243,19 @@ export default function AdminTelegramBot() {
 
   // Filter Data
   let filteredBots = bots
-  
+
   if (filterClass !== 'ALL') {
     filteredBots = filteredBots.filter(b => b.class === filterClass)
   }
-  
+
   if (filterStatus !== 'ALL') {
     filteredBots = filteredBots.filter(b => b.status === filterStatus)
   }
-  
+
   if (searchQuery.trim()) {
     const q = searchQuery.toLowerCase()
-    filteredBots = filteredBots.filter(b => 
-      b.class.toLowerCase().includes(q) || 
+    filteredBots = filteredBots.filter(b =>
+      b.class.toLowerCase().includes(q) ||
       (b.name && b.name.toLowerCase().includes(q)) ||
       b.chatId.toLowerCase().includes(q) ||
       b.token.toLowerCase().includes(q)
@@ -233,7 +265,7 @@ export default function AdminTelegramBot() {
   // Pagination Logic
   const itemsPerPage = 10
   const totalPages = Math.max(1, Math.ceil(filteredBots.length / itemsPerPage))
-  
+
   if (currentPage > totalPages) {
     setCurrentPage(totalPages)
   }
@@ -246,51 +278,58 @@ export default function AdminTelegramBot() {
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full pb-10">
-      
+
       {/* Toast Alert */}
       {toast && (
-        <div className={`fixed top-5 right-5 z-[200] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl border animate-in slide-in-from-top duration-300 font-bold text-[13px] ${
-          toast.type === 'error'
-            ? 'bg-rose-50 text-rose-700 border-rose-200 shadow-rose-500/10'
-            : 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-emerald-500/10'
-        }`}>
+        <div className={`fixed top-5 right-5 z-[200] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-xl border animate-in slide-in-from-top duration-300 font-bold text-[13px] ${toast.type === 'error'
+          ? 'bg-rose-50 text-rose-700 border-rose-200 shadow-rose-500/10'
+          : 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-emerald-500/10'
+          }`}>
           {toast.type === 'error' ? <AlertCircle size={18} className="text-rose-500" /> : <CheckCircle size={18} className="text-emerald-600" />}
           <span>{toast.message}</span>
         </div>
       )}
 
       {/* ── Daily 5:00 PM Summary Info Card ── */}
-      <div className="bg-gradient-to-r from-indigo-50/90 via-blue-50/90 to-sky-50/90 border border-indigo-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
-        <div className="flex items-start gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-600/20 mt-0.5">
+
+      <div className="bg-white rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-indigo-600/30 mt-0.5">
             <Clock size={22} strokeWidth={2.5} />
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h4 className="text-[14px] sm:text-[16px] font-extrabold text-indigo-950">
-                របាយការណ៍សង្ខេបវត្តមានប្រចាំថ្ងៃស្វ័យប្រវត្តិ (រៀងរាល់ម៉ោង ០៥:០០ រសៀល)
-              </h4>
-              <span className={`text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                summarySentToday
-                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                  : 'bg-amber-100 text-amber-800 border-amber-300'
-              }`}>
-                {summarySentToday ? '✓ ថ្ងៃនេះបានផ្ញើរួចរាល់' : '⏳ រង់ចាំដល់ម៉ោង ៥:០០ រសៀល'}
-              </span>
-            </div>
-            <p className="text-[12px] sm:text-[13px] text-slate-600 mt-1 leading-relaxed">
-              នៅរៀងរាល់ម៉ោង <strong>០៥:០០ រសៀល</strong> ប្រព័ន្ធនឹងចងក្រងតារាងសង្ខេបវត្តមានគ្រប់ថ្នាក់ទាំងអស់ (ចំនួនសិស្សមក សិស្សឈប់ និងបញ្ជីឈ្មោះ) រួចផ្ញើជូនលោកគ្រូអ្នកគ្រូ និងគណៈគ្រប់គ្រងសាលាដោយស្វ័យប្រវត្តិតាម Telegram Bot។
+            <h4 className="text-[15px] sm:text-[17px] font-extrabold text-indigo-950 leading-tight">
+              របាយការណ៍សង្ខេបវត្តមានប្រចាំថ្ងៃស្វ័យប្រវត្តិ
+            </h4>
+            <p className="text-[11px] sm:text-[12px] text-slate-500 mt-0.5">
+              ប្រព័ន្ធផ្ញើរបាយការណ៍ដោយស្វ័យប្រវត្តិរៀងរាល់ម៉ោង ០៥:០០ រសៀល
             </p>
+            <span className={`inline-flex items-center gap-1.5 mt-2 text-[11px] font-bold px-2.5 py-1 rounded-lg  ${summarySentToday
+              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+              : 'bg-gradient-to-br from-red-100 to-rose-50 text-danger'
+              }`}>
+              <span className={`w-2 h-2 rounded-full ${summarySentToday ? 'bg-emerald-500' : 'bg-gradient-to-br from-red-100 to-rose-50'}`} />
+              {summarySentToday ? '✓ ថ្ងៃនេះបានផ្ញើរួចរាល់' : 'រង់ចាំដល់ម៉ោង ៥:០០ រសៀល'}
+            </span>
           </div>
         </div>
         <button
           type="button"
           onClick={handleSendDailySummaryNow}
           disabled={isSendingDailySummary}
-          className="bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 text-white font-bold text-[12px] sm:text-[13px] px-4 py-2.5 rounded-xl shadow-xs hover:shadow-md transition-all flex items-center gap-2 shrink-0 self-end sm:self-center cursor-pointer"
+          className="bg-gradient-to-br from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-[13px] sm:text-[14px] px-5 py-3 rounded-2xl shadow-sm hover:shadow-xl transition-all flex items-center justify-center gap-2 w-full sm:w-auto min-w-[180px] shrink-0 cursor-pointer"
         >
-          {isSendingDailySummary ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} strokeWidth={2.5} />}
-          <span>{isSendingDailySummary ? 'កំពុងផ្ញើ...' : 'ផ្ញើសេចក្តីសង្ខេបឥឡូវ'}</span>
+          {isSendingDailySummary ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              <span>កំពុងផ្ញើ...</span>
+            </>
+          ) : (
+            <>
+              <Send size={16} strokeWidth={2.5} />
+              <span>ផ្ញើសេចក្តីសង្ខេបឥឡូវ</span>
+            </>
+          )}
         </button>
       </div>
 
@@ -307,7 +346,7 @@ export default function AdminTelegramBot() {
           </div>
           <div className="text-3xl font-black text-slate-800 relative z-10">{totalRecords}</div>
         </div>
-        
+
         {/* Active Card */}
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-emerald-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
@@ -335,16 +374,16 @@ export default function AdminTelegramBot() {
 
       {/* Main Table Container */}
       <div className="bg-white rounded-2xl border border-slate-200/60 flex flex-col relative shadow-sm overflow-hidden">
-        
+
         {/* Toolbar & Filters */}
         <div className="p-5 border-b border-slate-100 bg-slate-50/30">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 w-full">
             <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 w-full lg:w-auto flex-1">
               <div className="relative w-full sm:w-[280px] xl:w-[320px] group">
                 <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-                <input 
-                  type="text" 
-                  placeholder="ស្វែងរកលេខកូដ, ឈ្មោះ ឬថ្នាក់..." 
+                <input
+                  type="text"
+                  placeholder="ស្វែងរកលេខកូដ, ឈ្មោះ ឬថ្នាក់..."
                   className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-9 pr-4 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -353,34 +392,34 @@ export default function AdminTelegramBot() {
 
               <div className="flex items-center gap-3 w-full sm:w-auto">
                 <div className="w-full sm:w-[150px]">
-                  <SearchableDropdown 
-                    options={classOptions} 
-                    value={filterClass} 
-                    onChange={setFilterClass} 
-                    placeholder="ជ្រើសរើសថ្នាក់" 
+                  <SearchableDropdown
+                    options={classOptions}
+                    value={filterClass}
+                    onChange={setFilterClass}
+                    placeholder="ជ្រើសរើសថ្នាក់"
                   />
                 </div>
                 <div className="w-full sm:w-[160px]">
-                  <SearchableDropdown 
-                    options={statusOptions} 
-                    value={filterStatus} 
-                    onChange={setFilterStatus} 
-                    placeholder="ជ្រើសរើសស្ថានភាព" 
+                  <SearchableDropdown
+                    options={statusOptions}
+                    value={filterStatus}
+                    onChange={setFilterStatus}
+                    placeholder="ជ្រើសរើសស្ថានភាព"
                   />
                 </div>
               </div>
             </div>
 
             <div className="w-full lg:w-auto flex-shrink-0 flex items-center justify-end gap-3 flex-wrap">
-              <button 
+              <button
                 onClick={() => setIsGlobalTokenModalOpen(true)}
                 className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white py-2.5 px-4 sm:px-6 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full sm:w-auto"
               >
                 <Globe size={15} strokeWidth={2.5} className="text-indigo-400" />
                 <span>គ្រប់គ្រង Global Token</span>
               </button>
-              
-              <button 
+
+              <button
                 onClick={() => setIsAddModalOpen(true)}
                 className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-4 sm:px-6 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full sm:w-auto"
               >
@@ -492,7 +531,7 @@ export default function AdminTelegramBot() {
                   <td className="py-3 px-6 text-right">
                     <div className="flex items-center justify-end gap-2 transition-all duration-300">
                       {/* Live Test Bot Button */}
-                      <button 
+                      <button
                         type="button"
                         disabled={testingBotId === bot.id}
                         onClick={() => handleTestBot(bot)}
@@ -505,9 +544,9 @@ export default function AdminTelegramBot() {
                           <Send size={14} strokeWidth={2.5} />
                         )}
                       </button>
-                      
+
                       {/* Edit Button */}
-                      <button 
+                      <button
                         type="button"
                         onClick={() => {
                           setEditingBot(bot);
@@ -518,9 +557,9 @@ export default function AdminTelegramBot() {
                       >
                         <Edit size={14} strokeWidth={2.5} />
                       </button>
-                      
+
                       {/* Delete Button */}
-                      <button 
+                      <button
                         type="button"
                         onClick={() => setDeleteModal({ open: true, bot })}
                         className="flex items-center justify-center w-8 h-8 bg-rose-50 border border-rose-100 text-rose-600 hover:bg-rose-100 hover:border-rose-200 rounded-lg shadow-sm hover:shadow hover:-translate-y-0.5 transition-all duration-200"
@@ -548,44 +587,43 @@ export default function AdminTelegramBot() {
             </tbody>
           </table>
         </div>
-        
+
         {/* Pagination */}
         <div className="p-4 sm:p-6 border-t border-slate-100 bg-white flex flex-col xl:flex-row items-center justify-end gap-6 rounded-b-2xl">
           <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
             <div className="flex items-center gap-1 sm:gap-2">
-              <button 
+              <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
                 className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === 1 ? 'text-slate-400 opacity-50 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
               >
                 <ChevronLeft size={20} strokeWidth={2.5} />
               </button>
-              
+
               <div className="flex items-center gap-1">
                 {[...Array(totalPages)].map((_, i) => (
-                  <button 
+                  <button
                     key={i + 1}
                     onClick={() => setCurrentPage(i + 1)}
-                    className={`w-9 h-9 rounded-full font-bold text-[15px] flex items-center justify-center transition-all ${
-                      currentPage === i + 1 
-                        ? 'bg-[#0062cc] hover:bg-blue-700 text-white shadow-[0_4px_12px_rgba(0,98,204,0.3)] transform hover:scale-105' 
-                        : 'bg-transparent text-slate-600 hover:bg-slate-100'
-                    }`}
+                    className={`w-9 h-9 rounded-full font-bold text-[15px] flex items-center justify-center transition-all ${currentPage === i + 1
+                      ? 'bg-[#0062cc] hover:bg-blue-700 text-white shadow-[0_4px_12px_rgba(0,98,204,0.3)] transform hover:scale-105'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-100'
+                      }`}
                   >
                     {i + 1}
                   </button>
                 ))}
               </div>
 
-              <button 
+              <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
                 className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ml-1 ${currentPage === totalPages ? 'text-slate-400 opacity-50 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
               >
                 <ChevronRight size={20} strokeWidth={2.5} />
               </button>
-              
-              <button 
+
+              <button
                 onClick={() => setCurrentPage(totalPages)}
                 disabled={currentPage === totalPages}
                 className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === totalPages ? 'text-slate-400 opacity-50 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
@@ -595,9 +633,9 @@ export default function AdminTelegramBot() {
             </div>
 
             <div className="flex items-center gap-3 border-l border-slate-200 pl-4 sm:pl-6">
-              <input 
-                type="number" 
-                min="1" 
+              <input
+                type="number"
+                min="1"
                 max={totalPages}
                 value={currentPage}
                 onChange={(e) => {
@@ -616,31 +654,31 @@ export default function AdminTelegramBot() {
 
       {/* Modals */}
       {isAddModalOpen && (
-        <AddBotModal 
-          isOpen={isAddModalOpen} 
-          onClose={() => setIsAddModalOpen(false)} 
-          onSave={handleAddBotSave} 
-          classOptions={classOptions} 
+        <AddBotModal
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          onSave={handleAddBotSave}
+          classOptions={classOptions}
           globalTokens={globalTokens}
         />
       )}
 
       {isEditModalOpen && (
-        <EditBotModal 
-          isOpen={isEditModalOpen} 
-          onClose={() => setIsEditModalOpen(false)} 
-          onSave={handleEditBotSave} 
-          classOptions={classOptions} 
+        <EditBotModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          onSave={handleEditBotSave}
+          classOptions={classOptions}
           botData={editingBot}
           globalTokens={globalTokens}
         />
       )}
-      
+
       {isGlobalTokenModalOpen && (
-        <GlobalTokenModal 
-          isOpen={isGlobalTokenModalOpen} 
-          onClose={() => setIsGlobalTokenModalOpen(false)} 
-          onSave={handleSaveGlobalTokens} 
+        <GlobalTokenModal
+          isOpen={isGlobalTokenModalOpen}
+          onClose={() => setIsGlobalTokenModalOpen(false)}
+          onSave={handleSaveGlobalTokens}
           existingTokens={globalTokens}
         />
       )}

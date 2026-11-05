@@ -2289,14 +2289,35 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     font-size: 11pt;
     line-height: 1.8;
   }
-  .signature-box {
-    margin-top: 4pt;
-    padding-left: 70pt;
-    text-align: right;
-  }
-  .text-sig-role {
-    font-size: 11pt;
-  }
+.signature-box {
+  width: 100%;
+  margin-top: 2mm;
+  text-align: right;
+}
+
+.signature-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: none;
+}
+
+.signature-table td {
+  border: none;
+  padding: 0;
+  text-align: center;
+  vertical-align: top;
+}
+
+.signature-position {
+  width: 40%;
+  margin-left: 60%;
+}
+
+.text-sig-role {
+  font-size: 11pt;
+  font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
+  text-align: center;
+}
   .divider-line {
     border-top: 1pt dashed #555555;
     margin: 4pt 0 6pt 0;      /* ខាងលើតូច (មានចន្លោះហត្ថលេខារួចហើយ) · ខាងក្រោមធំជាងបន្តិច */
@@ -2384,10 +2405,15 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
     </div>
 
     <!-- Signature Area -->
-    <div class="signature-box">
+   <table class="signature-table">
+  <tr>
+    <td style="width: 60%;"></td>
+    <td style="width: 40%; text-align: center;">
       <div class="muol text-sig-role">នាយកសាលា</div>
       <div style="height: 40pt; line-height: 40pt;">&nbsp;</div>
-    </div>
+    </td>
+  </tr>
+</table>
   `}function Zse(e){return`<html xmlns:o='urn:schemas-microsoft-com:office:office'
 xmlns:w='urn:schemas-microsoft-com:office:word'
 xmlns='http://www.w3.org/TR/REC-html40'>

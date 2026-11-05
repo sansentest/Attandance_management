@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   Search, Plus, User, Edit, Trash2, GraduationCap, ChevronLeft, ChevronRight,
-  ChevronsRight, CheckCircle2, FileSpreadsheet, Upload, Download, X, Save,
+  ChevronsLeft, ChevronsRight, CheckCircle2, FileSpreadsheet, Upload, Download, X, Save,
   AlertTriangle, Phone, Calendar, Users, Eye, CheckCircle, ArrowRight, Sparkles, Lock, Check,
   RefreshCw, ChevronDown, FileText, FileCode, FileImage
 } from 'lucide-react'
@@ -40,8 +40,22 @@ function generateBatchStudentIds(existingList, count) {
   return ids
 }
 
+// Smart pagination range generator with ellipsis
+function getPaginationRange(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1)
+  }
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, '...', total]
+  }
+  if (current >= total - 3) {
+    return [1, '...', total - 4, total - 3, total - 2, total - 1, total]
+  }
+  return [1, '...', current - 1, current, current + 1, '...', total]
+}
+
 // Robust CSV parser supporting Khmer text, quotes, commas, tabs, semicolons, and UTF-8
-function parseCSV(text) {
+function parseCSV(text, defaultClassName = '12A') {
   const cleaned = text.replace(/^\uFEFF/, '').trim()
   if (!cleaned) return []
 
@@ -77,12 +91,19 @@ function parseCSV(text) {
     return result.map(col => col.replace(/^["']|["']$/g, '').trim())
   }
 
-  const rawHeaders = parseLine(lines[0])
+  // Look for the actual header line (often row 1 to row 5 in school sheets with titles)
+  let headerLineIdx = lines.findIndex(line => {
+    const l = line.toLowerCase()
+    return l.includes('ឈ្មោះ') || l.includes('name') || l.includes('គោត្តនាម')
+  })
+  if (headerLineIdx === -1) headerLineIdx = 0
+
+  const rawHeaders = parseLine(lines[headerLineIdx])
   const headers = rawHeaders.map(h => h.toLowerCase())
 
-  let nameIdx = headers.findIndex(h => h.includes('ឈ្មោះ') || h.includes('name'))
+  let nameIdx = headers.findIndex(h => (h.includes('ឈ្មោះ') && !h.includes('ឪពុក') && !h.includes('ម្តាយ') && !h.includes('អាណាព្យាបាល')) || h.includes('name') || h.includes('គោត្តនាម'))
   let genderIdx = headers.findIndex(h => h.includes('ភេទ') || h.includes('gender') || h.includes('sex'))
-  let classIdx = headers.findIndex(h => h.includes('ថ្នាក់') || h.includes('class') || h.includes('grade'))
+  let classIdx = headers.findIndex(h => (h.includes('ថ្នាក់') && !h.includes('បន្ទុក')) || h.includes('class') || h.includes('grade'))
   let dobIdx = headers.findIndex(h => h.includes('កំណើត') || h.includes('dob') || h.includes('birth'))
   let phoneIdx = headers.findIndex(h => (h.includes('ទូរស័ព្ទ') && !h.includes('អាណាព្យាបាល')) || h.includes('phone'))
   let parentNameIdx = headers.findIndex(h => h.includes('អាណាព្យាបាល') && !h.includes('ទូរស័ព្ទ'))
@@ -99,16 +120,19 @@ function parseCSV(text) {
   if (parentPhoneIdx === -1 && rawHeaders.length >= 8) parentPhoneIdx = 7
 
   const parsed = []
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = headerLineIdx + 1; i < lines.length; i++) {
     const cols = parseLine(lines[i])
     if (cols.length === 0 || cols.every(c => !c)) continue
 
     const name = (nameIdx >= 0 && cols[nameIdx]) ? cols[nameIdx] : ''
-    if (!name) continue // Skip rows without name
+    // Skip empty names or summary/footer lines common in Cambodian school sheets
+    if (!name || name.includes('សរុប') || name.includes('បានឃើញ') || name.includes('នាយក') || name.includes('ប្រធាន')) continue
 
-    const rawGender = (genderIdx >= 0 && cols[genderIdx]) ? cols[genderIdx] : 'M'
-    const gender = (rawGender === 'ស្រី' || rawGender.toLowerCase() === 'f' || rawGender.toLowerCase() === 'female') ? 'F' : 'M'
-    const className = (classIdx >= 0 && cols[classIdx]) ? cols[classIdx].trim() : '12A'
+    const rawGender = (genderIdx >= 0 && cols[genderIdx]) ? cols[genderIdx].trim() : 'M'
+    const isFemale = rawGender === 'ស្រី' || rawGender === 'ស' || rawGender.toLowerCase() === 'f' || rawGender.toLowerCase() === 'female'
+    const gender = isFemale ? 'F' : 'M'
+
+    const className = (classIdx >= 0 && cols[classIdx] && cols[classIdx].trim()) ? cols[classIdx].trim() : (defaultClassName || '12A')
     const dob = (dobIdx >= 0 && cols[dobIdx]) ? cols[dobIdx] : ''
     const phone = (phoneIdx >= 0 && cols[phoneIdx]) ? cols[phoneIdx] : ''
     const parentName = (parentNameIdx >= 0 && cols[parentNameIdx]) ? cols[parentNameIdx] : ''
@@ -336,6 +360,7 @@ export default function AdminStudents({ onNavigate }) {
     { id: 'active', label: 'កំពុងសិក្សា' },
     { id: 'suspended', label: 'ផ្អាកការសិក្សា' },
     { id: 'transferred', label: 'ប្តូរសាលា' },
+    { id: 'dropped', label: 'ឈប់រៀន' },
   ]
 
   // Filter Data
@@ -387,6 +412,14 @@ export default function AdminStudents({ onNavigate }) {
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" />
             ប្តូរសាលា
+          </span>
+        )
+      case 'dropped':
+      case 'dropout':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-500 inline-block" />
+            ឈប់រៀន
           </span>
         )
       default:
@@ -485,45 +518,81 @@ export default function AdminStudents({ onNavigate }) {
   }
 
   // ── Excel Import Handlers ──
-  const handleSelectExcelFile = (e) => {
+  const handleSelectExcelFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (evt) => {
-      try {
-        const text = evt.target.result
-        const rows = parseCSV(text)
-        if (rows.length === 0) {
-          showToast('ឯកសារមិនមានទិន្នន័យ ឬខុសទម្រង់! សូមទាញយកឯកសារគំរូ។')
-          return
-        }
+    try {
+      let rows = []
+      const fileNameLower = file.name.toLowerCase()
+      const isExcel = fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls')
 
-        // Auto-Generate unique sequential IDs for all rows to guarantee no duplicates
-        const generatedIds = generateBatchStudentIds(students, rows.length)
-        const finalRows = rows.map((r, idx) => ({
-          ...r,
-          id: generatedIds[idx],
-          studentId: generatedIds[idx],
-          className: r.class
-        }))
+      if (isExcel) {
+        showToast('កំពុងដំណើរការអានទិន្នន័យពីគ្រប់ Sheet នៃ Excel...')
 
-        setImportModal({
-          open: true,
-          fileName: file.name,
-          parsedData: finalRows,
-          isUploaded: true
+        // Dynamically load SheetJS if not already available in browser window
+        await new Promise((resolve, reject) => {
+          if (typeof window !== 'undefined' && window.XLSX) return resolve()
+          const script = document.createElement('script')
+          script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'
+          script.onload = () => resolve()
+          script.onerror = () => {
+            const fb = document.createElement('script')
+            fb.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+            fb.onload = () => resolve()
+            fb.onerror = () => reject(new Error('Cannot load XLSX library'))
+            document.head.appendChild(fb)
+          }
+          document.head.appendChild(script)
         })
-      } catch (err) {
-        console.error('File parsing error:', err)
-        showToast('មានបញ្ហាក្នុងការអានឯកសារ!')
+
+        const XLSX = window.XLSX
+        const buffer = await file.arrayBuffer()
+        const workbook = XLSX.read(buffer, { type: 'array' })
+
+        let detectedSheets = 0
+        for (const sheetName of workbook.SheetNames) {
+          const worksheet = workbook.Sheets[sheetName]
+          // If sheet is named "10A", "ថ្នាក់ 10A", or "11B", extract clean class
+          const cleanClass = sheetName.replace(/^(ថ្នាក់|ថ្នាក់ទី|\s)+/i, '').trim() || sheetName
+          const csvText = XLSX.utils.sheet_to_csv(worksheet)
+          const sheetRows = parseCSV(csvText, cleanClass)
+          if (sheetRows.length > 0) {
+            rows.push(...sheetRows)
+            detectedSheets++
+          }
+        }
+      } else {
+        const text = await file.text()
+        rows = parseCSV(text)
       }
+
+      if (rows.length === 0) {
+        showToast('ឯកសារមិនមានទិន្នន័យ ឬខុសទម្រង់! សូមទាញយកឯកសារគំរូ។')
+        return
+      }
+
+      // Auto-Generate unique sequential IDs for all rows to guarantee no duplicates
+      const generatedIds = generateBatchStudentIds(students, rows.length)
+      const finalRows = rows.map((r, idx) => ({
+        ...r,
+        id: generatedIds[idx],
+        studentId: generatedIds[idx],
+        className: r.class
+      }))
+
+      setImportModal({
+        open: true,
+        fileName: file.name,
+        parsedData: finalRows,
+        isUploaded: true
+      })
+    } catch (err) {
+      console.error('File parsing error:', err)
+      showToast('មានបញ្ហាក្នុងការអានឯកសារ Excel!')
+    } finally {
+      e.target.value = ''
     }
-    reader.onerror = () => {
-      showToast('បរាជ័យក្នុងការបើកឯកសារ!')
-    }
-    reader.readAsText(file, 'UTF-8')
-    e.target.value = ''
   }
 
   const handleLoadDemoExcel = () => {
@@ -1420,11 +1489,12 @@ export default function AdminStudents({ onNavigate }) {
           </table>
         </div>
 
-        {/* ── 5. Pagination & Rows Per Page ── */}
-        <div className="p-4 sm:p-5 border-t border-slate-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-4 rounded-b-2xl">
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="text-[12px] font-medium text-slate-400">
-              បង្ហាញ {filteredStudents.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredStudents.length)} នៃ {filteredStudents.length} សិស្ស
+        {/* ── 5. Smart Modern Pagination & Rows Per Page ── */}
+        <div className="p-4 sm:p-5 border-t border-slate-100 bg-white flex flex-col md:flex-row items-center justify-between gap-4 rounded-b-2xl">
+          {/* Left stats & items per page */}
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 w-full md:w-auto">
+            <span className="text-[12px] font-medium text-slate-500  px-2.5 py-1 ">
+              បង្ហាញ <strong className="text-slate-800">{filteredStudents.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredStudents.length)}</strong> នៃ <strong className="text-indigo-600">{filteredStudents.length}</strong> សិស្ស
             </span>
 
             {/* Rows Per Page Selector */}
@@ -1438,49 +1508,133 @@ export default function AdminStudents({ onNavigate }) {
                 }}
                 className="bg-slate-50 border border-slate-200 text-slate-700 text-[12px] font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 cursor-pointer shadow-2xs"
               >
-                <option value={6}>6</option>
                 <option value={10}>10</option>
                 <option value={20}>20</option>
                 <option value={50}>50</option>
+                <option value={100}>100</option>
               </select>
-              <span>នាក់/ទំព័រ</span>
+              <span>/ទំព័រ</span>
             </div>
+
+            {/* Quick jump to page */}
+            {totalPages > 1 && (
+              <div className="hidden lg:flex items-center gap-1.5 text-[12px] text-slate-500 border-l border-slate-200 pl-3">
+                <span>ទៅទំព័រ:</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  defaultValue={currentPage}
+                  key={currentPage}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      const val = parseInt(e.target.value, 10)
+                      if (!isNaN(val) && val >= 1 && val <= totalPages) setCurrentPage(val)
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const val = parseInt(e.target.value, 10)
+                    if (!isNaN(val) && val >= 1 && val <= totalPages) setCurrentPage(val)
+                  }}
+                  className="w-12 text-center bg-slate-50 border border-slate-200 text-slate-800 font-bold rounded-lg py-0.5 text-[12px] focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 shadow-2xs"
+                />
+                <span className="text-slate-400 font-medium">/ {totalPages}</span>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-1">
+          {/* Right: Page Buttons */}
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            {/* First Page */}
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${
+                currentPage === 1
+                  ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
+              }`}
+              title="ទំព័រដំបូង"
+            >
+              <ChevronsLeft size={16} strokeWidth={2.2} />
+            </button>
+
+            {/* Prev Page */}
             <button
               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${
+                currentPage === 1
+                  ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
+              }`}
+              title="ទំព័រមុន"
             >
-              <ChevronLeft size={20} strokeWidth={2.5} />
+              <ChevronLeft size={16} strokeWidth={2.2} />
             </button>
-            {[...Array(totalPages)].map((_, i) => (
-              <button
-                key={i + 1}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`w-9 h-9 rounded-full font-bold text-[14px] flex items-center justify-center transition-all ${
-                  currentPage === i + 1
-                    ? 'bg-indigo-600 text-white shadow-[0_4px_12px_rgba(79,70,229,0.35)]'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
+
+            {/* Mobile compact indicator */}
+            <div className="flex sm:hidden items-center px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[12px] font-bold text-slate-700">
+              {currentPage} / {totalPages}
+            </div>
+
+            {/* Desktop Smart Numbers with Ellipsis */}
+            <div className="hidden sm:flex items-center gap-1">
+              {getPaginationRange(currentPage, totalPages).map((item, idx) => {
+                if (item === '...') {
+                  return (
+                    <span
+                      key={`dots-${idx}`}
+                      className="w-8 h-8 flex items-center justify-center text-slate-400 font-bold select-none text-[13px]"
+                    >
+                      ...
+                    </span>
+                  )
+                }
+                const pageNum = Number(item)
+                const isActive = currentPage === pageNum
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`min-w-8 h-8 px-2 rounded-lg font-bold text-[13px] flex items-center justify-center transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 border border-indigo-600'
+                        : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-2xs'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Next Page */}
             <button
               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${
+                currentPage === totalPages
+                  ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
+              }`}
+              title="ទំព័របន្ទាប់"
             >
-              <ChevronRight size={20} strokeWidth={2.5} />
+              <ChevronRight size={16} strokeWidth={2.2} />
             </button>
+
+            {/* Last Page */}
             <button
               onClick={() => setCurrentPage(totalPages)}
               disabled={currentPage === totalPages}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${
+                currentPage === totalPages
+                  ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
+              }`}
+              title="ទំព័រចុងក្រោយ"
             >
-              <ChevronsRight size={20} strokeWidth={2.5} />
+              <ChevronsRight size={16} strokeWidth={2.2} />
             </button>
           </div>
         </div>
@@ -1664,6 +1818,7 @@ export default function AdminStudents({ onNavigate }) {
                   <option value="active">កំពុងសិក្សា (Active)</option>
                   <option value="suspended">ផ្អាកការសិក្សា (Suspended)</option>
                   <option value="transferred">ប្តូរសាលា (Transferred)</option>
+                  <option value="dropped">ឈប់រៀន (Dropped)</option>
                 </select>
               </div>
 
@@ -1935,6 +2090,13 @@ export default function AdminStudents({ onNavigate }) {
             >
               ប្តូរសាលា
             </button>
+            <button
+              type="button"
+              onClick={() => handleBatchChangeStatus('dropped')}
+              className="px-2.5 py-1 rounded-lg bg-slate-500/20 hover:bg-slate-500/30 text-slate-300 text-[11px] font-bold border border-slate-500/30 transition-all"
+            >
+              ឈប់រៀន
+            </button>
           </div>
 
           {/* Export Selected */}
@@ -2040,9 +2202,11 @@ export default function AdminStudents({ onNavigate }) {
                         ? 'bg-emerald-400/25 text-emerald-200 border border-emerald-400/30'
                         : profileModal.student.status === 'suspended'
                         ? 'bg-rose-400/25 text-rose-200 border border-rose-400/30'
+                        : profileModal.student.status === 'dropped' || profileModal.student.status === 'dropout'
+                        ? 'bg-slate-400/25 text-slate-200 border border-slate-400/30'
                         : 'bg-amber-400/25 text-amber-200 border border-amber-400/30'
                     }`}>
-                      {profileModal.student.status === 'active' ? 'កំពុងសិក្សា' : profileModal.student.status === 'suspended' ? 'ផ្អាកការសិក្សា' : 'ប្តូរសាលា'}
+                      {profileModal.student.status === 'active' ? 'កំពុងសិក្សា' : profileModal.student.status === 'suspended' ? 'ផ្អាកការសិក្សា' : (profileModal.student.status === 'dropped' || profileModal.student.status === 'dropout') ? 'ឈប់រៀន' : 'ប្តូរសាលា'}
                     </span>
                   </div>
                 </div>

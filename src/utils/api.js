@@ -14,6 +14,7 @@ import {
   updateAttendanceRecordInFirestore,
   deleteAttendanceRecordInFirestore,
   deleteMultipleAttendanceRecordsInFirestore,
+  saveRawAttendanceRecordsToFirestore,
   getAdminDashboardStatsFromFirestore,
   getAllStudentsFromFirestore,
   saveStudentToFirestore,
@@ -21,8 +22,16 @@ import {
   deleteMultipleStudentsFromFirestore,
   importMultipleStudentsToFirestore,
   getStudentDisciplineTrackingFromFirestore,
+  getTimestampMillis,
   getInvitationLettersFromFirestore,
   saveInvitationLetterToFirestore,
+  deleteInvitationLetterFromFirestore,
+  deleteBatchInvitationLettersFromFirestore,
+  saveBatchInvitationLettersToFirestore,
+  getDisciplineResolutionsFromFirestore,
+  saveDisciplineResolutionToFirestore,
+  saveBatchDisciplineResolutionsToFirestore,
+  deleteDisciplineResolutionFromFirestore,
   getClassesFromFirestore,
   saveClassToFirestore,
   deleteClassFromFirestore,
@@ -51,7 +60,8 @@ import {
   restoreCompleteDatabaseBackup,
   clearAllAttendanceDataFromFirestore,
   clearAllStudentsFromFirestore,
-  wipeAllDatabaseDataFromFirestore
+  wipeAllDatabaseDataFromFirestore,
+  invalidateFirebaseCache
 } from '../services/firebase'
 import {
   testTelegramBotConnection,
@@ -1153,7 +1163,7 @@ export async function api(action, body = {}, token = null) {
         const newRecords = [];
 
         (body.records || []).forEach(student => {
-          if (student.status === 'ABSENT' || student.status === 'LEAVE') {
+          if (student.status === 'ABSENT' || student.status === 'LEAVE' || student.status === 'DROPOUT') {
             newRecords.push({
               id: `REC-${Date.now()}-${student.id}-p${periodVal}`,
               studentId: student.id,
@@ -1166,7 +1176,7 @@ export async function api(action, body = {}, token = null) {
               subject: body.subject || '',
               teacher: body.teacher || '',
               status: student.status,
-              reason: student.reason || (student.status === 'LEAVE' ? 'មានច្បាប់ត្រឹមត្រូវ' : 'គ្មានច្បាប់ / គេចម៉ោង'),
+              reason: student.reason || (student.status === 'DROPOUT' ? 'ឈប់រៀន' : student.status === 'LEAVE' ? 'មានច្បាប់ត្រឹមត្រូវ' : 'គ្មានច្បាប់ / គេចម៉ោង'),
               isFullDay: Boolean(student.isFullDay),
               recordedBy: body.recordedBy || 'ប្រធានថ្នាក់'
             });
@@ -1325,7 +1335,46 @@ export async function api(action, body = {}, token = null) {
         }
       } catch (e) {}
 
+      try {
+        localStorage.removeItem('school_attendance_cache');
+        localStorage.removeItem('school_discipline_cache');
+      } catch (e) {}
+      invalidateFirebaseCache('attendance');
+      invalidateFirebaseCache('discipline');
+      invalidateFirebaseCache('dashboard');
+
       return { success: true, message: `បានលុប ${recordIds.length} កំណត់ត្រាដោយជោគជ័យ` };
+    }
+
+    case 'attendance.restoreRecords': {
+      const { records = [] } = body;
+      if (records.length === 0) return { success: true };
+
+      if (isFirebaseConfigured()) {
+        try {
+          await saveRawAttendanceRecordsToFirestore(records);
+        } catch (e) {
+          console.warn('[Firebase] restoreRecords failed:', e);
+        }
+      }
+
+      try {
+        const raw = localStorage.getItem('school_attendance_records');
+        const list = raw ? JSON.parse(raw) : [];
+        const existingIds = new Set(list.map(r => r.id));
+        const toAdd = records.filter(r => !existingIds.has(r.id));
+        localStorage.setItem('school_attendance_records', JSON.stringify([...list, ...toAdd]));
+      } catch (e) {}
+
+      try {
+        localStorage.removeItem('school_attendance_cache');
+        localStorage.removeItem('school_discipline_cache');
+      } catch (e) {}
+      invalidateFirebaseCache('attendance');
+      invalidateFirebaseCache('discipline');
+      invalidateFirebaseCache('dashboard');
+
+      return { success: true, message: `បានស្ដារឡើងវិញ ${records.length} កំណត់ត្រា` };
     }
 
     case 'admin.dashboardStats': {
@@ -1530,75 +1579,12 @@ export async function api(action, body = {}, token = null) {
       return { success: true, count: students.length, message: `បាននាំចូលសិស្ស ${students.length} នាក់ដោយជោគជ័យ` };
     }
 
-    case 'attendance.getAll': {
-      if (isFirebaseConfigured()) {
-        try {
-          const records = await getAllAttendanceRecordsFromFirestore();
-          if (records && records.length > 0) {
-            try {
-              localStorage.setItem('school_attendance_cache', JSON.stringify(records));
-            } catch (e) {}
-            return { success: true, data: records };
-          }
-        } catch (e) {
-          console.warn('[Firebase] getAllAttendanceRecords fallback:', e);
-        }
-      }
-
-      // Check localStorage cache
-      try {
-        const raw = localStorage.getItem('school_attendance_cache');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return { success: true, data: parsed };
-          }
-        }
-      } catch (e) {}
-
-      return { success: true, data: [] };
-    }
-
-    case 'attendance.updateRecord': {
-      const { recordId, data } = body;
-      if (isFirebaseConfigured() && recordId && data) {
-        try {
-          await updateAttendanceRecordInFirestore(recordId, data);
-        } catch (e) {
-          console.warn('[Firebase] updateAttendanceRecord failed:', e);
-        }
-      }
-      return { success: true, message: 'កែប្រែកំណត់ត្រាជោគជ័យ' };
-    }
-
-    case 'attendance.deleteRecord': {
-      const { recordId } = body;
-      if (isFirebaseConfigured() && recordId) {
-        try {
-          await deleteAttendanceRecordInFirestore(recordId);
-        } catch (e) {
-          console.warn('[Firebase] deleteAttendanceRecord failed:', e);
-        }
-      }
-      return { success: true, message: 'លុបកំណត់ត្រាជោគជ័យ' };
-    }
-
-    case 'attendance.deleteMultiple': {
-      const { recordIds = [] } = body;
-      if (isFirebaseConfigured() && recordIds.length > 0) {
-        try {
-          await deleteMultipleAttendanceRecordsInFirestore(recordIds);
-        } catch (e) {
-          console.warn('[Firebase] deleteMultipleAttendanceRecords failed:', e);
-        }
-      }
-      return { success: true, count: recordIds.length, message: 'លុបកំណត់ត្រាជោគជ័យ' };
-    }
-
     case 'discipline.getTracking': {
+      const forceFetch = Boolean(body?.force);
+      if (forceFetch) { invalidateFirebaseCache('discipline'); try { localStorage.removeItem('school_discipline_cache'); } catch (e) {} }
       if (isFirebaseConfigured()) {
         try {
-          const tracking = await getStudentDisciplineTrackingFromFirestore();
+          const tracking = await getStudentDisciplineTrackingFromFirestore(forceFetch);
           if (tracking) {
             try {
               localStorage.setItem('school_discipline_cache', JSON.stringify(tracking));
@@ -1638,14 +1624,140 @@ export async function api(action, body = {}, token = null) {
 
     case 'invitation.savePrinted': {
       const letter = body.letter;
-      if (isFirebaseConfigured() && letter) {
+      const letters = body.letters || (letter ? [letter] : []);
+      if (isFirebaseConfigured() && letters.length > 0) {
         try {
-          await saveInvitationLetterToFirestore(letter);
+          if (letters.length === 1) {
+            await saveInvitationLetterToFirestore(letters[0]);
+          } else {
+            await saveBatchInvitationLettersToFirestore(letters);
+          }
         } catch (e) {
           console.warn('[Firebase] saveInvitationLetter fallback:', e);
         }
       }
+      try {
+        const raw = localStorage.getItem('school_invitations_cache');
+        const list = raw ? JSON.parse(raw) : [];
+        const incomingIds = new Set(letters.map(l => l.id));
+        const filtered = list.filter(item => !incomingIds.has(item.id));
+        localStorage.setItem('school_invitations_cache', JSON.stringify([...letters, ...filtered]));
+      } catch (e) {}
       return { success: true, message: 'រក្សាទុកប្រវត្តិលិខិតកោះហៅជោគជ័យ' };
+    }
+
+    case 'invitation.delete': {
+      const id = body.id || body.letterId;
+      if (isFirebaseConfigured() && id) {
+        try {
+          await deleteInvitationLetterFromFirestore(id);
+        } catch (e) {
+          console.warn('[Firebase] deleteInvitation fallback:', e);
+        }
+      }
+      try {
+        const raw = localStorage.getItem('school_invitations_cache');
+        if (raw) {
+          const list = JSON.parse(raw);
+          localStorage.setItem('school_invitations_cache', JSON.stringify(list.filter(item => item.id !== id)));
+        }
+      } catch (e) {}
+      return { success: true, message: 'លុបលិខិតកោះហៅជោគជ័យ' };
+    }
+
+    case 'invitation.deleteMultiple': {
+      const ids = body.ids || [];
+      if (isFirebaseConfigured() && ids.length > 0) {
+        try {
+          await deleteBatchInvitationLettersFromFirestore(ids);
+        } catch (e) {
+          console.warn('[Firebase] deleteBatchInvitation fallback:', e);
+        }
+      }
+      try {
+        const raw = localStorage.getItem('school_invitations_cache');
+        if (raw) {
+          const list = JSON.parse(raw);
+          const set = new Set(ids);
+          localStorage.setItem('school_invitations_cache', JSON.stringify(list.filter(item => !set.has(item.id))));
+        }
+      } catch (e) {}
+      return { success: true, message: 'លុបលិខិតកោះហៅជោគជ័យ' };
+    }
+
+    case 'discipline.getResolutions': {
+      if (isFirebaseConfigured()) {
+        try {
+          const list = await getDisciplineResolutionsFromFirestore();
+          if (list) {
+            try {
+              localStorage.setItem('school_discipline_resolutions_cache', JSON.stringify(list));
+            } catch (e) {}
+            return { success: true, data: list };
+          }
+        } catch (e) {
+          console.warn('[Firebase] getDisciplineResolutions fallback:', e);
+        }
+      }
+      try {
+        const raw = localStorage.getItem('school_discipline_resolutions_cache');
+        if (raw !== null) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return { success: true, data: parsed };
+        }
+      } catch (e) {}
+      return { success: true, data: [] };
+    }
+
+    case 'discipline.saveResolution': {
+      const resolution = body.resolution;
+      const resolutions = body.resolutions || (resolution ? [resolution] : (body.studentId ? [body] : []));
+      if (isFirebaseConfigured() && resolutions.length > 0) {
+        try {
+          if (resolutions.length === 1) {
+            await saveDisciplineResolutionToFirestore(resolutions[0]);
+          } else {
+            await saveBatchDisciplineResolutionsToFirestore(resolutions);
+          }
+        } catch (e) {
+          console.warn('[Firebase] saveDisciplineResolution fallback:', e);
+        }
+      }
+      try {
+        const raw = localStorage.getItem('school_discipline_resolutions_cache');
+        const list = raw ? JSON.parse(raw) : [];
+        const incomingIds = new Set(resolutions.map(r => r.id));
+        const filtered = list.filter(r => !incomingIds.has(r.id));
+        localStorage.setItem('school_discipline_resolutions_cache', JSON.stringify([...resolutions, ...filtered]));
+      } catch (e) {}
+
+      try {
+        localStorage.removeItem('school_discipline_cache');
+      } catch (e) {}
+
+      return { success: true, message: 'បានកត់ត្រាការដោះស្រាយ និង Reset ជុំវិន័យជោគជ័យ' };
+    }
+
+    case 'discipline.deleteResolution': {
+      const id = body.id;
+      if (isFirebaseConfigured() && id) {
+        try {
+          await deleteDisciplineResolutionFromFirestore(id);
+        } catch (e) {
+          console.warn('[Firebase] deleteDisciplineResolution fallback:', e);
+        }
+      }
+      try {
+        const raw = localStorage.getItem('school_discipline_resolutions_cache');
+        if (raw) {
+          const list = JSON.parse(raw);
+          localStorage.setItem('school_discipline_resolutions_cache', JSON.stringify(list.filter(r => r.id !== id)));
+        }
+      } catch (e) {}
+      try {
+        localStorage.removeItem('school_discipline_cache');
+      } catch (e) {}
+      return { success: true, message: 'បានលុបកំណត់ត្រាដោះស្រាយ' };
     }
 
     case 'academic.getClasses': {

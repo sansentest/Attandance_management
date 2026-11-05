@@ -22,10 +22,13 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 
+const getEnv = () => (typeof import.meta !== 'undefined' && import.meta?.env) ? import.meta.env : (typeof process !== 'undefined' ? process.env : {});
+
 // 1. Check if Firebase credentials are provided in .env
 export function isFirebaseConfigured() {
-  const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
-  const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+  const env = getEnv();
+  const apiKey = env.VITE_FIREBASE_API_KEY;
+  const projectId = env.VITE_FIREBASE_PROJECT_ID;
 
   return Boolean(
     apiKey &&
@@ -43,14 +46,15 @@ let db = null;
 
 if (isFirebaseConfigured()) {
   try {
+    const env = getEnv();
     const firebaseConfig = {
-      apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId: import.meta.env.VITE_FIREBASE_APP_ID,
-      measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
+      apiKey: env.VITE_FIREBASE_API_KEY,
+      authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+      projectId: env.VITE_FIREBASE_PROJECT_ID,
+      storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+      messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      appId: env.VITE_FIREBASE_APP_ID,
+      measurementId: env.VITE_FIREBASE_MEASUREMENT_ID
     };
 
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -85,6 +89,7 @@ const COL_PERIOD_STATE = 'period_states';
 const COL_STUDENTS = 'students';
 const COL_FULL_DAY = 'full_day_leaves';
 const COL_INVITATIONS = 'invitation_letters';
+const COL_DISCIPLINE_RESOLUTIONS = 'discipline_resolutions';
 const COL_CLASSES = 'academic_classes';
 const COL_SUBJECTS = 'academic_subjects';
 const COL_USERS = 'users';
@@ -201,7 +206,7 @@ export async function saveAttendanceToFirestore(body) {
     let count = 0;
 
     (body.records || []).forEach(student => {
-      if (student.status === 'ABSENT' || student.status === 'LEAVE') {
+      if (student.status === 'ABSENT' || student.status === 'LEAVE' || student.status === 'DROPOUT') {
         const docId = `REC_${today}_${className}_p${periodVal}_${student.id}`;
         const docRef = doc(db, COL_ATTENDANCE, docId);
 
@@ -216,7 +221,7 @@ export async function saveAttendanceToFirestore(body) {
           subject: body.subject || '',
           teacher: body.teacher || '',
           status: student.status,
-          reason: student.reason || (student.status === 'LEAVE' ? 'មានច្បាប់ត្រឹមត្រូវ' : 'គ្មានច្បាប់ / គេចម៉ោង'),
+          reason: student.reason || (student.status === 'DROPOUT' ? 'ឈប់រៀន' : student.status === 'LEAVE' ? 'មានច្បាប់ត្រឹមត្រូវ' : 'គ្មានច្បាប់ / គេចម៉ោង'),
           isFullDay: Boolean(student.isFullDay),
           recordedBy: body.recordedBy || 'ប្រធានថ្នាក់',
           createdAt: serverTimestamp()
@@ -239,6 +244,7 @@ export async function saveAttendanceToFirestore(body) {
     }
 
     await insertBatch.commit();
+    invalidateFirebaseCache();
 
     return {
       success: true,
@@ -711,6 +717,30 @@ export async function deleteMultipleAttendanceRecordsInFirestore(recordIds = [])
   }
 }
 
+export async function saveRawAttendanceRecordsToFirestore(records = []) {
+  if (!db || !Array.isArray(records) || records.length === 0) return { success: true };
+  try {
+    const batch = writeBatch(db);
+    records.forEach(rec => {
+      const docId = rec.id || `REC_${rec.date || Date.now()}_${rec.class || 'general'}_${rec.studentId || 'unknown'}`;
+      const docRef = doc(db, COL_ATTENDANCE, docId);
+      const { id, ...dataToSave } = rec;
+      batch.set(docRef, {
+        ...dataToSave,
+        id: docId
+      }, { merge: true });
+    });
+    await batch.commit();
+    invalidateFirebaseCache('attendance');
+    invalidateFirebaseCache('discipline');
+    invalidateFirebaseCache('dashboard');
+    return { success: true };
+  } catch (err) {
+    console.error('[Firebase] saveRawAttendanceRecords error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
 // ─────────────────────────────────────────────
 // 8. Admin Dashboard Live Stats (Firestore)
 // ─────────────────────────────────────────────
@@ -1008,16 +1038,42 @@ export async function importMultipleStudentsToFirestore(studentsList = []) {
 // ─────────────────────────────────────────────
 // 10. Student Discipline Tracking (Firestore)
 // ─────────────────────────────────────────────
+export function getTimestampMillis(val) {
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  if (typeof val.toMillis === 'function') return val.toMillis();
+  if (typeof val.toDate === 'function') return val.toDate().getTime();
+  if (val.seconds !== undefined) return val.seconds * 1000 + Math.floor((val.nanoseconds || 0) / 1000000);
+  if (typeof val === 'string') {
+    const t = new Date(val).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  return 0;
+}
+
 export async function getStudentDisciplineTrackingFromFirestore(force = false) {
   if (!force && _memoryCache.discipline.data && (Date.now() - _memoryCache.discipline.time < MEMORY_CACHE_TTL_MS)) {
     return _memoryCache.discipline.data;
   }
   if (!db) return null;
   try {
-    const [students, records] = await Promise.all([
+    const [students, records, resolutions] = await Promise.all([
       getAllStudentsFromFirestore(force),
-      getAllAttendanceRecordsFromFirestore(force)
+      getAllAttendanceRecordsFromFirestore(force),
+      getDisciplineResolutionsFromFirestore()
     ]);
+
+    const resolutionsMap = new Map();
+    (resolutions || []).forEach(r => {
+      const keys = [];
+      if (r.studentId) keys.push(String(r.studentId).toLowerCase().trim());
+      if (r.id) keys.push(String(r.id).toLowerCase().trim());
+      if (r.name) keys.push(String(r.name).toLowerCase().trim());
+      keys.forEach(k => {
+        if (!resolutionsMap.has(k)) resolutionsMap.set(k, []);
+        resolutionsMap.get(k).push(r);
+      });
+    });
 
     const studentRecordsMap = new Map();
     records.forEach(rec => {
@@ -1051,7 +1107,36 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
         return (b.date || '').localeCompare(a.date || '');
       });
 
-      // គោលការណ៍សាលា៖ ក្នុង ១ ថ្ងៃ រាប់ត្រឹមតែ ១ ដងប៉ុណ្ណោះ (Unique Days Count)
+      // Find resolutions for this student (sorted by most recent first)
+      const sResolutions = (resolutionsMap.get(sIdKey) || resolutionsMap.get(sNameKey) || [])
+        .sort((a, b) => {
+          const tA = getTimestampMillis(a.createdAt) || (a.resolvedDate ? new Date(a.resolvedDate).getTime() : 0);
+          const tB = getTimestampMillis(b.createdAt) || (b.resolvedDate ? new Date(b.resolvedDate).getTime() : 0);
+          return tB - tA;
+        });
+      const lastResolution = sResolutions[0] || null;
+      const cycleNumber = sResolutions.length + 1;
+
+      // Filter records for current discipline cycle (after last resolution)
+      const lastResTime = lastResolution
+        ? (getTimestampMillis(lastResolution.createdAt) || (lastResolution.resolvedDate ? new Date(lastResolution.resolvedDate).getTime() : 0))
+        : 0;
+
+      const cycleRecList = lastResolution && lastResolution.resolvedDate
+        ? recList.filter(r => {
+            const rDate = r.date || '';
+            if (rDate > lastResolution.resolvedDate) return true;
+            if (rDate === lastResolution.resolvedDate) {
+              const rTime = getTimestampMillis(r.createdAt);
+              if (rTime && lastResTime) {
+                return rTime > lastResTime;
+              }
+            }
+            return false;
+          })
+        : recList;
+
+      // 1. Overall cumulative totals (Lifetime)
       const dateMap = new Map();
       recList.forEach(r => {
         const d = r.date || 'unknown';
@@ -1059,17 +1144,17 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
         dateMap.get(d).push(r);
       });
 
-      let absentDays = 0;
-      let leaveDays = 0;
-      let absentHours = 0;
-      let leaveHours = 0;
+      let totalAbsentDays = 0;
+      let totalLeaveDays = 0;
+      let totalAbsentHours = 0;
+      let totalLeaveHours = 0;
 
       recList.forEach(r => {
         const hrs = Number(r.hours) || 1;
         if (r.status === 'LEAVE') {
-          leaveHours += hrs;
+          totalLeaveHours += hrs;
         } else {
-          absentHours += hrs;
+          totalAbsentHours += hrs;
         }
       });
 
@@ -1078,9 +1163,42 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
         const hasLeave = dayRecs.some(r => r.status === 'LEAVE');
 
         if (hasUnexcused) {
-          absentDays += 1;
+          totalAbsentDays += 1;
         } else if (hasLeave) {
-          leaveDays += 1;
+          totalLeaveDays += 1;
+        }
+      });
+
+      // 2. Current cycle totals (Used for discipline threshold triggers)
+      const cycleDateMap = new Map();
+      cycleRecList.forEach(r => {
+        const d = r.date || 'unknown';
+        if (!cycleDateMap.has(d)) cycleDateMap.set(d, []);
+        cycleDateMap.get(d).push(r);
+      });
+
+      let cycleAbsentDays = 0;
+      let cycleLeaveDays = 0;
+      let cycleAbsentHours = 0;
+      let cycleLeaveHours = 0;
+
+      cycleRecList.forEach(r => {
+        const hrs = Number(r.hours) || 1;
+        if (r.status === 'LEAVE') {
+          cycleLeaveHours += hrs;
+        } else {
+          cycleAbsentHours += hrs;
+        }
+      });
+
+      cycleDateMap.forEach(dayRecs => {
+        const hasUnexcused = dayRecs.some(r => r.status === 'ABSENT' || !r.status || r.status === 'LATE');
+        const hasLeave = dayRecs.some(r => r.status === 'LEAVE');
+
+        if (hasUnexcused) {
+          cycleAbsentDays += 1;
+        } else if (hasLeave) {
+          cycleLeaveDays += 1;
         }
       });
 
@@ -1095,12 +1213,24 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
         parentName: student.parentName || '',
         parentPhone: student.parentPhone || '',
         status: student.status || 'active',
-        leave: leaveDays,
-        absent: absentDays,
-        leaveHours: leaveHours,
-        absentHours: absentHours,
-        totalHours: absentHours + leaveHours,
-        records: recList
+        // Cycle counts (used for discipline triggers & resets)
+        absent: cycleAbsentDays,
+        leave: cycleLeaveDays,
+        absentHours: cycleAbsentHours,
+        leaveHours: cycleLeaveHours,
+        totalHours: cycleAbsentHours + cycleLeaveHours,
+        // Cumulative lifetime counts (for transcripts & academic reports)
+        totalAbsent: totalAbsentDays,
+        totalLeave: totalLeaveDays,
+        totalAbsentHours: totalAbsentHours,
+        totalLeaveHours: totalLeaveHours,
+        lifetimeTotalHours: totalAbsentHours + totalLeaveHours,
+        // Discipline cycle metadata
+        cycle: cycleNumber,
+        resolutions: sResolutions,
+        lastResolution: lastResolution,
+        records: recList,
+        cycleRecords: cycleRecList
       });
     });
 
@@ -1154,9 +1284,14 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
           parentPhone: r.parentPhone || '',
           leave: leaveDays,
           absent: absentDays,
+          totalAbsent: absentDays,
+          totalLeave: leaveDays,
           leaveHours: leaveHours,
           absentHours: absentHours,
           totalHours: absentHours + leaveHours,
+          cycle: 1,
+          resolutions: [],
+          lastResolution: null,
           records: matchingRecs
         });
       }
@@ -1203,6 +1338,125 @@ export async function saveInvitationLetterToFirestore(letterData) {
     return { success: true, id: docId };
   } catch (err) {
     console.error('[Firebase] saveInvitationLetter error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteInvitationLetterFromFirestore(id) {
+  if (!db || !id) return { success: false, error: 'Firebase not configured or missing ID' };
+  try {
+    const docRef = doc(db, COL_INVITATIONS, id);
+    await deleteDoc(docRef);
+    return { success: true };
+  } catch (err) {
+    console.error('[Firebase] deleteInvitationLetter error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteBatchInvitationLettersFromFirestore(ids = []) {
+  if (!db || !Array.isArray(ids) || ids.length === 0) return { success: true };
+  try {
+    const batch = writeBatch(db);
+    ids.forEach(id => {
+      batch.delete(doc(db, COL_INVITATIONS, id));
+    });
+    await batch.commit();
+    return { success: true };
+  } catch (err) {
+    console.error('[Firebase] deleteBatchInvitationLetters error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+// ─────────────────────────────────────────────
+// 11.1 Discipline Resolutions (Firestore)
+// ─────────────────────────────────────────────
+export async function getDisciplineResolutionsFromFirestore() {
+  if (!db) return [];
+  try {
+    const q = query(collection(db, COL_DISCIPLINE_RESOLUTIONS));
+    const snap = await getDocs(q);
+    const list = [];
+    snap.forEach(d => {
+      list.push({ id: d.id, ...d.data() });
+    });
+    return list;
+  } catch (err) {
+    console.error('[Firebase] getDisciplineResolutions error:', err);
+    return [];
+  }
+}
+
+export async function saveDisciplineResolutionToFirestore(resData) {
+  if (!db) return { success: false, error: 'Firebase not configured' };
+  try {
+    const docId = resData.id || `res_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const docRef = doc(db, COL_DISCIPLINE_RESOLUTIONS, docId);
+    await setDoc(docRef, {
+      ...resData,
+      id: docId,
+      createdAt: serverTimestamp()
+    }, { merge: true });
+    invalidateFirebaseCache('discipline');
+    return { success: true, id: docId };
+  } catch (err) {
+    console.error('[Firebase] saveDisciplineResolution error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function deleteDisciplineResolutionFromFirestore(id) {
+  if (!db) return { success: false };
+  try {
+    await deleteDoc(doc(db, COL_DISCIPLINE_RESOLUTIONS, id));
+    invalidateFirebaseCache('discipline');
+    return { success: true };
+  } catch (err) {
+    console.error('[Firebase] deleteDisciplineResolution error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveBatchDisciplineResolutionsToFirestore(resolutions) {
+  if (!db || !Array.isArray(resolutions) || resolutions.length === 0) return { success: true };
+  try {
+    const batch = writeBatch(db);
+    resolutions.forEach(resData => {
+      const docId = resData.id || `res_${resData.studentId || Date.now()}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const docRef = doc(db, COL_DISCIPLINE_RESOLUTIONS, docId);
+      batch.set(docRef, {
+        ...resData,
+        id: docId,
+        createdAt: serverTimestamp()
+      }, { merge: true });
+    });
+    await batch.commit();
+    invalidateFirebaseCache('discipline');
+    return { success: true };
+  } catch (err) {
+    console.error('[Firebase] saveBatchDisciplineResolutions error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+export async function saveBatchInvitationLettersToFirestore(letters) {
+  if (!db || !Array.isArray(letters) || letters.length === 0) return { success: true };
+  try {
+    const batch = writeBatch(db);
+    letters.forEach(letter => {
+      const docId = letter.id || `inv_${letter.studentId || Date.now()}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const docRef = doc(db, COL_INVITATIONS, docId);
+      batch.set(docRef, {
+        ...letter,
+        id: docId,
+        createdAt: serverTimestamp()
+      }, { merge: true });
+    });
+    await batch.commit();
+    return { success: true };
+  } catch (err) {
+    console.error('[Firebase] saveBatchInvitationLetters error:', err);
     return { success: false, error: err.message };
   }
 }
@@ -2054,6 +2308,7 @@ export async function clearAllAttendanceDataFromFirestore() {
       await deleteCollectionDocs(COL_PERIOD_STATE);
       await deleteCollectionDocs(COL_FULL_DAY);
       await deleteCollectionDocs(COL_INVITATIONS);
+      await deleteCollectionDocs(COL_DISCIPLINE_RESOLUTIONS);
     } catch (err) {
       console.error('[Firebase] clearAllAttendanceData error:', err);
     }
@@ -2065,6 +2320,8 @@ export async function clearAllAttendanceDataFromFirestore() {
     localStorage.removeItem('school_attendance_cache');
     localStorage.removeItem('school_period_state');
     localStorage.removeItem('school_invitations_cache');
+    localStorage.removeItem('school_discipline_resolutions_cache');
+    localStorage.removeItem('school_discipline_cache');
     localStorage.removeItem('attendance_records');
     localStorage.setItem('school_attendance_records', '[]');
     localStorage.setItem('school_attendance_cache', '[]');
@@ -2142,6 +2399,7 @@ export async function wipeAllDatabaseDataFromFirestore() {
       await deleteCollectionDocs(COL_PERIOD_STATE);
       await deleteCollectionDocs(COL_FULL_DAY);
       await deleteCollectionDocs(COL_INVITATIONS);
+      await deleteCollectionDocs(COL_DISCIPLINE_RESOLUTIONS);
       await deleteCollectionDocs(COL_STUDENTS);
       await deleteCollectionDocs(COL_CLASSES);
       await deleteCollectionDocs(COL_SUBJECTS);

@@ -7,6 +7,9 @@ import {
 } from 'lucide-react'
 import { SearchableDropdown } from '../attendance/AdminStudentAttendance'
 import { getCachedSchoolName } from '../../../utils/api'
+import { exportTrackingDetailExcel } from './exports/exportTrackingExcel'
+import { exportTrackingDetailWord } from './exports/exportTrackingWord'
+import { exportTrackingDetailPdf } from './exports/exportTrackingPdf'
 
 function generateDisciplineRecords(student) {
   if (student && student.records && Array.isArray(student.records)) {
@@ -72,383 +75,22 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
 
   // ── Administrative Standard Print & Export for Student Detail History ──
   const handleDetailExport = (type) => {
-    const studentTotalHours = student.totalHours !== undefined ? student.totalHours : (((student.absentHours || 0) + (student.leaveHours || 0)) || student.records?.length || 0)
-
-    if (type === 'Excel') {
-      const headers = ['ល.រ', 'អត្តលេខ', 'ឈ្មោះសិស្ស', 'ថ្នាក់', 'កាលបរិច្ឆេទ', 'ម៉ោងសិក្សា', 'មុខវិជ្ជា', 'គ្រូបង្រៀន', 'ប្រភេទ', 'មូលហេតុ']
-      const rows = filtered.map((r, idx) => [
-        `"${idx + 1}"`,
-        `"${student.studentId || student.id}"`,
-        `"${student.name}"`,
-        `"${student.class}"`,
-        `"${r.date || ''}"`,
-        `"${r.time || ''}"`,
-        `"${r.subject || ''}"`,
-        `"${r.teacher || ''}"`,
-        `"${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}"`,
-        `"${(r.reason || '').replace(/"/g, '""')}"`
-      ])
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', `ប្រវត្តិអវត្តមាន_${student.name}_${new Date().toISOString().slice(0, 10)}.csv`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } else if (type === 'Word') {
-      const htmlContent = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head>
-  <meta charset='utf-8'>
-  <title>ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស - ${student.name}</title>
-  <!--[if gte mso 9]>
-  <xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-      <w:DoNotOptimizeForBrowser/>
-    </w:WordDocument>
-  </xml>
-  <![endif]-->
-  <style>
-    @page WordSection1 {
-      size: 595.3pt 841.9pt;
-      margin: 2.0cm 2.0cm 2.0cm 2.0cm;
-      mso-header-margin: 36.0pt;
-      mso-footer-margin: 36.0pt;
-      mso-paper-source: 0;
-    }
-    div.WordSection1 { page: WordSection1; }
-    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #000000; line-height: 1.5; }
-    .header-wrap { width: 100%; margin-bottom: 12px; overflow: hidden; }
-    .header-left-col { float: left; width: 46%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; color: #000000; line-height: 1.7; }
-    .header-right-col { float: right; width: 46%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; color: #000000; line-height: 1.7; }
-    .ornament { font-family: 'Tacteing', 'Khmer OS Muol Light', serif; font-size: 20pt; line-height: 1.2; margin-top: 2px; text-align: center; }
-    .clear { clear: both; }
-    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 14pt; font-weight: bold; color: #0f172a; text-align: center; margin: 15px 0 4px 0; }
-    .doc-subtitle { text-align: center; font-size: 10pt; color: #000000; margin-bottom: 15px; }
-    .info-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; background: #f8fafc; }
-    .info-table td { border: 1px solid #cbd5e1; padding: 6px 10px; font-size: 10pt; }
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-    table.data-table th, table.data-table td { border: 1px solid #94a3b8; padding: 5px 8px; }
-    table.data-table th { background-color: #f1f5f9; font-weight: bold; text-align: center; color: #000000; }
-    .text-center { text-align: center; }
-    .footer-wrap { width: 100%; margin-top: 35px; overflow: hidden; }
-    .footer-col-left { float: left; width: 30%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; color: #000000; line-height: 1.8; }
-    .footer-col-mid { float: left; width: 30%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; color: #000000; line-height: 1.8; }
-    .footer-col-right { float: right; width: 35%; text-align: center; font-size: 10pt; color: #000000; line-height: 1.7; }
-    .footer-sign-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; font-weight: bold; margin-top: 4px; }
-  </style>
-</head>
-<body>
-<div class="WordSection1">
-  <div class="header-wrap">
-    <div class="header-left-col">
-      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
-      <div>${getCachedSchoolName()}</div>
-    </div>
-    <div class="header-right-col">
-      <div>ព្រះរាជាណាចក្រកម្ពុជា</div>
-      <div>ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
-      <div class="ornament">3</div>
-    </div>
-    <div class="clear"></div>
-  </div>
-
-  <div class="doc-title">ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបកំណត់ត្រា៖ ${filtered.length} លើក</div>
-
-  <table class="info-table">
-    <tr>
-      <td><strong>គោត្តនាម-នាម៖</strong> ${student.name}</td>
-      <td><strong>អត្តលេខ៖</strong> ${student.studentId || student.id}</td>
-      <td><strong>ថ្នាក់ទី៖</strong> ${student.class}</td>
-    </tr>
-    <tr>
-      <td><strong>គ្មានច្បាប់ (ល្មើសវិន័យ)៖</strong> <span style="color: #e11d48; font-weight: bold;">${student.absent || 0} ថ្ងៃ</span></td>
-      <td><strong>មានច្បាប់៖</strong> <span style="color: #d97706; font-weight: bold;">${student.leave || 0} ថ្ងៃ</span></td>
-      <td><strong>ម៉ោងខកខានសរុប៖</strong> ${studentTotalHours} ម៉ោង</td>
-    </tr>
-    <tr>
-      <td colspan="2"><strong>ស្ថានភាពវិន័យ៖</strong> ${statusInfo.label} (កម្រិតកំណត់៖ ${threshold || 20} ថ្ងៃ)</td>
-      <td><strong>កាលបរិច្ឆេទចេញ៖</strong> ${new Date().toLocaleDateString('km-KH')}</td>
-    </tr>
-  </table>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">ល.រ</th>
-        <th style="width: 85px;">កាលបរិច្ឆេទ</th>
-        <th style="width: 75px;">ម៉ោងសិក្សា</th>
-        <th>មុខវិជ្ជា</th>
-        <th>គ្រូបង្រៀន</th>
-        <th style="width: 80px;">ប្រភេទ</th>
-        <th>មូលហេតុ</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filtered.map((r, idx) => `
-        <tr>
-          <td class="text-center">${idx + 1}</td>
-          <td class="text-center" style="font-weight: bold;">${r.date || ''}</td>
-          <td class="text-center">${r.time || '-'}</td>
-          <td style="font-weight: bold;">${r.subject || ''}</td>
-          <td>${r.teacher || '-'}</td>
-          <td class="text-center" style="color: ${r.status === 'LEAVE' ? '#d97706' : '#e11d48'}; font-weight: bold;">
-            ${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}
-          </td>
-          <td>${r.reason || '-'}</td>
-        </tr>
-      `).join('')}
-    </tbody>
-  </table>
-
-  <div class="footer-wrap">
-    <div class="footer-col-left">
-      <div>បានឃើញ និងឯកភាព</div>
-      <div>នាយកសាលា</div>
-    </div>
-    <div class="footer-col-mid">
-      <div>បានឃើញ និងឯកភាព</div>
-      <div>គ្រូបន្ទុកថ្នាក់</div>
-    </div>
-    <div class="footer-col-right">
-      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
-      <div>${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
-      <div class="footer-sign-title">អ្នករៀបចំរបាយការណ៍</div>
-    </div>
-    <div class="clear"></div>
-  </div>
-</div>
-</body>
-</html>`
-      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', `ប្រវត្តិអវត្តមាន_${student.name}_${new Date().toISOString().slice(0, 10)}.doc`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } else {
-      // PDF / Print (Official Cambodian Administrative Standard)
-      const printWindow = window.open('', '_blank')
-      if (!printWindow) {
-        alert('សូមអនុញ្ញាត Popup ក្នុង Browser ដើម្បីបើកផ្ទាំងបោះពុម្ព')
-        return
-      }
-      printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស - ${student.name}</title>
-  <style>
-    @page { size: A4 portrait; margin: 2.0cm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif;
-      font-size: 10pt;
-      color: #000000;
-      margin: 0;
-      padding: 0;
-      line-height: 1.5;
-    }
-    .header-grid {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 15px;
-    }
-    .school-title {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      line-height: 1.5;
-      color: #000000;
-      text-align: center;
-    }
-    .kingdom-box {
-      text-align: center;
-      line-height: 1.5;
-    }
-    .kingdom {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      font-weight: bold;
-      color: #000000;
-    }
-    .motto {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      color: #000000;
-    }
-    .ornament {
-      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
-      font-size: 20pt;
-      line-height: 1.2;
-      margin-top: 2px;
-      color: #000000;
-    }
-    .doc-title {
-      text-align: center;
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 14pt;
-      font-weight: bold;
-      color: #0f172a;
-      margin: 12px 0 4px 0;
-    }
-    .doc-subtitle {
-      text-align: center;
-      font-size: 10pt;
-      color: #000000;
-      margin-bottom: 15px;
-    }
-    .info-card {
-      border: 1px solid #94a3b8;
-      border-radius: 4px;
-      padding: 10px 14px;
-      margin-bottom: 15px;
-      background: #f8fafc;
-      font-size: 10pt;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 8px 12px;
-    }
-    .info-item {
-      display: flex;
-      gap: 6px;
-    }
-    .info-label { color: #475569; font-weight: 500; }
-    .info-val { color: #000000; font-weight: 700; }
-    table.data-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 9.5pt;
-    }
-    table.data-table th, table.data-table td {
-      border: 1px solid #94a3b8;
-      padding: 6px 8px;
-    }
-    table.data-table th {
-      background-color: #f1f5f9;
-      font-weight: bold;
-      text-align: center;
-      color: #000000;
-    }
-    .text-center { text-align: center; }
-    .badge-absent { color: #e11d48; font-weight: bold; }
-    .badge-leave { color: #d97706; font-weight: bold; }
-    .footer-sign {
-      margin-top: 30px;
-      display: flex;
-      justify-content: space-between;
-      text-align: center;
-      font-size: 10pt;
-      page-break-inside: avoid;
-    }
-    .sign-col {
-      width: 190px;
-    }
-    @media print {
-      body { padding: 0; }
-      .no-print { display: none !important; }
-    }
-  </style>
-</head>
-<body>
-  <div class="no-print" style="margin-bottom: 15px; padding: 10px 14px; background: #f1f5f9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #cbd5e1;">
-    <span style="font-weight: bold; font-size: 13px; color: #334155;">មើលគំរូមុនពេលបោះពុម្ព ឬរក្សាទុកជា PDF (Print / Save as PDF)</span>
-    <button onclick="window.print()" style="padding: 7px 16px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer;">បោះពុម្ព / រក្សាទុកជា PDF</button>
-  </div>
-
-  <div class="header-grid">
-    <div class="school-title">
-      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
-      <div>${getCachedSchoolName()}</div>
-    </div>
-    <div class="kingdom-box">
-      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
-      <div class="motto">ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
-      <div class="ornament">3</div>
-    </div>
-  </div>
-
-  <div class="doc-title">ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបកំណត់ត្រា៖ ${filtered.length} លើក</div>
-
-  <div class="info-card">
-    <div class="info-item"><span class="info-label">គោត្តនាម-នាម៖</span> <span class="info-val">${student.name}</span></div>
-    <div class="info-item"><span class="info-label">អត្តលេខ៖</span> <span class="info-val" style="font-family: monospace;">${student.studentId || student.id}</span></div>
-    <div class="info-item"><span class="info-label">ថ្នាក់ទី៖</span> <span class="info-val">${student.class}</span></div>
-    <div class="info-item"><span class="info-label">គ្មានច្បាប់ (ល្មើសវិន័យ)៖</span> <span class="info-val" style="color: #e11d48;">${student.absent || 0} ថ្ងៃ</span></div>
-    <div class="info-item"><span class="info-label">មានច្បាប់៖</span> <span class="info-val" style="color: #d97706;">${student.leave || 0} ថ្ងៃ</span></div>
-    <div class="info-item"><span class="info-label">ម៉ោងខកខានសរុប៖</span> <span class="info-val">${studentTotalHours} ម៉ោង</span></div>
-    <div class="info-item" style="grid-column: span 2;"><span class="info-label">ស្ថានភាពវិន័យ៖</span> <span class="info-val">${statusInfo.label} (កម្រិតកំណត់៖ ${threshold || 20} ថ្ងៃ)</span></div>
-    <div class="info-item"><span class="info-label">កាលបរិច្ឆេទចេញ៖</span> <span class="info-val">${new Date().toLocaleDateString('km-KH')}</span></div>
-  </div>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">ល.រ</th>
-        <th style="width: 85px;">កាលបរិច្ឆេទ</th>
-        <th style="width: 75px;">ម៉ោងសិក្សា</th>
-        <th>មុខវិជ្ជា</th>
-        <th>គ្រូបង្រៀន</th>
-        <th style="width: 80px;">ប្រភេទ</th>
-        <th>មូលហេតុ</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filtered.length > 0 ? filtered.map((r, idx) => `
-        <tr>
-          <td class="text-center">${idx + 1}</td>
-          <td class="text-center" style="font-weight: bold; font-family: monospace;">${r.date || ''}</td>
-          <td class="text-center">${r.time || '-'}</td>
-          <td style="font-weight: bold;">${r.subject || ''}</td>
-          <td>${r.teacher || '-'}</td>
-          <td class="text-center ${r.status === 'LEAVE' ? 'badge-leave' : 'badge-absent'}">
-            ${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}
-          </td>
-          <td>${r.reason || '-'}</td>
-        </tr>
-      `).join('') : `
-        <tr>
-          <td colspan="7" class="text-center" style="padding: 20px; color: #94a3b8;">មិនមានទិន្នន័យអវត្តមានទេ</td>
-        </tr>
-      `}
-    </tbody>
-  </table>
-
-  <div class="footer-sign">
-    <div class="sign-col">
-      <br>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">នាយកសាលា</div>
-    </div>
-    <div class="sign-col">
-      <br>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">គ្រូបន្ទុកថ្នាក់</div>
-    </div>
-    <div class="sign-col" style="width: 220px;">
-      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
-      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 4px;">អ្នករៀបចំរបាយការណ៍</div>
-    </div>
-  </div>
-</body>
-</html>`)
-      printWindow.document.close()
-      setTimeout(() => {
-        printWindow.print()
-      }, 400)
-    }
     setDetailExportOpen(false)
+    const schoolName = getCachedSchoolName()
+    const payload = {
+      student,
+      filtered,
+      schoolName,
+      statusInfo,
+      threshold
+    }
+    if (type === 'Excel') {
+      exportTrackingDetailExcel(payload)
+    } else if (type === 'Word') {
+      exportTrackingDetailWord(payload)
+    } else if (type === 'PDF') {
+      exportTrackingDetailPdf(payload)
+    }
   }
 
   // Build unique subject options from records
@@ -506,14 +148,14 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
         </div>
 
         {/* Action Button: Invitation Letter */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+        <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
           {status === 'CRITICAL' && onNavigate && (
             <button
               onClick={() => {
                 localStorage.setItem('printStudent', JSON.stringify(student))
                 onNavigate('invitation-letters')
               }}
-              className="flex items-center gap-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
+              className="flex items-center gap-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white py-2.5 px-4 rounded-xl font-bold text-[13px] shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all"
             >
               <Mail size={15} strokeWidth={2.5} />
               <span>រៀបចំលិខិតកោះហៅ</span>
@@ -619,6 +261,57 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
         </div>
 
       </div>
+
+      {/* ── Discipline Resolutions History Section ── */}
+      {student.resolutions && student.resolutions.length > 0 && (
+        <div className="bg-white rounded-2xl border border-emerald-100 p-5 shadow-xs">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <CheckCircle2 size={18} />
+              </div>
+              <div>
+                <h4 className="text-[14px] font-black text-slate-800">ប្រវត្តិកិច្ចសន្យា និងការដោះស្រាយវិន័យកន្លងមក</h4>
+                <p className="text-[11px] text-slate-500 font-medium">សិស្សធ្លាប់បានធ្វើកិច្ចសន្យាចំនួន {student.resolutions.length} លើក</p>
+              </div>
+            </div>
+            <span className="text-[11px] font-bold px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg">
+              ជុំបច្ចុប្បន្ន ៖ ជុំទី {student.cycle || 1}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2 mt-2">
+            {student.resolutions.map((res, i) => (
+              <div key={res.id || i} className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5">
+                    {res.cycle || (i + 1)}
+                  </span>
+                  <div>
+                    <div className="text-[13px] font-bold text-slate-800">
+                      កោះហៅលើកទី {res.cycle || (i + 1)} — បានដោះស្រាយនៅថ្ងៃទី {res.resolvedDate}
+                    </div>
+                    <div className="text-[12px] text-slate-600 mt-0.5 leading-relaxed">
+                      {res.note || 'អាណាព្យាបាលបានមកធ្វើកិច្ចសន្យា'}
+                    </div>
+                    {res.parentName && (
+                      <div className="text-[11px] text-slate-400 mt-1">
+                        អាណាព្យាបាល៖ {res.parentName} {res.handledBy ? `• អ្នកសម្របសម្រួល៖ ${res.handledBy}` : ''}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className="text-[11px] font-bold text-slate-500 bg-white px-2.5 py-1 rounded-md border border-slate-200">
+                    អវត្តមាននៅពេលដោះស្រាយ៖ {res.absentAtResolution || 0} ថ្ងៃ
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Absence History Table Card ── */}
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">

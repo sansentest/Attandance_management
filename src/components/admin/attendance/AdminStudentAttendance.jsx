@@ -2,10 +2,29 @@ import { useState, useEffect, useRef } from 'react'
 import { api, getCachedSchoolName } from '../../../utils/api'
 import {
   Download, Search, ChevronDown, AlertCircle, FileText, Calendar,
-  FileCode, FileImage, Users, ChevronLeft, ChevronRight, ChevronsRight,
+  FileCode, FileImage, Users, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
   BookOpen, Clock, Eye, ArrowLeft, ShieldAlert, CheckCircle, XCircle,
   TrendingUp, Info, Edit, Trash2, X, Save, RefreshCw
 } from 'lucide-react'
+import { exportAttendanceSummaryExcel, exportStudentDetailExcel } from './exports/exportAttendanceExcel'
+import { exportAttendanceSummaryWord, exportStudentDetailWord } from './exports/exportAttendanceWord'
+import { exportAttendanceSummaryPdf, exportStudentDetailPdf } from './exports/exportAttendancePdf'
+
+// ─────────────────────────────────────────────
+// Timestamp Parser Helper
+// ─────────────────────────────────────────────
+function getTimestampMillis(val) {
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  if (typeof val.toMillis === 'function') return val.toMillis();
+  if (typeof val.toDate === 'function') return val.toDate().getTime();
+  if (val.seconds !== undefined) return val.seconds * 1000 + Math.floor((val.nanoseconds || 0) / 1000000);
+  if (typeof val === 'string') {
+    const t = new Date(val).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  return 0;
+}
 
 // ─────────────────────────────────────────────
 // Searchable Dropdown Component
@@ -163,7 +182,7 @@ function calculateDailyAttendance(records = []) {
     byDate[r.date].push(r)
     const h = Number(r.hours) || Number(r.periods) || 1
     totalHours += h
-    if (r.status === 'ABSENT') {
+    if (r.status === 'ABSENT' || r.status === 'DROPOUT') {
       absentHours += h
     } else {
       leaveHours += h
@@ -175,7 +194,7 @@ function calculateDailyAttendance(records = []) {
 
   Object.keys(byDate).forEach(date => {
     const dayRecords = byDate[date]
-    const hasAbsent = dayRecords.some(r => r.status === 'ABSENT')
+    const hasAbsent = dayRecords.some(r => r.status === 'ABSENT' || r.status === 'DROPOUT')
     if (hasAbsent) {
       absentDays++
     } else {
@@ -288,474 +307,6 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const handleDetailExport = (type) => {
-    if (type === 'Excel') {
-      const headers = ['ល.រ', 'កាលបរិច្ឆេទ', 'ម៉ោងសិក្សា', 'មុខវិជ្ជា', 'គ្រូបង្រៀន', 'ប្រភេទ', 'មូលហេតុ']
-      const rows = filtered.map((r, idx) => [
-        idx + 1,
-        `"${r.date || ''}"`,
-        `"${r.time || '-'}"`,
-        `"${r.subject || ''}"`,
-        `"${r.teacher || '-'}"`,
-        `"${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}"`,
-        `"${r.reason || '-'}"`
-      ])
-
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(row => row.join(','))].join('\n')
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      const esc = (v) =>
-        String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-      const KH_MONTHS = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
-
-      // ---------- ② Template ----------
-      const issuePlace = 'តាកែវ'; // ទីកន្លែងចេញលិខិត (ប្តូរបានតាមសាលា)
-      const _now = new Date();
-      const issue = {
-        day: kh(String(_now.getDate()).padStart(2, '0')),
-        month: KH_MONTHS[_now.getMonth()],
-        year: kh(_now.getFullYear()),
-      };
-      link.setAttribute('href', url)
-      link.setAttribute('download', `ប្រវត្តិអវត្តមាន_${student.name}_${new Date().toISOString().slice(0, 10)}.csv`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } else if (type === 'Word') {
-      const htmlContent = `<!DOCTYPE html>
-<html lang="km">
-<head>
-  <meta charset="utf-8">
-  <title>ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស - ${esc(student.name)}</title>
-  <style>
-    /* ទំហំក្រដាស A4 | ទុកគែមឆ្វេង 3cm សម្រាប់ដេរ/ខ្ទាស់ឯកសារ */
-    @page { size: A4 portrait; margin: 2cm 2cm 2cm 3cm; }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
-    body {
-      font-family: 'Khmer OS Siemreap', 'Khmer OS Battambang', 'Noto Sans Khmer', sans-serif;
-      font-size: 11pt;
-      line-height: 1.6;
-      color: #000;
-    }
-    .muol {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', 'Noto Serif Khmer', serif;
-      font-weight: normal;
-    }
- 
-    /* ===== ក្បាលលិខិត ===== */
-    .nation { text-align: center; }
-    .kingdom, .motto {
-      font-size: 12pt;
-      line-height: 1.7;
-      white-space: nowrap;
-    }
-    .ornament {
-      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
-      font-size: 20pt;
-      line-height: 1.1;
-    }
-    .issuer {
-      width: 48%;
-      text-align: center;
-      font-size: 11pt;
-      line-height: 1.7;
-      margin-top: 2px;
-    }
-    .issuer-no {
-      font-family: 'Khmer OS Siemreap', 'Noto Sans Khmer', sans-serif;
-      font-size: 10.5pt;
-      margin-top: 4px;
-    }
- 
-    /* ===== ចំណងជើង ===== */
-    .doc-title {
-      text-align: center;
-      font-size: 13pt;
-      line-height: 1.7;
-      margin: 18px 0 2px 0;
-    }
-    .doc-subtitle {
-      text-align: center;
-      font-size: 10.5pt;
-      margin-bottom: 12px;
-    }
- 
-    /* ===== ព័ត៌មានសិស្ស ===== */
-    table.info {
-      width: 100%;
-      border-collapse: collapse;
-      border: 0.75pt solid #000;
-      margin-bottom: 12px;
-      font-size: 10.5pt;
-    }
-    table.info td { padding: 3px 8px; vertical-align: top; }
- 
-    /* ===== តារាងអវត្តមាន ===== */
-    table.data-table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      font-size: 10pt;
-    }
-    table.data-table th, table.data-table td {
-      border: 0.75pt solid #000;
-      padding: 4px 6px;
-      vertical-align: middle;
-      word-wrap: break-word;
-      overflow-wrap: anywhere;
-    }
-    table.data-table th { text-align: center; font-weight: bold; }
-    table.data-table thead { display: table-header-group; } /* ធ្វើឱ្យក្បាលតារាងលេចឡើងគ្រប់ទំព័រ */
-    table.data-table tr { page-break-inside: avoid; break-inside: avoid; }
-    .text-center { text-align: center; }
-    .absent { font-weight: bold; }
- 
-    /* ===== ហត្ថលេខា ===== */
-    .sign-area {
-      margin-top: 24px;
-      page-break-inside: avoid;
-      break-inside: avoid;
-    }
-    .sign-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1.3fr;
-      column-gap: 8px;
-      text-align: center;
-    }
-    .sign-date { grid-column: 3; grid-row: 1; font-size: 10.5pt; line-height: 1.7; }
-    .sign-col { grid-row: 2; font-size: 11pt; line-height: 1.7; }
-    .sign-col.c1 { grid-column: 1; }
-    .sign-col.c2 { grid-column: 2; }
-    .sign-col.c3 { grid-column: 3; }
-    .sign-space { height: 2.2cm; }
-    .sign-name { font-size: 10.5pt; }
-  </style>
-</head>
-<body>
- 
-  <!-- ក្បាលលិខិត៖ ព្រះរាជាណាចក្រ នៅកណ្តាលលើគេ / ស្ថាប័នចេញលិខិត នៅខាងឆ្វេងក្រោម -->
-  <div class="nation">
-    <div class="kingdom muol">ព្រះរាជាណាចក្រកម្ពុជា</div>
-    <div class="motto muol">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
-    <div class="ornament">3</div>
-  </div>
- 
-  <div class="issuer">
-    <div class="muol">មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
-    <div class="muol">${esc(getCachedSchoolName())}</div>
-    <div class="issuer-no">លេខ៖ ................. ស.ក</div>
-  </div>
- 
-  <div class="doc-title muol">ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបកំណត់ត្រា៖ ${kh(filtered.length)} លើក</div>
- 
-  <table class="info">
-    <tr>
-      <td style="width: 40%;"><strong>គោត្តនាម-នាម៖</strong> ${esc(student.name)}</td>
-      <td style="width: 30%;"><strong>អត្តលេខ៖</strong> ${esc(student.studentId)}</td>
-      <td style="width: 30%;"><strong>ថ្នាក់ទី៖</strong> ${esc(student.class)}</td>
-    </tr>
-    <tr>
-      <td><strong>គ្មានច្បាប់ (ល្មើសវិន័យ)៖</strong> <span class="absent">${kh(absentCount)} ថ្ងៃ</span></td>
-      <td><strong>មានច្បាប់៖</strong> ${kh(leaveCount)} ថ្ងៃ</td>
-      <td><strong>ម៉ោងខកខានសរុប៖</strong> ${kh(totalSessions)} ម៉ោង</td>
-    </tr>
-    <tr>
-      <td colspan="2"><strong>ស្ថានភាពវិន័យ៖</strong> ${esc(statusInfo.label)}</td>
-      <td><strong>កាលបរិច្ឆេទចេញ៖</strong> ${issue.day} ${issue.month} ${issue.year}</td>
-    </tr>
-  </table>
- 
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 6%;">ល.រ</th>
-        <th style="width: 15%;">កាលបរិច្ឆេទ</th>
-        <th style="width: 13%;">ម៉ោងសិក្សា</th>
-        <th style="width: 17%;">មុខវិជ្ជា</th>
-        <th style="width: 17%;">គ្រូបង្រៀន</th>
-        <th style="width: 12%;">ប្រភេទ</th>
-        <th style="width: 20%;">មូលហេតុ</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filtered.length > 0 ? filtered.map((r, idx) => `
-        <tr>
-          <td class="text-center">${kh(idx + 1)}</td>
-          <td class="text-center">${esc(kh(r.date || ''))}</td>
-          <td class="text-center">${esc(kh(r.time || '-'))}</td>
-          <td>${esc(r.subject || '')}</td>
-          <td>${esc(r.teacher || '-')}</td>
-          <td class="text-center ${r.status === 'LEAVE' ? '' : 'absent'}">${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}</td>
-          <td>${esc(r.reason || '-')}</td>
-        </tr>
-      `).join('') : `
-        <tr>
-          <td colspan="7" class="text-center" style="padding: 16px;">មិនមានកំណត់ត្រាអវត្តមានទេ</td>
-        </tr>
-      `}
-    </tbody>
-  </table>
- 
-  <!-- ហត្ថលេខា៖ កាលបរិច្ឆេទនៅខាងស្តាំ / អ្នកធំនៅខាងឆ្វេង / អ្នករៀបចំនៅខាងស្តាំ -->
-  <div class="sign-area">
-    <div class="sign-grid">
-      <div class="sign-date">
-        <div>ថ្ងៃ........ ខែ........ ឆ្នាំ........ ព.ស ២៥........</div>
-        <div>${issuePlace}, ថ្ងៃទី${issue.day} ខែ${issue.month} ឆ្នាំ${issue.year}</div>
-      </div>
- 
-      <div class="sign-col c1">
-        <div class="muol">បានឃើញ និងឯកភាព</div>
-        <div class="muol">នាយកសាលា</div>
-        <div class="sign-space"></div>
-        <div class="sign-name">ឈ្មោះ ......................</div>
-      </div>
- 
-      <div class="sign-col c2">
-        <div class="muol">បានឃើញ និងឯកភាព</div>
-        <div class="muol">គ្រូបន្ទុកថ្នាក់</div>
-        <div class="sign-space"></div>
-        <div class="sign-name">ឈ្មោះ ......................</div>
-      </div>
- 
-      <div class="sign-col c3">
-        <div>&nbsp;</div>
-        <div class="muol">អ្នករៀបចំរបាយការណ៍</div>
-        <div class="sign-space"></div>
-        <div class="sign-name">ឈ្មោះ ......................</div>
-      </div>
-    </div>
-  </div>
- 
-</body>
-</html>`;
-
-      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', `ប្រវត្តិអវត្តមាន_${student.name}_${new Date().toISOString().slice(0, 10)}.doc`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } else {
-      // PDF / Print (Official Cambodian Administrative Standard: A4 Portrait, Margin 2cm)
-      const printWindow = window.open('', '_blank')
-      if (!printWindow) {
-        alert('សូមអនុញ្ញាត Popup ក្នុង Browser ដើម្បីបើកផ្ទាំងបោះពុម្ព')
-        return
-      }
-      printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស - ${student.name}</title>
-  <style>
-    @page { size: A4 portrait; margin: 2.0cm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif;
-      font-size: 10pt;
-      color: #000000;
-      margin: 0;
-      padding: 0;
-      line-height: 1.5;
-    }
-    .header-grid {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 15px;
-    }
-    .school-title {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      line-height: 1.5;
-      color: #000000;
-      text-align: center;
-    }
-    .kingdom-box {
-      text-align: center;
-      line-height: 1.5;
-    }
-    .kingdom {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      font-weight: bold;
-      color: #000000;
-    }
-    .motto {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      color: #000000;
-    }
-    .ornament {
-      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
-      font-size: 20pt;
-      line-height: 1.2;
-      color: #000000;
-      margin-top: 2px;
-    }
-    .doc-title {
-      text-align: center;
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 14pt;
-      font-weight: bold;
-      color: #0f172a;
-      margin: 15px 0 4px 0;
-    }
-    .doc-subtitle {
-      text-align: center;
-      font-size: 10pt;
-      color: #000000;
-      margin-bottom: 15px;
-    }
-    .info-card {
-      border: 1px solid #cbd5e1;
-      background-color: #f8fafc;
-      padding: 10px 14px;
-      margin-bottom: 15px;
-      font-size: 10pt;
-      line-height: 1.8;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      flex-wrap: wrap;
-    }
-    table.data-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 9.5pt;
-    }
-    table.data-table th, table.data-table td {
-      border: 1px solid #94a3b8;
-      padding: 6px 8px;
-    }
-    table.data-table th {
-      background-color: #f1f5f9;
-      font-weight: bold;
-      text-align: center;
-      color: #000000;
-    }
-    .text-center { text-align: center; }
-    .badge-absent { color: #e11d48; font-weight: bold; }
-    .badge-leave { color: #d97706; font-weight: bold; }
-    .footer-sign {
-      margin-top: 30px;
-      display: flex;
-      justify-content: space-between;
-      text-align: center;
-      font-size: 10pt;
-      page-break-inside: avoid;
-    }
-    .sign-col {
-      width: 200px;
-    }
-    @media print {
-      body { padding: 0; }
-    }
-  </style>
-</head>
-<body>
-  <div class="header-grid">
-    <div class="school-title">
-      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
-      <div style="margin-top: 2px;">${getCachedSchoolName()}</div>
-    </div>
-    <div class="kingdom-box">
-      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
-      <div class="motto">ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
-      <div class="ornament">3</div>
-    </div>
-  </div>
-
-  <div class="doc-title">ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបកំណត់ត្រា៖ ${filtered.length} លើក</div>
-
-  <div class="info-card">
-    <div class="info-row">
-      <div><strong>គោត្តនាម-នាម៖</strong> ${student.name}</div>
-      <div><strong>អត្តលេខ៖</strong> ${student.studentId}</div>
-      <div><strong>ថ្នាក់ទី៖</strong> ${student.class}</div>
-    </div>
-    <div class="info-row" style="margin-top: 4px;">
-      <div><strong>គ្មានច្បាប់ (ល្មើសវិន័យ)៖</strong> <span class="badge-absent">${absentCount} ថ្ងៃ</span></div>
-      <div><strong>មានច្បាប់៖</strong> <span class="badge-leave">${leaveCount} ថ្ងៃ</span></div>
-      <div><strong>ម៉ោងខកខានសរុប៖</strong> ${totalSessions} ម៉ោង</div>
-    </div>
-    <div class="info-row" style="margin-top: 4px;">
-      <div><strong>ស្ថានភាពវិន័យ៖</strong> ${statusInfo.label}</div>
-      <div><strong>កាលបរិច្ឆេទចេញ៖</strong> ${new Date().toLocaleDateString('km-KH')}</div>
-    </div>
-  </div>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">ល.រ</th>
-        <th style="width: 85px;">កាលបរិច្ឆេទ</th>
-        <th style="width: 75px;">ម៉ោងសិក្សា</th>
-        <th>មុខវិជ្ជា</th>
-        <th>គ្រូបង្រៀន</th>
-        <th style="width: 80px;">ប្រភេទ</th>
-        <th>មូលហេតុ</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filtered.length > 0 ? filtered.map((r, idx) => `
-        <tr>
-          <td class="text-center">${idx + 1}</td>
-          <td class="text-center" style="font-weight: bold; font-family: monospace;">${r.date || ''}</td>
-          <td class="text-center">${r.time || '-'}</td>
-          <td style="font-weight: bold;">${r.subject || ''}</td>
-          <td>${r.teacher || '-'}</td>
-          <td class="text-center ${r.status === 'LEAVE' ? 'badge-leave' : 'badge-absent'}">
-            ${r.status === 'LEAVE' ? 'មានច្បាប់' : 'គ្មានច្បាប់'}
-          </td>
-          <td>${r.reason || '-'}</td>
-        </tr>
-      `).join('') : `
-        <tr>
-          <td colspan="7" class="text-center" style="padding: 20px; color: #94a3b8;">មិនមានកំណត់ត្រាអវត្តមានទេ</td>
-        </tr>
-      `}
-    </tbody>
-  </table>
-
-  <div class="footer-sign">
-    <div class="sign-col">
-      <br>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">នាយកសាលា</div>
-    </div>
-    <div class="sign-col">
-      <br>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">គ្រូបន្ទុកថ្នាក់</div>
-    </div>
-    <div class="sign-col" style="width: 250px;">
-      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
-      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 4px;">អ្នករៀបចំរបាយការណ៍</div>
-    </div>
-  </div>
-</body>
-</html>`)
-      printWindow.document.close()
-      setTimeout(() => {
-        printWindow.print()
-      }, 400)
-    }
-    setDetailExportOpen(false)
-  }
-
   // Dynamic counts for cards and status badge (Policy: 1 day = 1 absence)
   const dailyStats = calculateDailyAttendance(records)
   const totalCount = dailyStats.total
@@ -764,6 +315,27 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
   const totalSessions = dailyStats.totalSessions
   const statusInfo = getStatusInfo(totalCount)
   const StatusIcon = statusInfo.icon
+
+  const handleDetailExport = (type) => {
+    setDetailExportOpen(false)
+    const schoolName = getCachedSchoolName()
+    const payload = {
+      student,
+      filtered,
+      schoolName,
+      statusInfo,
+      absentCount,
+      leaveCount,
+      totalSessions
+    }
+    if (type === 'Excel') {
+      exportStudentDetailExcel({ student, filtered })
+    } else if (type === 'Word') {
+      exportStudentDetailWord(payload)
+    } else if (type === 'PDF') {
+      exportStudentDetailPdf(payload)
+    }
+  }
 
   const allRecords = records.slice().sort((a, b) => new Date(b.date) - new Date(a.date))
 
@@ -1444,6 +1016,20 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
 // ─────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────
+// Smart pagination range generator with ellipsis
+function getPaginationRange(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1)
+  }
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, '...', total]
+  }
+  if (current >= total - 3) {
+    return [1, '...', total - 4, total - 3, total - 2, total - 1, total]
+  }
+  return [1, '...', current - 1, current, current + 1, '...', total]
+}
+
 export default function AdminStudentAttendance() {
   const [summaries, setSummaries] = useState(() => {
     try {
@@ -1477,11 +1063,43 @@ export default function AdminStudentAttendance() {
   const fetchRecords = async (showLoading = false) => {
     if (showLoading) setLoading(true)
     try {
-      const res = await api('attendance.getAll')
+      const [res, resResolutions] = await Promise.all([
+        api('attendance.getAll'),
+        api('discipline.getResolutions')
+      ]);
+
       let combinedRecords = []
       if (res && res.success && Array.isArray(res.data)) {
         combinedRecords = res.data
       }
+
+      // If student was resolved, exclude any records that occurred before or on the resolution timestamp
+      if (resResolutions && resResolutions.success && Array.isArray(resResolutions.data) && resResolutions.data.length > 0) {
+        const resMap = new Map();
+        resResolutions.data.forEach(r => {
+          const sKey = String(r.studentId || '').trim().toLowerCase();
+          const sNameKey = String(r.studentName || '').trim().toLowerCase();
+          const t = getTimestampMillis(r.createdAt) || (r.resolvedDate ? new Date(r.resolvedDate).getTime() : 0);
+          if (sKey) {
+            const cur = resMap.get(sKey) || 0;
+            if (t > cur) resMap.set(sKey, t);
+          }
+          if (sNameKey) {
+            const cur = resMap.get(sNameKey) || 0;
+            if (t > cur) resMap.set(sNameKey, t);
+          }
+        });
+
+        combinedRecords = combinedRecords.filter(rec => {
+          const sKey = String(rec.studentId || '').trim().toLowerCase();
+          const sNameKey = String(rec.name || '').trim().toLowerCase();
+          const lastResTime = resMap.get(sKey) || resMap.get(sNameKey);
+          if (!lastResTime) return true;
+          const recTime = getTimestampMillis(rec.createdAt || rec.timestamp) || (rec.date ? new Date(rec.date).getTime() : 0);
+          return recTime > lastResTime;
+        });
+      }
+
       setSummaries(buildStudentSummaries(combinedRecords))
     } catch (e) {
       console.error('Error reading attendance records:', e)
@@ -1552,333 +1170,21 @@ export default function AdminStudentAttendance() {
   const warningCount = summaries.filter(s => getStatusInfo(s.total).color === 'amber').length
 
   const handleExport = (type) => {
-    if (type === 'Excel') {
-      const headers = ['អត្តលេខ', 'ឈ្មោះសិស្ស', 'ថ្នាក់', 'អវត្តមានសរុប (ថ្ងៃ)', 'អវត្តមានសរុប (ម៉ោង)', 'មានច្បាប់ (ថ្ងៃ)', 'គ្មានច្បាប់ (ថ្ងៃ)', 'ស្ថានភាព']
-      const rows = filtered.map(d => {
-        const info = getStatusInfo(d.total)
-        return [
-          `"${d.studentId}"`,
-          `"${d.name}"`,
-          `"${d.class}"`,
-          `"${d.total || 0}"`,
-          `"${d.totalHours !== undefined ? d.totalHours : (d.totalSessions || 0)}"`,
-          `"${d.leave || 0}"`,
-          `"${d.absent || 0}"`,
-          `"${info.label}"`
-        ]
-      })
-
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', `របាយការណ៍អវត្តមានសិស្ស_${new Date().toISOString().slice(0, 10)}.csv`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } else if (type === 'Word') {
-      const htmlContent = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head>
-  <meta charset='utf-8'>
-  <title>របាយការណ៍អវត្តមានសិស្ស - ${getCachedSchoolName()}</title>
-  <!--[if gte mso 9]>
-  <xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-      <w:DoNotOptimizeForBrowser/>
-    </w:WordDocument>
-  </xml>
-  <![endif]-->
-  <style>
-    @page WordSection1 {
-      size: 595.3pt 841.9pt;
-      margin: 2.0cm 2.0cm 2.0cm 2.0cm;
-      mso-header-margin: 36.0pt;
-      mso-footer-margin: 36.0pt;
-      mso-paper-source: 0;
-    }
-    div.WordSection1 { page: WordSection1; }
-    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 10pt; color: #000000; line-height: 1.5; margin: 0; padding: 0; }
-    .header-wrap { width: 100%; margin-bottom: 12px; overflow: hidden; }
-    .header-left-col { float: left; width: 46%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; line-height: 1.6; color: #000000; }
-    .header-right-col { float: right; width: 46%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; line-height: 1.6; color: #000000; }
-    .emblem-text { font-family: 'Tacteing', 'Khmer OS Muol Light', serif; font-size: 20pt; text-align: center; line-height: 1.2; color: #000000; margin-top: 2px; }
-    .clear { clear: both; }
-    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 15pt; font-weight: bold; color: #0F172A; text-align: center; margin: 15px 0 4px 0; }
-    .doc-subtitle { text-align: center; font-family: 'Khmer OS Siemreap', sans-serif; font-size: 10pt; color: #000000; margin-bottom: 15px; }
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-    table.data-table th, table.data-table td { border: 1px solid #94A3B8; padding: 5px 6px; font-family: 'Khmer OS Siemreap', sans-serif; }
-    table.data-table th { background-color: #F1F5F9; font-weight: bold; text-align: center; color: #1E293B; }
-    .text-center { text-align: center; }
-    .footer-wrap { width: 100%; margin-top: 30px; overflow: hidden; }
-    .footer-left-col { float: left; width: 45%; text-align: center; font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; line-height: 1.6; }
-    .footer-right-col { float: right; width: 50%; text-align: center; font-size: 10pt; line-height: 1.6; font-family: 'Khmer OS Siemreap', sans-serif; }
-    .footer-sign-title { font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 5px; }
-  </style>
-</head>
-<body>
-<div class="WordSection1">
-  <div class="header-wrap">
-    <div class="header-left-col">
-      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
-      <div>${getCachedSchoolName()}</div>
-    </div>
-    <div class="header-right-col">
-      <div>ព្រះរាជាណាចក្រកម្ពុជា</div>
-      <div>ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
-      <div class="emblem-text">3</div>
-    </div>
-    <div class="clear"></div>
-  </div>
-
-  <div class="doc-title">របាយការណ៍បូកសរុបអវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ ${filterClass !== 'ALL' ? `| ថ្នាក់ទី ${filterClass}` : ''} | សរុបចំនួនសិស្ស៖ ${filtered.length} នាក់</div>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">ល.រ</th>
-        <th style="width: 75px;">អត្តលេខ</th>
-        <th>គោត្តនាម-នាមសិស្ស</th>
-        <th style="width: 50px;">ថ្នាក់</th>
-        <th style="width: 75px;">សរុប (ថ្ងៃ)</th>
-        <th style="width: 75px;">សរុប (ម៉ោង)</th>
-        <th style="width: 65px;">មានច្បាប់</th>
-        <th style="width: 65px;">គ្មានច្បាប់</th>
-        <th style="width: 85px;">ស្ថានភាព</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filtered.length > 0 ? filtered.map((d, idx) => {
-        const info = getStatusInfo(d.total)
-        return `
-        <tr>
-          <td class="text-center">${idx + 1}</td>
-          <td class="text-center" style="font-weight: bold;">${d.studentId}</td>
-          <td style="font-weight: bold;">${d.name}</td>
-          <td class="text-center" style="font-weight: bold;">${d.class}</td>
-          <td class="text-center">${d.total || 0}</td>
-          <td class="text-center">${d.totalHours !== undefined ? d.totalHours : (d.totalSessions || 0)} ម៉ោង</td>
-          <td class="text-center" style="color: #D97706; font-weight: bold;">${d.leave || 0}</td>
-          <td class="text-center" style="color: #E11D48; font-weight: bold;">${d.absent || 0}</td>
-          <td class="text-center">${info.label}</td>
-        </tr>
-      `}).join('') : `
-        <tr>
-          <td colspan="9" class="text-center" style="padding: 20px; color: #94A3B8;">មិនមានទិន្នន័យអវត្តមានទេ</td>
-        </tr>
-      `}
-    </tbody>
-  </table>
-
-  <div class="footer-wrap">
-    <div class="footer-left-col">
-      <div>បានឃើញ និងឯកភាព</div>
-      <div style="margin-top: 4px;">នាយកសាលា</div>
-    </div>
-    <div class="footer-right-col">
-      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
-      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
-      <div class="footer-sign-title">អ្នករៀបចំរបាយការណ៍</div>
-    </div>
-    <div class="clear"></div>
-  </div>
-</div>
-</body>
-</html>`
-      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', `របាយការណ៍អវត្តមានសិស្ស_${new Date().toISOString().slice(0, 10)}.doc`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } else {
-      // PDF / Print (Official Cambodian Administrative Standard: A4 Portrait, Margin 2cm)
-      const printWindow = window.open('', '_blank')
-      if (!printWindow) {
-        alert('សូមអនុញ្ញាត Popup ក្នុង Browser ដើម្បីបើកផ្ទាំងបោះពុម្ព')
-        return
-      }
-      printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>របាយការណ៍បូកសរុបអវត្តមានសិស្ស - ${getCachedSchoolName()}</title>
-  <style>
-    @page { size: A4 portrait; margin: 2.0cm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif;
-      font-size: 10pt;
-      color: #000000;
-      margin: 0;
-      padding: 0;
-      line-height: 1.5;
-    }
-    .header-grid {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 15px;
-    }
-    .school-title {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      line-height: 1.5;
-      color: #000000;
-      text-align: center;
-    }
-    .kingdom-box {
-      text-align: center;
-      line-height: 1.5;
-    }
-    .kingdom {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      font-weight: bold;
-      color: #000000;
-    }
-    .motto {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      color: #000000;
-    }
-    .ornament {
-      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
-      font-size: 20pt;
-      line-height: 1.2;
-      color: #000000;
-      margin-top: 2px;
-    }
-    .doc-title {
-      text-align: center;
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 15pt;
-      font-weight: bold;
-      color: #0F172A;
-      margin: 15px 0 4px 0;
-    }
-    .doc-subtitle {
-      text-align: center;
-      font-family: 'Khmer OS Siemreap', sans-serif;
-      font-size: 10pt;
-      color: #000000;
-      margin-bottom: 15px;
-    }
-    table.data-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 9.5pt;
-    }
-    table.data-table th, table.data-table td {
-      border: 1px solid #94A3B8;
-      padding: 5px 6px;
-    }
-    table.data-table th {
-      background-color: #F1F5F9;
-      font-weight: bold;
-      text-align: center;
-      color: #1E293B;
-    }
-    .text-center { text-align: center; }
-    .badge-absent { color: #E11D48; font-weight: bold; }
-    .badge-leave { color: #D97706; font-weight: bold; }
-    .footer-sign {
-      margin-top: 30px;
-      display: flex;
-      justify-content: space-between;
-      text-align: center;
-      font-size: 10pt;
-      page-break-inside: avoid;
-    }
-    .sign-col {
-      width: 250px;
-    }
-    @media print {
-      body { padding: 0; }
-    }
-  </style>
-</head>
-<body>
-  <div class="header-grid">
-    <div class="school-title">
-      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
-      <div style="margin-top: 2px;">${getCachedSchoolName()}</div>
-    </div>
-    <div class="kingdom-box">
-      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
-      <div class="motto">ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
-      <div class="ornament">3</div>
-    </div>
-  </div>
-
-  <div class="doc-title">របាយការណ៍បូកសរុបអវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ ${filterClass !== 'ALL' ? `| ថ្នាក់ទី ${filterClass}` : ''} | សរុបចំនួនសិស្ស៖ ${filtered.length} នាក់</div>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">ល.រ</th>
-        <th style="width: 75px;">អត្តលេខ</th>
-        <th>គោត្តនាម-នាមសិស្ស</th>
-        <th style="width: 50px;">ថ្នាក់</th>
-        <th style="width: 75px;">សរុប (ថ្ងៃ)</th>
-        <th style="width: 75px;">សរុប (ម៉ោង)</th>
-        <th style="width: 65px;">មានច្បាប់</th>
-        <th style="width: 65px;">គ្មានច្បាប់</th>
-        <th style="width: 85px;">ស្ថានភាព</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filtered.length > 0 ? filtered.map((d, idx) => {
-        const info = getStatusInfo(d.total)
-        return `
-        <tr>
-          <td class="text-center">${idx + 1}</td>
-          <td class="text-center" style="font-weight: bold; font-family: monospace;">${d.studentId}</td>
-          <td style="font-weight: bold;">${d.name}</td>
-          <td class="text-center" style="font-weight: bold;">${d.class}</td>
-          <td class="text-center">${d.total || 0}</td>
-          <td class="text-center">${d.totalHours !== undefined ? d.totalHours : (d.totalSessions || 0)} ម៉ោង</td>
-          <td class="text-center badge-leave">${d.leave || 0}</td>
-          <td class="text-center badge-absent">${d.absent || 0}</td>
-          <td class="text-center">${info.label}</td>
-        </tr>
-      `}).join('') : `
-        <tr>
-          <td colspan="9" class="text-center" style="padding: 20px; color: #94A3B8;">មិនមានទិន្នន័យអវត្តមានទេ</td>
-        </tr>
-      `}
-    </tbody>
-  </table>
-
-  <div class="footer-sign">
-    <div class="sign-col">
-      <br>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">នាយកសាលា</div>
-    </div>
-    <div class="sign-col">
-      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
-      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 4px;">អ្នករៀបចំរបាយការណ៍</div>
-    </div>
-  </div>
-</body>
-</html>`)
-      printWindow.document.close()
-      setTimeout(() => {
-        printWindow.print()
-      }, 400)
-    }
     setExportOpen(false)
+    const schoolName = getCachedSchoolName()
+    const payload = {
+      filtered,
+      filterClass,
+      schoolName,
+      getStatusInfo
+    }
+    if (type === 'Excel') {
+      exportAttendanceSummaryExcel(payload)
+    } else if (type === 'Word') {
+      exportAttendanceSummaryWord(payload)
+    } else if (type === 'PDF') {
+      exportAttendanceSummaryPdf(payload)
+    }
   }
 
   const handleUpdateStudentRecords = (studentId, newRecords) => {
@@ -2162,17 +1468,100 @@ export default function AdminStudentAttendance() {
         </div>
 
         {/* Pagination */}
-        <div className="p-4 sm:p-5 border-t border-slate-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-4 rounded-b-2xl">
-          <span className="text-[12px] font-medium text-slate-400">
-            បង្ហាញ {filtered.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filtered.length)} នៃ {filtered.length} សិស្ស
-          </span>
-          <div className="flex items-center gap-1">
-            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}><ChevronLeft size={20} strokeWidth={2.5} /></button>
-            {[...Array(totalPages)].map((_, i) => (
-              <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`w-9 h-9 rounded-full font-bold text-[14px] flex items-center justify-center transition-all ${currentPage === i + 1 ? 'bg-indigo-600 text-white shadow-[0_4px_12px_rgba(79,70,229,0.35)]' : 'text-slate-600 hover:bg-slate-100'}`}>{i + 1}</button>
-            ))}
-            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}><ChevronRight size={20} strokeWidth={2.5} /></button>
-            <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'}`}><ChevronsRight size={20} strokeWidth={2.5} /></button>
+        <div className="p-4 sm:p-5 border-t border-slate-100 bg-white flex flex-col md:flex-row items-center justify-between gap-4 rounded-b-2xl">
+          <div className="flex items-center gap-2">
+            <span className="text-[12px] font-medium text-slate-500 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-lg">
+              បង្ហាញ <strong className="text-slate-800">{filtered.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filtered.length)}</strong> នៃ <strong className="text-indigo-600">{filtered.length}</strong> សិស្ស
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            {/* First Page */}
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${currentPage === 1
+                ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
+                }`}
+              title="ទំព័រដំបូង"
+            >
+              <ChevronsLeft size={16} strokeWidth={2.2} />
+            </button>
+
+            {/* Prev Page */}
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${currentPage === 1
+                ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
+                }`}
+              title="ទំព័រមុន"
+            >
+              <ChevronLeft size={16} strokeWidth={2.2} />
+            </button>
+
+            {/* Mobile compact indicator */}
+            <div className="flex sm:hidden items-center px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[12px] font-bold text-slate-700">
+              {currentPage} / {totalPages}
+            </div>
+
+            {/* Desktop Smart Numbers with Ellipsis */}
+            <div className="hidden sm:flex items-center gap-1">
+              {getPaginationRange(currentPage, totalPages).map((item, idx) => {
+                if (item === '...') {
+                  return (
+                    <span
+                      key={`dots-${idx}`}
+                      className="w-8 h-8 flex items-center justify-center text-slate-400 font-bold select-none text-[13px]"
+                    >
+                      ...
+                    </span>
+                  )
+                }
+                const pageNum = Number(item)
+                const isActive = currentPage === pageNum
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`min-w-8 h-8 px-2 rounded-lg font-bold text-[13px] flex items-center justify-center transition-all cursor-pointer ${isActive
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 border border-indigo-600'
+                      : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-2xs'
+                      }`}
+                  >
+                    {pageNum}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Next Page */}
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${currentPage === totalPages
+                ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
+                }`}
+              title="ទំព័របន្ទាប់"
+            >
+              <ChevronRight size={16} strokeWidth={2.2} />
+            </button>
+
+            {/* Last Page */}
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${currentPage === totalPages
+                ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
+                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
+                }`}
+              title="ទំព័រចុងក្រោយ"
+            >
+              <ChevronsRight size={16} strokeWidth={2.2} />
+            </button>
           </div>
         </div>
       </div>

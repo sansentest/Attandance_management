@@ -7,6 +7,9 @@ import {
 import { SearchableDropdown } from '../attendance/AdminStudentAttendance'
 import AdminStudentTrackingDetail from './AdminStudentTrackingDetail'
 import { api, getCachedSchoolName } from '../../../utils/api'
+import { exportTrackingSummaryExcel } from './exports/exportTrackingExcel'
+import { exportTrackingSummaryWord } from './exports/exportTrackingWord'
+import { exportTrackingSummaryPdf } from './exports/exportTrackingPdf'
 
 export default function AdminStudentTracking({ onNavigate }) {
   const [data, setData] = useState(() => {
@@ -87,7 +90,7 @@ export default function AdminStudentTracking({ onNavigate }) {
     if (showLoading) setLoading(true)
     setIsRefreshing(true)
     try {
-      const res = await api('discipline.getTracking')
+      const res = await api('discipline.getTracking', { force: true })
       if (res && res.success && Array.isArray(res.data)) {
         setData(res.data)
       }
@@ -141,14 +144,24 @@ export default function AdminStudentTracking({ onNavigate }) {
   ]
 
   // Derived Logic for Status
+  const normalizeGrade = (className) => {
+    if (!className) return null
+    const str = String(className)
+      .replace(/០/g, '0').replace(/១/g, '1').replace(/២/g, '2')
+      .replace(/៣/g, '3').replace(/៤/g, '4').replace(/៥/g, '5')
+      .replace(/៦/g, '6').replace(/៧/g, '7').replace(/៨/g, '8')
+      .replace(/៩/g, '9')
+    const match = str.match(/\d+/)
+    return match ? parseInt(match[0], 10) : null
+  }
+
   const getThreshold = (className) => {
-    const match = className.match(/\d+/)
-    if (match) {
-      const grade = parseInt(match[0])
-      if (grade >= 7 && grade <= 9) return thresholds['7-9']
-      if (grade >= 10 && grade <= 12) return thresholds['10-12']
+    const grade = normalizeGrade(className)
+    if (grade !== null) {
+      if (grade >= 7 && grade <= 9 && thresholds['7-9'] !== undefined) return Number(thresholds['7-9']) || 20
+      if (grade >= 10 && grade <= 12 && thresholds['10-12'] !== undefined) return Number(thresholds['10-12']) || 20
     }
-    return 20 // default fallback (គោលការណ៍សាលា ២០ ថ្ងៃ/ដង)
+    return Number(thresholds['10-12']) || Number(thresholds['7-9']) || 20
   }
 
   const getStudentStatus = (student) => {
@@ -200,376 +213,23 @@ export default function AdminStudentTracking({ onNavigate }) {
   }
 
   const handleExport = (type) => {
-    if (type === 'Excel') {
-      const headers = ['ល.រ', 'អត្តលេខ', 'ឈ្មោះសិស្ស', 'ថ្នាក់', 'គ្មានច្បាប់ (ថ្ងៃ)', 'មានច្បាប់ (ថ្ងៃ)', 'សរុបខកខាន (ម៉ោង)', 'ស្ថានភាពវិន័យ', 'លេខទូរស័ព្ទអាណាព្យាបាល']
-      const rows = filteredData.map((d, idx) => {
-        const st = getStudentStatus(d)
-        const stLabel = st === 'CRITICAL' ? 'ត្រូវហៅអាណាព្យាបាល' : st === 'WARNING' ? 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន' : 'ធម្មតា'
-        const totalHrs = d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0))
-        return [
-          `"${idx + 1}"`,
-          `"${d.studentId || d.id}"`,
-          `"${d.name}"`,
-          `"${d.class}"`,
-          `"${d.absent || 0}"`,
-          `"${d.leave || 0}"`,
-          `"${totalHrs}"`,
-          `"${stLabel}"`,
-          `"${d.parentPhone || ''}"`
-        ]
-      })
-
-      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', `បញ្ជីតាមដានវិន័យសិស្ស_${new Date().toISOString().slice(0, 10)}.csv`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-    } else if (type === 'Word') {
-      const htmlContent = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head>
-  <meta charset='utf-8'>
-  <title>តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស - ${getCachedSchoolName()}</title>
-  <!--[if gte mso 9]>
-  <xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-      <w:DoNotOptimizeForBrowser/>
-    </w:WordDocument>
-  </xml>
-  <![endif]-->
-  <style>
-    @page WordSection1 {
-      size: 595.3pt 841.9pt;
-      margin: 2.0cm 2.0cm 2.0cm 2.0cm;
-      mso-header-margin: 36.0pt;
-      mso-footer-margin: 36.0pt;
-      mso-paper-source: 0;
-    }
-    div.WordSection1 { page: WordSection1; }
-    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 10.5pt; color: #000000; line-height: 1.5; }
-    .header-wrap { width: 100%; margin-bottom: 12px; overflow: hidden; }
-    .header-left-col { float: left; width: 45%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; color: #000000; line-height: 1.7; }
-    .header-right-col { float: right; width: 45%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; color: #000000; line-height: 1.7; }
-    .ornament { font-family: 'Tacteing', 'Khmer OS Muol Light', serif; font-size: 20pt; line-height: 1.2; margin-top: 2px; text-align: center; }
-    .clear { clear: both; }
-    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 15pt; font-weight: bold; color: #0f172a; text-align: center; margin: 15px 0 5px 0; }
-    .doc-subtitle { text-align: center; font-size: 10pt; color: #000000; margin-bottom: 15px; }
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
-    table.data-table th, table.data-table td { border: 1px solid #94a3b8; padding: 5px 8px; }
-    table.data-table th { background-color: #f1f5f9; font-weight: bold; text-align: center; color: #000000; }
-    .text-center { text-align: center; }
-    .footer-wrap { width: 100%; margin-top: 35px; overflow: hidden; }
-    .footer-left-col { float: left; width: 40%; text-align: center; font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; color: #000000; line-height: 1.8; }
-    .footer-right-col { float: right; width: 50%; text-align: center; font-size: 10pt; color: #000000; line-height: 1.7; }
-    .footer-sign-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; font-weight: bold; margin-top: 4px; }
-  </style>
-</head>
-<body>
-<div class="WordSection1">
-  <div class="header-wrap">
-    <div class="header-left-col">
-      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
-      <div>${getCachedSchoolName()}</div>
-    </div>
-    <div class="header-right-col">
-      <div>ព្រះរាជាណាចក្រកម្ពុជា</div>
-      <div>ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
-      <div class="ornament">3</div>
-    </div>
-    <div class="clear"></div>
-  </div>
-
-  <div class="doc-title">តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ ${filterClass !== 'ALL' ? `| ថ្នាក់ទី ${filterClass}` : ''} | សរុបចំនួនសិស្ស៖ ${filteredData.length} នាក់</div>
-
-  <p style="font-size:10pt; margin:0 0 10px 0;">
-    <strong>សិស្សសរុប៖</strong> ${filteredData.length} នាក់ &nbsp;&nbsp;
-    <strong>មានអវត្តមាន៖</strong> ${filteredData.filter(s => (Number(s.absent) || 0) > 0 || (Number(s.leave) || 0) > 0).length} នាក់ &nbsp;&nbsp;
-    <strong>ប្រុងប្រយ័ត្ន៖</strong> <span style="color:#b45309; font-weight:bold;">${totalWarning} នាក់</span> &nbsp;&nbsp;
-    <strong>ហៅអាណាព្យាបាល៖</strong> <span style="color:#be123c; font-weight:bold;">${totalCritical} នាក់</span>
-  </p>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">ល.រ</th>
-        <th style="width: 70px;">អត្តលេខ</th>
-        <th>គោត្តនាម-នាមសិស្ស</th>
-        <th style="width: 50px;">ថ្នាក់</th>
-        <th style="width: 65px;">គ្មានច្បាប់</th>
-        <th style="width: 65px;">មានច្បាប់</th>
-        <th style="width: 75px;">សរុបខកខាន</th>
-        <th style="width: 100px;">ស្ថានភាពវិន័យ</th>
-        <th style="width: 90px;">ទូរស័ព្ទអាណាព្យាបាល</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filteredData.length > 0 ? filteredData.map((d, idx) => {
-        const st = getStudentStatus(d)
-        const stLabel = st === 'CRITICAL' ? 'ត្រូវហៅអាណាព្យាបាល' : st === 'WARNING' ? 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន' : 'ធម្មតា'
-        const totalHrs = d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0))
-        return `
-        <tr>
-          <td class="text-center">${idx + 1}</td>
-          <td class="text-center" style="font-weight: bold;">${d.studentId || d.id}</td>
-          <td style="font-weight: bold;">${d.name}</td>
-          <td class="text-center" style="font-weight: bold;">${d.class}</td>
-          <td class="text-center" style="color: #e11d48; font-weight: bold;">${d.absent || 0}</td>
-          <td class="text-center" style="color: #d97706; font-weight: bold;">${d.leave || 0}</td>
-          <td class="text-center">${totalHrs} ម៉ោង</td>
-          <td class="text-center" style="color: ${st === 'CRITICAL' ? '#be123c' : st === 'WARNING' ? '#b45309' : '#047857'}; font-weight: bold;">${stLabel}</td>
-          <td class="text-center">${d.parentPhone || '-'}</td>
-        </tr>
-      `}).join('') : `
-        <tr>
-          <td colspan="9" class="text-center" style="padding: 20px; color: #94a3b8;">មិនមានទិន្នន័យទេ</td>
-        </tr>
-      `}
-    </tbody>
-  </table>
-
-  <div class="footer-wrap">
-    <div class="footer-left-col">
-      <div>បានឃើញ និងឯកភាព</div>
-      <div>នាយកសាលា</div>
-    </div>
-    <div class="footer-right-col">
-      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
-      <div>${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
-      <div class="footer-sign-title">អ្នករៀបចំរបាយការណ៍</div>
-    </div>
-    <div class="clear"></div>
-  </div>
-</div>
-</body>
-</html>`
-      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.setAttribute('href', url)
-      link.setAttribute('download', `បញ្ជីតាមដានវិន័យសិស្ស_${new Date().toISOString().slice(0, 10)}.doc`)
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-    } else {
-      // PDF / Print (Official Cambodian Administrative Standard)
-      const printWindow = window.open('', '_blank')
-      if (!printWindow) {
-        alert('សូមអនុញ្ញាត Popup ក្នុង Browser ដើម្បីបើកផ្ទាំងបោះពុម្ព')
-        return
-      }
-      printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស - ${getCachedSchoolName()}</title>
-  <style>
-    @page { size: A4 portrait; margin: 2.0cm; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif;
-      font-size: 10pt;
-      color: #000000;
-      margin: 0;
-      padding: 0;
-      line-height: 1.5;
-    }
-    .header-grid {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 15px;
-    }
-    .school-title {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      line-height: 1.5;
-      color: #000000;
-      text-align: center;
-    }
-    .kingdom-box {
-      text-align: center;
-      line-height: 1.5;
-    }
-    .kingdom {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      font-weight: bold;
-      color: #000000;
-    }
-    .motto {
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 12pt;
-      color: #000000;
-    }
-    .ornament {
-      font-family: 'Tacteing', 'Khmer OS Muol Light', serif;
-      font-size: 20pt;
-      line-height: 1.2;
-      margin-top: 2px;
-      color: #000000;
-    }
-    .doc-title {
-      text-align: center;
-      font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif;
-      font-size: 15pt;
-      font-weight: bold;
-      color: #0f172a;
-      margin: 12px 0 4px 0;
-    }
-    .doc-subtitle {
-      text-align: center;
-      font-size: 10pt;
-      color: #000000;
-      margin-bottom: 14px;
-    }
-    .stats-bar {
-      display: flex;
-      justify-content: space-around;
-      background: #f8fafc;
-      border: 1px solid #cbd5e1;
-      border-radius: 4px;
-      padding: 8px 12px;
-      margin-bottom: 14px;
-      font-size: 9.5pt;
-    }
-    .stats-item {
-      display: flex;
-      gap: 6px;
-    }
-    .stats-label { color: #475569; font-weight: 500; }
-    .stats-val { font-weight: 700; color: #000000; }
-    table.data-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 9.5pt;
-    }
-    table.data-table th, table.data-table td {
-      border: 1px solid #94a3b8;
-      padding: 6px 8px;
-    }
-    table.data-table th {
-      background-color: #f1f5f9;
-      font-weight: bold;
-      text-align: center;
-      color: #000000;
-    }
-    .text-center { text-align: center; }
-    .badge-critical { color: #be123c; font-weight: bold; }
-    .badge-warning { color: #b45309; font-weight: bold; }
-    .badge-normal { color: #047857; font-weight: bold; }
-    .footer-sign {
-      margin-top: 30px;
-      display: flex;
-      justify-content: space-between;
-      text-align: center;
-      font-size: 10pt;
-      page-break-inside: avoid;
-    }
-    .sign-col {
-      width: 250px;
-    }
-    @media print {
-      body { padding: 0; }
-      .no-print { display: none !important; }
-    }
-  </style>
-</head>
-<body>
-  <div class="no-print" style="margin-bottom: 15px; padding: 10px 14px; background: #f1f5f9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #cbd5e1;">
-    <span style="font-weight: bold; font-size: 13px; color: #334155;">មើលគំរូមុនពេលបោះពុម្ព ឬរក្សាទុកជា PDF (Print / Save as PDF)</span>
-    <button onclick="window.print()" style="padding: 7px 16px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer;">បោះពុម្ព / រក្សាទុកជា PDF</button>
-  </div>
-
-  <div class="header-grid">
-    <div class="school-title">
-      <div>មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ</div>
-      <div>${getCachedSchoolName()}</div>
-    </div>
-    <div class="kingdom-box">
-      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
-      <div class="motto">ជាតិ​ សាសនា ព្រះមហាក្សត្រ</div>
-      <div class="ornament">3</div>
-    </div>
-  </div>
-
-  <div class="doc-title">តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស</div>
-  <div class="doc-subtitle">ឆ្នាំសិក្សា ២០២៥ - ២០២៦ ${filterClass !== 'ALL' ? `| ថ្នាក់ទី ${filterClass}` : ''} | សរុបចំនួនសិស្ស៖ ${filteredData.length} នាក់</div>
-
-  <div class="stats-bar">
-    <div class="stats-item"><span class="stats-label">សិស្សសរុប៖</span> <span class="stats-val">${filteredData.length} នាក់</span></div>
-    <div class="stats-item"><span class="stats-label">មានអវត្តមាន៖</span> <span class="stats-val">${filteredData.filter(s => (Number(s.absent) || 0) > 0 || (Number(s.leave) || 0) > 0).length} នាក់</span></div>
-    <div class="stats-item"><span class="stats-label">ស្ថិតក្នុងការប្រុងប្រយ័ត្ន៖</span> <span class="stats-val" style="color: #b45309;">${totalWarning} នាក់</span></div>
-    <div class="stats-item"><span class="stats-label">ត្រូវហៅអាណាព្យាបាល៖</span> <span class="stats-val" style="color: #be123c;">${totalCritical} នាក់</span></div>
-  </div>
-
-  <table class="data-table">
-    <thead>
-      <tr>
-        <th style="width: 35px;">ល.រ</th>
-        <th style="width: 70px;">អត្តលេខ</th>
-        <th>គោត្តនាម-នាមសិស្ស</th>
-        <th style="width: 50px;">ថ្នាក់</th>
-        <th style="width: 65px;">គ្មានច្បាប់</th>
-        <th style="width: 65px;">មានច្បាប់</th>
-        <th style="width: 75px;">សរុបខកខាន</th>
-        <th style="width: 100px;">ស្ថានភាពវិន័យ</th>
-        <th style="width: 90px;">ទូរស័ព្ទអាណាព្យាបាល</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filteredData.length > 0 ? filteredData.map((d, idx) => {
-        const st = getStudentStatus(d)
-        const stLabel = st === 'CRITICAL' ? 'ត្រូវហៅអាណាព្យាបាល' : st === 'WARNING' ? 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន' : 'ធម្មតា'
-        const badgeClass = st === 'CRITICAL' ? 'badge-critical' : st === 'WARNING' ? 'badge-warning' : 'badge-normal'
-        const totalHrs = d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0))
-        return `
-        <tr>
-          <td class="text-center">${idx + 1}</td>
-          <td class="text-center" style="font-weight: bold; font-family: monospace;">${d.studentId || d.id}</td>
-          <td style="font-weight: bold;">${d.name}</td>
-          <td class="text-center" style="font-weight: bold;">${d.class}</td>
-          <td class="text-center" style="color: #e11d48; font-weight: bold;">${d.absent || 0}</td>
-          <td class="text-center" style="color: #d97706; font-weight: bold;">${d.leave || 0}</td>
-          <td class="text-center">${totalHrs} ម៉ោង</td>
-          <td class="text-center ${badgeClass}">${stLabel}</td>
-          <td class="text-center" style="font-family: monospace;">${d.parentPhone || '-'}</td>
-        </tr>
-      `}).join('') : `
-        <tr>
-          <td colspan="9" class="text-center" style="padding: 20px; color: #94a3b8;">មិនមានទិន្នន័យទេ</td>
-        </tr>
-      `}
-    </tbody>
-  </table>
-
-  <div class="footer-sign">
-    <div class="sign-col">
-      <br>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt;">បានឃើញ និងឯកភាព</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; margin-top: 2px;">នាយកសាលា</div>
-    </div>
-    <div class="sign-col" style="width: 260px;">
-      <div>ថ្ងៃ....................ខែ.............ឆ្នាំ...........ព.ស ២៥......</div>
-      <div style="margin-top: 2px;">${getCachedSchoolName()} ថ្ងៃទី...........ខែ.............ឆ្នាំ.............</div>
-      <div style="font-family: 'Khmer OS Muol Light', serif; font-size: 11pt; font-weight: bold; margin-top: 4px;">អ្នករៀបចំរបាយការណ៍</div>
-    </div>
-  </div>
-</body>
-</html>`)
-      printWindow.document.close()
-      setTimeout(() => {
-        printWindow.print()
-      }, 400)
-    }
     setExportOpen(false)
+    const schoolName = getCachedSchoolName()
+    const payload = {
+      filteredData,
+      filterClass,
+      schoolName,
+      totalWarning,
+      totalCritical,
+      getStudentStatus
+    }
+    if (type === 'Excel') {
+      exportTrackingSummaryExcel(payload)
+    } else if (type === 'Word') {
+      exportTrackingSummaryWord(payload)
+    } else if (type === 'PDF') {
+      exportTrackingSummaryPdf(payload)
+    }
   }
 
   // If a student is selected, show the detail view
@@ -577,10 +237,14 @@ export default function AdminStudentTracking({ onNavigate }) {
     return (
       <AdminStudentTrackingDetail
         student={selectedStudent}
-        onBack={() => setSelectedStudent(null)}
+        onBack={() => {
+          setSelectedStudent(null)
+          fetchTrackingData()
+        }}
         threshold={getThreshold(selectedStudent.class)}
         status={getStudentStatus(selectedStudent)}
         onNavigate={onNavigate}
+        onDataChanged={fetchTrackingData}
       />
     )
   }
@@ -845,22 +509,31 @@ export default function AdminStudentTracking({ onNavigate }) {
                     {/* Status Badge */}
                     <td className="py-4 px-5 text-center">
                       {status === 'NORMAL' && (
-                        <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full border border-emerald-100 text-[11px] font-bold">
-                          <CheckCircle2 size={13} strokeWidth={2.5} />
-                          ធម្មតា
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-full border border-emerald-100 text-[11px] font-bold">
+                            <CheckCircle2 size={13} strokeWidth={2.5} />
+                            ធម្មតា
+                          </span>
+                          {student.cycle > 1 && (
+                            <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold border border-emerald-200" title={`បានដោះស្រាយកិច្ចសន្យា ${(student.cycle || 1) - 1} លើក`}>
+                              ជុំទី {student.cycle}
+                            </span>
+                          )}
+                        </div>
                       )}
                       {status === 'WARNING' && (
-                        <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full border border-amber-100 text-[11px] font-bold">
+                        <span className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-600 px-3 py-1.5 rounded-full text-[11px] font-bold">
                           <AlertTriangle size={13} strokeWidth={2.5} />
-                          ប្រុងប្រយ័ត្ន
+                          ប្រយ័ត្ន
                         </span>
                       )}
                       {status === 'CRITICAL' && (
-                        <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-600 px-3 py-1.5 rounded-full border border-rose-100 text-[11px] font-bold animate-pulse">
-                          <PhoneCall size={13} strokeWidth={2.5} />
-                          ហៅអាណាព្យាបាល
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center gap-1.5 bg-rose-50 text-rose-600 px-3 py-1.5 rounded-full text-[11px] font-bold animate-pulse">
+                            <PhoneCall size={13} strokeWidth={2.5} />
+                            កោះហៅ {student.cycle > 1 ? `(លើកទី ${student.cycle})` : ''}
+                          </span>
+                        </div>
                       )}
                     </td>
 
@@ -875,19 +548,19 @@ export default function AdminStudentTracking({ onNavigate }) {
                               } catch (e) {}
                               onNavigate('invitation-letters')
                             }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 border border-rose-200 hover:border-rose-600 font-bold text-[12px] rounded-lg group/btn"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 hover:border-rose-600 font-bold text-[12px] rounded-lg group/btn"
                             title="រៀបចំលិខិតកោះហៅ"
                           >
                             <Mail size={13} className="group-hover/btn:scale-110 transition-transform" />
-                            <span>រៀបចំលិខិត</span>
+                            <span>រៀបចំ</span>
                           </button>
                         )}
                         <button
                           onClick={() => setSelectedStudent(student)}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 border border-indigo-100 hover:border-indigo-600 font-bold text-[12px] rounded-lg  group/btn"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-indigo-600 hover:text-white bg-indigo-50 hover:bg-indigo-600 hover:border-indigo-600 font-bold text-[12px] rounded-lg group/btn"
                         >
                           <ShieldAlert size={13} className="group-hover/btn:scale-110 transition-transform" />
-                          <span>ព័ត៌មានវិន័យ</span>
+                          <span>មើលលំអិត</span>
                         </button>
                       </div>
                     </td>

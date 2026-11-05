@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+@font-face {
+  font-family: 'Tacteing';
+  src: url('/fonts/Tacteing.ttf') format('truetype'),
+       local('Tacteing');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @theme {
   --color-bg-base: #f8fafc;       /* Light gray background */
   --color-bg-card: #ffffff;       /* White cards */

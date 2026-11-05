@@ -151,6 +151,7 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   const records = payload.records || [];
   const absentRecords = records.filter(r => r.status === 'ABSENT');
   const leaveRecords = records.filter(r => r.status === 'LEAVE');
+  const dropoutRecords = records.filter(r => r.status === 'DROPOUT');
   const presentCount = records.filter(r => r.status === 'PRESENT').length;
   const totalCount = records.length;
 
@@ -159,12 +160,12 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   const hoursNum = payload.hours || 1;
 
   let absentListText = '';
-  const nonPresent = [...absentRecords, ...leaveRecords];
+  const nonPresent = [...absentRecords, ...leaveRecords, ...dropoutRecords];
   if (nonPresent.length === 0) {
     absentListText = '  • <i>សិស្សមានវត្តមានគ្រប់ចំនួន (គ្មានអវត្តមាន)</i>';
   } else {
     absentListText = nonPresent.map((s, idx) => {
-      const typeLabel = s.status === 'ABSENT' ? '❌ អវត្តមាន' : '📝 សុំច្បាប់';
+      const typeLabel = s.status === 'ABSENT' ? '❌ អវត្តមាន' : s.status === 'DROPOUT' ? '🚫 ឈប់រៀន' : '📝 សុំច្បាប់';
       const reasonPart = s.reason ? ` (${escapeTelegramHtml(s.reason)})` : '';
       return `  ${idx + 1}. <b>${escapeTelegramHtml(s.name)}</b> - ${typeLabel}${reasonPart}`;
     }).join('\n');
@@ -185,8 +186,9 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
     `  • វត្តមាន: <b>${presentCount}</b> នាក់`,
     `  • អវត្តមាន (គ្មានច្បាប់): <b>${absentRecords.length}</b> នាក់`,
     `  • សុំច្បាប់: <b>${leaveRecords.length}</b> នាក់`,
+    dropoutRecords.length > 0 ? `  • ឈប់រៀន: <b>${dropoutRecords.length}</b> នាក់` : null,
     '━━━━━━━━━━━━━━━━━━━━',
-    '⚠️ <b>បញ្ជីឈ្មោះសិស្សអវត្តមាន / សុំច្បាប់:</b>',
+    '⚠️ <b>បញ្ជីឈ្មោះសិស្សអវត្តមាន / សុំច្បាប់ / ឈប់រៀន:</b>',
     absentListText,
     '━━━━━━━━━━━━━━━━━━━━',
     '<i>ប្រព័ន្ធគ្រប់គ្រងវត្តមានស្វ័យប្រវត្តិតាម Telegram</i>'

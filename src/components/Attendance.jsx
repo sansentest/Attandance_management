@@ -9,7 +9,8 @@ import {
   ChevronLeft, GraduationCap, Clock, RotateCcw, Users,
   User, Check, X, FileText, AlertCircle, CheckCircle2,
   Loader2, Send, LogOut, Search, BookOpen, ChevronDown,
-  ArrowLeftRight, Calendar, WifiOff, CloudUpload, RefreshCw, Wifi, Lock
+  ArrowLeftRight, Calendar, WifiOff, CloudUpload, RefreshCw, Wifi, Lock,
+  UserX, Info
 } from 'lucide-react'
 
 // Helper to format today's date in polite, complete Khmer text
@@ -26,6 +27,26 @@ function getKhmerDateText() {
   const year = toKhmerNum(d.getFullYear())
 
   return `ថ្ងៃ${dayName} ទី${day} ខែ${month} ឆ្នាំ${year}`
+}
+
+// ─────────────────────────────────────────────
+// Permanent Dropped-out Students Helpers
+// ─────────────────────────────────────────────
+function getSavedDropoutMap() {
+  try {
+    const raw = localStorage.getItem('school_dropped_students')
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+function setSavedDropoutMap(map) {
+  try {
+    localStorage.setItem('school_dropped_students', JSON.stringify(map))
+  } catch (e) {
+    console.error(e)
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -256,6 +277,9 @@ export default function Attendance({ session, onNavigate, onLogout }) {
   const [attendanceState, setAttendanceState] = useState({})
   const [leaveReasons, setLeaveReasons] = useState({}) // Add reason when student is on LEAVE
   const [fullDayState, setFullDayState] = useState({}) // Point 4: full-day leave map
+  const [dropoutMap, setDropoutMap] = useState(() => getSavedDropoutMap())
+  const [dropoutModal, setDropoutModal] = useState({ show: false, student: null })
+  const [reactivateModal, setReactivateModal] = useState({ show: false, student: null, targetStatus: 'PRESENT' })
   const [saving, setSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [alertMessage, setAlertMessage] = useState({ show: false, message: '', type: 'success' })
@@ -434,10 +458,23 @@ export default function Attendance({ session, onNavigate, onLogout }) {
 
   const applySavedState = (savedState, targetPeriod) => {
     const fullDayMap = getSavedFullDayLeaves()
+    const currentDropouts = getSavedDropoutMap()
     const mergedState = { ...savedState.attendanceState }
     Object.keys(fullDayMap).forEach(sId => {
-      if (fullDayMap[sId]) {
+      if (fullDayMap[sId] && !currentDropouts[sId]) {
         mergedState[sId] = 'LEAVE'
+      }
+    })
+
+    // Permanently enforce DROPOUT for dropped students across all periods and days
+    Object.keys(currentDropouts).forEach(sId => {
+      if (currentDropouts[sId]) {
+        mergedState[sId] = 'DROPOUT'
+      }
+    })
+    students.forEach(s => {
+      if (s.status === 'dropped' || currentDropouts[s.id]) {
+        mergedState[s.id] = 'DROPOUT'
       }
     })
 
@@ -462,9 +499,12 @@ export default function Attendance({ session, onNavigate, onLogout }) {
 
   const applyDefaultPresent = (targetPeriod, studentList) => {
     const fullDayMap = getSavedFullDayLeaves()
+    const currentDropouts = getSavedDropoutMap()
     const freshState = {}
     studentList.forEach(s => {
-      if (fullDayMap[s.id]) {
+      if (currentDropouts[s.id] || s.status === 'dropped') {
+        freshState[s.id] = 'DROPOUT'
+      } else if (fullDayMap[s.id]) {
         freshState[s.id] = 'LEAVE'
       } else {
         freshState[s.id] = 'PRESENT'
@@ -612,12 +652,19 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     }
 
     // 1. Instant offline cache render (0ms instant response)
+    const currentDropouts = getSavedDropoutMap()
     const cached = getCachedStudentRoster(cls)
     if (cached && cached.length > 0) {
-      setStudents(cached)
+      const syncedCached = cached.map(s => {
+        if (currentDropouts[s.id] || s.status === 'dropped') {
+          return { ...s, status: 'dropped' }
+        }
+        return s
+      })
+      setStudents(syncedCached)
       const fullDayMap = getSavedFullDayLeaves()
       setFullDayState(fullDayMap)
-      loadPeriodData(targetPeriod, cached)
+      loadPeriodData(targetPeriod, syncedCached)
       setLoading(false)
     } else {
       setLoading(true)
@@ -627,11 +674,40 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     try {
       const result = await api('students.getByClass', { className: cls })
       if (result.success && result.data && result.data.length > 0) {
-        setStudents(result.data)
-        cacheStudentRoster(cls, result.data)
+        let updatedDropouts = { ...currentDropouts }
+        let changedDropouts = false
+
+        result.data.forEach(s => {
+          if (s.status === 'dropped' && !updatedDropouts[s.id]) {
+            updatedDropouts[s.id] = {
+              date: today,
+              studentId: s.id,
+              name: s.name,
+              class: s.class || cls,
+              reason: 'ឈប់រៀន',
+              updatedAt: new Date().toISOString()
+            }
+            changedDropouts = true
+          }
+        })
+
+        if (changedDropouts) {
+          setSavedDropoutMap(updatedDropouts)
+          setDropoutMap(updatedDropouts)
+        }
+
+        const syncedStudents = result.data.map(s => {
+          if (updatedDropouts[s.id] || s.status === 'dropped') {
+            return { ...s, status: 'dropped' }
+          }
+          return s
+        })
+
+        setStudents(syncedStudents)
+        cacheStudentRoster(cls, syncedStudents)
         const fullDayMap = getSavedFullDayLeaves()
         setFullDayState(fullDayMap)
-        await loadPeriodData(targetPeriod, result.data)
+        await loadPeriodData(targetPeriod, syncedStudents)
       }
     } catch (e) {
       console.warn('[Attendance] Network fetch error, fallback to offline cache:', e)
@@ -689,6 +765,136 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     }
   }
 
+  // Handle clicking on 1 of the 4 buttons (PRESENT, ABSENT, LEAVE, DROPOUT)
+  const handleStatusClick = (student, targetStatus) => {
+    if (isActionDisabled) return
+    const isCurrentDropout = Boolean(dropoutMap[student.id] || attendanceState[student.id] === 'DROPOUT' || student.status === 'dropped')
+
+    if (targetStatus === 'DROPOUT') {
+      if (isCurrentDropout) return
+      setDropoutModal({ show: true, student })
+      return
+    }
+
+    if (isCurrentDropout) {
+      setReactivateModal({ show: true, student, targetStatus })
+      return
+    }
+
+    setStatus(student.id, targetStatus)
+  }
+
+  // Confirm permanent dropout across all periods and all days
+  const confirmDropout = async (student) => {
+    if (!student) return
+    const newDropouts = {
+      ...dropoutMap,
+      [student.id]: {
+        date: today,
+        studentId: student.id,
+        name: student.name,
+        class: student.class || currentClass,
+        reason: 'ឈប់រៀន',
+        updatedAt: new Date().toISOString()
+      }
+    }
+    setSavedDropoutMap(newDropouts)
+    setDropoutMap(newDropouts)
+
+    // Update attendance state to DROPOUT
+    setAttendanceState(prev => ({
+      ...prev,
+      [student.id]: 'DROPOUT'
+    }))
+
+    // Remove full-day leave if active
+    if (fullDayState[student.id]) {
+      setFullDayState(prev => {
+        const updated = { ...prev, [student.id]: false }
+        try {
+          localStorage.setItem(`school_full_day_${today}_${currentClass}`, JSON.stringify(updated))
+        } catch (e) {}
+        return updated
+      })
+    }
+
+    // Update student in cached roster
+    try {
+      const raw = localStorage.getItem('school_students_cache')
+      if (raw) {
+        const allStudents = JSON.parse(raw)
+        if (Array.isArray(allStudents)) {
+          const updated = allStudents.map(s => s.id === student.id ? { ...s, status: 'dropped' } : s)
+          localStorage.setItem('school_students_cache', JSON.stringify(updated))
+        }
+      }
+    } catch (e) {}
+
+    // Sync student status to backend API
+    try {
+      await api('students.save', {
+        student: {
+          ...student,
+          status: 'dropped'
+        }
+      })
+    } catch (e) {
+      console.warn('[Attendance] Sync student status dropped error:', e)
+    }
+
+    setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: 'dropped' } : s))
+    setDropoutModal({ show: false, student: null })
+    setAlertMessage({
+      show: true,
+      message: `បានកំណត់សិស្ស «${student.name}» ជា «ឈប់រៀន» គ្រប់ម៉ោងនិងគ្រប់ថ្ងៃជាអចិន្ត្រៃយ៍!`,
+      type: 'success'
+    })
+  }
+
+  // Reactivate student back to school
+  const confirmReactivate = async (student, targetStatus = 'PRESENT') => {
+    if (!student) return
+    const newDropouts = { ...dropoutMap }
+    delete newDropouts[student.id]
+    setSavedDropoutMap(newDropouts)
+    setDropoutMap(newDropouts)
+
+    setAttendanceState(prev => ({
+      ...prev,
+      [student.id]: targetStatus
+    }))
+
+    try {
+      const raw = localStorage.getItem('school_students_cache')
+      if (raw) {
+        const allStudents = JSON.parse(raw)
+        if (Array.isArray(allStudents)) {
+          const updated = allStudents.map(s => s.id === student.id ? { ...s, status: 'active' } : s)
+          localStorage.setItem('school_students_cache', JSON.stringify(updated))
+        }
+      }
+    } catch (e) {}
+
+    try {
+      await api('students.save', {
+        student: {
+          ...student,
+          status: 'active'
+        }
+      })
+    } catch (e) {
+      console.warn('[Attendance] Sync student reactivated error:', e)
+    }
+
+    setStudents(prev => prev.map(s => s.id === student.id ? { ...s, status: 'active' } : s))
+    setReactivateModal({ show: false, student: null, targetStatus: 'PRESENT' })
+    setAlertMessage({
+      show: true,
+      message: `បានកំណត់សិស្ស «${student.name}» ឱ្យចូលរៀនវិញដោយជោគជ័យ!`,
+      type: 'success'
+    })
+  }
+
   // Set leave reason for student
   const setLeaveReason = (id, reason) => {
     if (isActionDisabled) return
@@ -717,12 +923,15 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     }
   }
 
-  // Point 3: Reset all students to PRESENT (respecting any full-day leave)
+  // Point 3: Reset all students to PRESENT (respecting any full-day leave and permanent dropouts)
   const resetAll = () => {
     if (isActionDisabled) return
+    const currentDropouts = getSavedDropoutMap()
     const newState = {}
     students.forEach(s => {
-      if (fullDayState[s.id]) {
+      if (currentDropouts[s.id] || s.status === 'dropped') {
+        newState[s.id] = 'DROPOUT'
+      } else if (fullDayState[s.id]) {
         newState[s.id] = 'LEAVE'
       } else {
         newState[s.id] = 'PRESENT'
@@ -803,6 +1012,8 @@ export default function Attendance({ session, onNavigate, onLogout }) {
         reason = customReason || 'មានច្បាប់ត្រឹមត្រូវ'
       } else if (status === 'ABSENT') {
         reason = 'គ្មានច្បាប់'
+      } else if (status === 'DROPOUT') {
+        reason = 'ឈប់រៀន'
       }
 
       return {
@@ -848,7 +1059,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       const existing = existingRaw ? JSON.parse(existingRaw) : []
       const periodVal = String(periodInfo.period)
       const filteredExisting = existing.filter(r => !(r.class === periodInfo.className && r.date === today && (String(r.period) === periodVal || (periodVal.includes('-') && periodVal.split('-').includes(String(r.period))))))
-      const newRecs = records.filter(r => r.status === 'ABSENT' || r.status === 'LEAVE').map(s => ({
+      const newRecs = records.filter(r => r.status === 'ABSENT' || r.status === 'LEAVE' || r.status === 'DROPOUT').map(s => ({
         id: `REC-${Date.now()}-${s.id}-p${periodVal}`,
         studentId: s.id,
         name: s.name,
@@ -860,7 +1071,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
         subject: periodInfo.subject || '',
         teacher: periodInfo.teacher || '',
         status: s.status,
-        reason: s.reason,
+        reason: s.reason || (s.status === 'DROPOUT' ? 'ឈប់រៀន' : ''),
         isFullDay: Boolean(s.isFullDay),
         recordedBy: session.fullName || 'ប្រធានថ្នាក់'
       }))
@@ -902,6 +1113,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
 
   const absentCount = Object.values(attendanceState).filter(status => status === 'ABSENT').length
   const leaveCount = Object.values(attendanceState).filter(status => status === 'LEAVE').length
+  const dropoutCount = Object.values(attendanceState).filter(status => status === 'DROPOUT').length
   const activeShift = periodInfo.shift || detectCurrentShift(new Date().getHours() * 60 + new Date().getMinutes())
   const currentShiftPeriods = (todaySchedule && todaySchedule[activeShift]) || todaySchedule?.morning || []
 
@@ -1369,11 +1581,13 @@ export default function Attendance({ session, onNavigate, onLogout }) {
             const status = attendanceState[s.id] || 'PRESENT'
             const isAbsent = status === 'ABSENT'
             const isLeave = status === 'LEAVE'
+            const isDropout = status === 'DROPOUT'
             const isFullDay = Boolean(fullDayState[s.id])
 
             let cardBg = 'bg-white border-transparent'
             if (isAbsent) cardBg = 'bg-red-50/50 border-red-200'
             if (isLeave) cardBg = 'bg-amber-50/50 border-amber-200'
+            if (isDropout) cardBg = 'bg-slate-100/90 border-slate-300'
 
             return (
               <div
@@ -1382,7 +1596,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
               >
                 {/* Decorative number */}
                 <div className={`absolute right-1 bottom-0 text-[50px] sm:text-[60px] font-black opacity-[0.03] pointer-events-none transition-colors duration-300 select-none leading-none
-                    ${isAbsent ? 'text-danger' : isLeave ? 'text-amber-500' : 'text-slate-900'}`}>
+                    ${isAbsent ? 'text-danger' : isLeave ? 'text-amber-500' : isDropout ? 'text-slate-400 opacity-10' : 'text-slate-900'}`}>
                   {String(index + 1).padStart(2, '0')}
                 </div>
 
@@ -1391,15 +1605,22 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                   <div className="flex items-center gap-2.5 sm:gap-4 min-w-0">
                     <div className="relative">
                       <div className={`w-9 h-9 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-[13px] sm:text-[15px] font-bold shrink-0 transition-all duration-300 shadow-xs
-                          ${isAbsent ? 'bg-danger text-white scale-105' : isLeave ? 'bg-amber-500 text-white scale-105' : 'bg-slate-100 text-slate-600'}`}>
-                        {s.name ? s.name.charAt(0) : s.id.slice(-2)}
+                          ${isAbsent ? 'bg-danger text-white scale-105' : isLeave ? 'bg-amber-500 text-white scale-105' : isDropout ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                        {isDropout ? <UserX size={18} className="sm:w-5 sm:h-5" /> : (s.name ? s.name.charAt(0) : s.id.slice(-2))}
                       </div>
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className={`text-[14px] sm:text-[16px] font-extrabold truncate transition-colors duration-300
-                          ${isAbsent ? 'text-danger' : isLeave ? 'text-amber-600' : 'text-slate-800'}`}>
-                        {s.name}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`text-[14px] sm:text-[16px] font-extrabold truncate transition-colors duration-300
+                            ${isAbsent ? 'text-danger' : isLeave ? 'text-amber-600' : isDropout ? 'text-slate-500 line-through decoration-slate-400' : 'text-slate-800'}`}>
+                          {s.name}
+                        </span>
+                        {isDropout && (
+                          <span className="inline-flex items-center gap-1 text-[9.5px] sm:text-[10.5px] font-bold px-1.5 py-0.5 rounded-md bg-slate-800 text-white whitespace-nowrap shadow-xs">
+                            <UserX size={10} strokeWidth={2.5} /> ឈប់រៀន
+                          </span>
+                        )}
+                      </div>
                       <span className="text-[11px] sm:text-[13px] text-slate-500 font-medium flex items-center gap-1.5 mt-0.5">
                         <User size={11} className={`sm:w-3 sm:h-3 ${s.gender === 'F' ? "text-pink-400" : "text-blue-400"}`} />
                         <span>{s.gender === 'F' ? 'ស្រី' : 'ប្រុស'}</span>
@@ -1410,29 +1631,29 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                   </div>
                 </div>
 
-                {/* Status Selection Buttons (Old UI 3 buttons) */}
-                <div className="grid grid-cols-3 gap-1.5 sm:gap-2 relative z-10 mt-0.5 sm:mt-1">
+                {/* Status Selection Buttons (4 buttons: វត្តមាន, អវត្តមាន, ច្បាប់, ឈប់រៀន) */}
+                <div className="grid grid-cols-4 gap-1 sm:gap-1.5 relative z-10 mt-0.5 sm:mt-1">
                   <button
                     type="button"
                     disabled={isActionDisabled}
-                    onClick={() => setStatus(s.id, 'PRESENT')}
+                    onClick={() => handleStatusClick(s, 'PRESENT')}
                     className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${
                       isActionDisabled
                         ? 'opacity-40 cursor-not-allowed bg-slate-100/70 border-slate-200 text-slate-400'
-                        : !isAbsent && !isLeave
+                        : !isAbsent && !isLeave && !isDropout
                         ? 'bg-success/10 border-success text-success shadow-xs cursor-pointer'
                         : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
                     }`}
                     title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
                   >
-                    <Check size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={!isAbsent && !isLeave ? 3 : 2} />
+                    <Check size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={!isAbsent && !isLeave && !isDropout ? 3 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">វត្តមាន</span>
                   </button>
 
                   <button
                     type="button"
                     disabled={isActionDisabled}
-                    onClick={() => setStatus(s.id, 'ABSENT')}
+                    onClick={() => handleStatusClick(s, 'ABSENT')}
                     className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${
                       isActionDisabled
                         ? 'opacity-40 cursor-not-allowed bg-slate-100/70 border-slate-200 text-slate-400'
@@ -1449,7 +1670,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                   <button
                     type="button"
                     disabled={isActionDisabled}
-                    onClick={() => setStatus(s.id, 'LEAVE')}
+                    onClick={() => handleStatusClick(s, 'LEAVE')}
                     className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${
                       isActionDisabled
                         ? 'opacity-40 cursor-not-allowed bg-slate-100/70 border-slate-200 text-slate-400'
@@ -1462,7 +1683,42 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                     <FileText size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={isLeave ? 3 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">ច្បាប់</span>
                   </button>
+
+                  <button
+                    type="button"
+                    disabled={isActionDisabled}
+                    onClick={() => handleStatusClick(s, 'DROPOUT')}
+                    className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${
+                      isActionDisabled
+                        ? 'opacity-40 cursor-not-allowed bg-slate-100/70 border-slate-200 text-slate-400'
+                        : isDropout
+                        ? 'bg-slate-800 border-slate-900 text-white shadow-xs cursor-pointer'
+                        : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
+                    }`}
+                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : 'កំណត់សិស្សឈប់រៀនគ្រប់ម៉ោងនិងគ្រប់ថ្ងៃ'}
+                  >
+                    <UserX size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={isDropout ? 2.5 : 2} />
+                    <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">ឈប់រៀន</span>
+                  </button>
                 </div>
+
+                {/* Dropout notice info */}
+                {isDropout && (
+                  <div className="mt-1 sm:mt-1.5 py-1 px-2 bg-slate-200/80 rounded-lg text-[10.5px] sm:text-[11.5px] text-slate-700 font-medium flex items-center justify-between gap-1 animate-in fade-in duration-200">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <Info size={12} className="text-slate-500 shrink-0" />
+                      <span className="truncate">ឈប់រៀនគ្រប់ម៉ោង (មិនលោតវត្តមាន)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReactivateModal({ show: true, student: s, targetStatus: 'PRESENT' })}
+                      className="text-[10px] sm:text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline shrink-0 cursor-pointer"
+                      title="ចុចដើម្បីកំណត់សិស្សឱ្យចូលរៀនវិញ"
+                    >
+                      ចូលរៀនវិញ
+                    </button>
+                  </div>
+                )}
 
                 {/* Input មូលហេតុសុំច្បាប់ when student is on LEAVE */}
                 {isLeave && !isActionDisabled && (
@@ -1526,6 +1782,14 @@ export default function Attendance({ session, onNavigate, onLogout }) {
           <div className={`flex items-center gap-1 ${leaveCount > 0 ? 'text-amber-500' : 'text-slate-400'}`}>
             <FileText size={13} className="sm:w-3.5 sm:h-3.5" strokeWidth={2.5} />
             <span className="text-[14px] sm:text-[16px] font-black leading-none">{leaveCount}</span>
+          </div>
+        </div>
+        <div className="w-[1px] h-5 sm:h-6 bg-slate-200 self-center"></div>
+        <div className="flex flex-col items-center">
+          <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">ឈប់រៀន</span>
+          <div className={`flex items-center gap-1 ${dropoutCount > 0 ? 'text-slate-800' : 'text-slate-400'}`}>
+            <UserX size={13} className="sm:w-3.5 sm:h-3.5" strokeWidth={2.5} />
+            <span className="text-[14px] sm:text-[16px] font-black leading-none">{dropoutCount}</span>
           </div>
         </div>
       </div>
@@ -1678,6 +1942,89 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       </div>
     )
   }
+
+  {/* ── Modal បញ្ជាក់ការឈប់រៀន (Dropout Confirmation Modal) ── */}
+  {dropoutModal.show && dropoutModal.student && (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-slate-100 relative z-10 animate-in zoom-in-95 duration-200">
+        <div className="flex flex-col items-center text-center">
+          <div className="w-14 h-14 rounded-2xl bg-slate-100 text-slate-800 flex items-center justify-center mb-3.5 border border-slate-200">
+            <UserX size={28} strokeWidth={2.5} />
+          </div>
+          <h3 className="text-[17px] sm:text-[18px] font-extrabold text-slate-800 mb-1.5">
+            បញ្ជាក់ការឈប់រៀន
+          </h3>
+          <p className="text-[13px] sm:text-[14px] text-slate-600 leading-relaxed px-1 mb-4">
+            តើអ្នកប្រាកដថាចង់កំណត់សិស្ស <strong className="text-slate-900 font-bold">«{dropoutModal.student.name}»</strong> ជា <strong className="text-rose-600 font-bold">«ឈប់រៀន»</strong> ឬទេ?
+          </p>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-left w-full mb-5 text-[11.5px] sm:text-[12px] text-amber-900">
+            <div className="flex items-start gap-2">
+              <AlertCircle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">ចំណាំសំខាន់៖</p>
+                <p className="mt-0.5 leading-snug">
+                  សិស្សនេះនឹងត្រូវកំណត់ជា <strong>«ឈប់រៀន»</strong> សម្រាប់<strong>គ្រប់ម៉ោង គ្រប់ពេល និងគ្រប់ថ្ងៃ</strong> ហើយនឹង<strong>មិនលោតមកវត្តមាន</strong>ដោយស្វ័យប្រវត្តិដូចសិស្សដទៃទៀតឡើយ លុះត្រាតែមានការកែប្រែដោយផ្ទាល់។
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center justify-end w-full gap-2.5">
+            <button
+              type="button"
+              onClick={() => setDropoutModal({ show: false, student: null })}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-[13px] transition-all cursor-pointer"
+            >
+              បោះបង់
+            </button>
+            <button
+              type="button"
+              onClick={() => confirmDropout(dropoutModal.student)}
+              className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-[13px] shadow-sm hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <UserX size={15} strokeWidth={2.5} />
+              <span>យល់ព្រម (ឈប់រៀន)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* ── Modal កំណត់ឱ្យចូលរៀនវិញ (Reactivate Confirmation Modal) ── */}
+  {reactivateModal.show && reactivateModal.student && (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-3xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-slate-100 relative z-10 animate-in zoom-in-95 duration-200">
+        <div className="flex flex-col items-center text-center">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3.5 border border-emerald-100">
+            <RotateCcw size={26} strokeWidth={2.5} />
+          </div>
+          <h3 className="text-[17px] sm:text-[18px] font-extrabold text-slate-800 mb-1.5">
+            កំណត់ឱ្យសិស្សចូលរៀនវិញ
+          </h3>
+          <p className="text-[13px] sm:text-[14px] text-slate-600 leading-relaxed px-1 mb-4">
+            សិស្ស <strong className="text-slate-900 font-bold">«{reactivateModal.student.name}»</strong> កំពុងស្ថិតក្នុងស្ថានភាព <strong className="text-slate-700">«ឈប់រៀន»</strong>។ តើអ្នកចង់កំណត់ឱ្យសិស្សនេះចូលរៀនវិញឬទេ?
+          </p>
+          <div className="flex items-center justify-end w-full gap-2.5">
+            <button
+              type="button"
+              onClick={() => setReactivateModal({ show: false, student: null, targetStatus: 'PRESENT' })}
+              className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-[13px] transition-all cursor-pointer"
+            >
+              បោះបង់
+            </button>
+            <button
+              type="button"
+              onClick={() => confirmReactivate(reactivateModal.student, reactivateModal.targetStatus)}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-[13px] shadow-sm hover:shadow transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Check size={16} strokeWidth={2.5} />
+              <span>យល់ព្រម (ចូលរៀនវិញ)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )}
 
   {/* ── Custom Alert Modal ── */ }
   {

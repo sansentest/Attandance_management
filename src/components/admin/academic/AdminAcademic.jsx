@@ -44,10 +44,10 @@ function generateBatchSubjectIds(existingList, count) {
 // Robust CSV parser supporting Khmer Unicode, quotes, commas, tabs, semicolons, and UTF-8 BOM
 function parseCSV(text) {
   const cleaned = text.replace(/^\uFEFF/, '').trim();
-  if (!cleaned) return [];
+  if (!cleaned) return { headers: [], rows: [] };
 
   const lines = cleaned.split(/\r\n|\n|\r/).filter(line => line.trim().length > 0);
-  if (lines.length < 2) return [];
+  if (lines.length < 2) return { headers: [], rows: [] };
 
   const parseLine = (line) => {
     let delimiter = ',';
@@ -73,13 +73,14 @@ function parseCSV(text) {
     return result;
   };
 
+  const headers = parseLine(lines[0]);
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
     const cols = parseLine(lines[i]);
     if (cols.every(c => !c)) continue;
     rows.push(cols);
   }
-  return rows;
+  return { headers, rows };
 }
 
 // ─────────────────────────────────────────────
@@ -767,95 +768,188 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
     }
   };
 
-  const handleSelectFile = (e) => {
+  const handleSelectFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result;
-        if (typeof text !== 'string') return;
+    try {
+      let headers = [];
+      let rows = [];
+      const fileNameLower = file.name.toLowerCase();
+      const isExcel = fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls');
 
-        const rawRows = parseCSV(text);
-        if (rawRows.length === 0) {
-          showToast('ឯកសារមិនមានទិន្នន័យ ឬខុសទម្រង់! សូមទាញយកឯកសារគំរូ។');
-          return;
-        }
+      if (isExcel) {
+        showToast('កំពុងដំណើរការអានទិន្នន័យពី Excel...');
+        await new Promise((resolve, reject) => {
+          if (typeof window !== 'undefined' && window.XLSX) return resolve();
+          const script = document.createElement('script');
+          script.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+          script.onload = () => resolve();
+          script.onerror = () => {
+            const fb = document.createElement('script');
+            fb.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+            fb.onload = () => resolve();
+            fb.onerror = () => reject(new Error('Cannot load XLSX library'));
+            document.head.appendChild(fb);
+          };
+          document.head.appendChild(script);
+        });
 
-        if (activeTab === 'classes') {
-          const generatedIds = generateBatchClassIds(classes, rawRows.length);
-          const parsed = rawRows.map((cols, idx) => {
-            let code = '', name = '', teacher = '', students = 0;
-            if (cols.length >= 4) {
-              code = cols[0] || generatedIds[idx];
-              name = cols[1] || `ថ្នាក់ថ្មី ${idx + 1}`;
-              teacher = cols[2] || '';
-              students = parseInt(cols[3], 10) || 0;
-            } else if (cols.length === 3) {
-              code = generatedIds[idx];
-              name = cols[0] || `ថ្នាក់ថ្មី ${idx + 1}`;
-              teacher = cols[1] || '';
-              students = parseInt(cols[2], 10) || 0;
-            } else {
-              code = generatedIds[idx];
-              name = cols[0] || `ថ្នាក់ថ្មី ${idx + 1}`;
-              teacher = cols[1] || '';
-            }
-            return {
-              id: code || generatedIds[idx],
-              name: name.trim(),
-              teacher: teacher.trim(),
-              students: Number(students) || 0
-            };
-          });
-
-          setImportModal({
-            open: true,
-            parsedData: parsed,
-            isUploaded: true,
-            fileName: file.name
-          });
-        } else {
-          const generatedIds = generateBatchSubjectIds(subjects, rawRows.length);
-          const parsed = rawRows.map((cols, idx) => {
-            let code = '', name = '', type = 'វិទ្យាសាស្ត្រ';
-            if (cols.length >= 3) {
-              code = cols[0] || generatedIds[idx];
-              name = cols[1] || `មុខវិជ្ជាថ្មី ${idx + 1}`;
-              type = cols[2] || 'វិទ្យាសាស្ត្រ';
-            } else if (cols.length === 2) {
-              code = generatedIds[idx];
-              name = cols[0] || `មុខវិជ្ជាថ្មី ${idx + 1}`;
-              type = cols[1] || 'វិទ្យាសាស្ត្រ';
-            } else {
-              code = generatedIds[idx];
-              name = cols[0] || `មុខវិជ្ជាថ្មី ${idx + 1}`;
-            }
-            return {
-              id: code || generatedIds[idx],
-              name: name.trim(),
-              type: type.trim()
-            };
-          });
-
-          setImportModal({
-            open: true,
-            parsedData: parsed,
-            isUploaded: true,
-            fileName: file.name
-          });
-        }
-      } catch (err) {
-        console.error('File parsing error:', err);
-        showToast('មានបញ្ហាក្នុងការអានឯកសារ!');
+        const XLSX = window.XLSX;
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const csvText = XLSX.utils.sheet_to_csv(firstSheet);
+        const parsed = parseCSV(csvText);
+        headers = parsed.headers;
+        rows = parsed.rows;
+      } else {
+        const text = await file.text();
+        const parsed = parseCSV(text);
+        headers = parsed.headers;
+        rows = parsed.rows;
       }
-    };
-    reader.onerror = () => {
-      showToast('បរាជ័យក្នុងការបើកឯកសារ!');
-    };
-    reader.readAsText(file, 'UTF-8');
-    e.target.value = '';
+
+      if (!rows || rows.length === 0) {
+        showToast('ឯកសារមិនមានទិន្នន័យ ឬខុសទម្រង់! សូមទាញយកឯកសារគំរូ។');
+        return;
+      }
+
+      const lowerHeaders = (headers || []).map(h => (h || '').toLowerCase().trim());
+
+      if (activeTab === 'classes') {
+        // Smart column index matching
+        let nameIdx = lowerHeaders.findIndex(h =>
+          h.includes('ឈ្មោះថ្នាក់') ||
+          h.includes('classname') ||
+          (h.includes('ថ្នាក់') && !h.includes('កូដ') && !h.includes('គ្រូ') && !h.includes('ចំនួន')) ||
+          h === 'name' || h === 'class'
+        );
+
+        let codeIdx = lowerHeaders.findIndex(h =>
+          h.includes('កូដថ្នាក់') ||
+          h.includes('កូដ') ||
+          h.includes('code') ||
+          h.includes('id')
+        );
+
+        let teacherIdx = lowerHeaders.findIndex(h =>
+          h.includes('គ្រូបន្ទុក') ||
+          h.includes('គ្រូ') ||
+          h.includes('teacher')
+        );
+
+        let studentsIdx = lowerHeaders.findIndex(h =>
+          h.includes('ចំនួនសិស្ស') ||
+          (h.includes('សិស្ស') && !h.includes('ឈ្មោះ')) ||
+          h.includes('student') ||
+          h.includes('count')
+        );
+
+        // Fallback if headers didn't match known patterns
+        if (nameIdx === -1) {
+          const firstColHeader = lowerHeaders[0] || '';
+          if (firstColHeader.includes('ល.រ') || firstColHeader.includes('no') || firstColHeader === '#') {
+            nameIdx = lowerHeaders.length >= 3 && codeIdx === 1 ? 2 : 1;
+          } else if (lowerHeaders.length >= 2) {
+            nameIdx = 1;
+          } else {
+            nameIdx = 0;
+          }
+        }
+
+        const generatedIds = generateBatchClassIds(classes, rows.length);
+        const parsed = [];
+
+        rows.forEach((cols, idx) => {
+          let name = (nameIdx >= 0 && cols[nameIdx]) ? cols[nameIdx].trim() : '';
+          let code = (codeIdx >= 0 && cols[codeIdx]) ? cols[codeIdx].trim() : '';
+          let teacher = (teacherIdx >= 0 && cols[teacherIdx]) ? cols[teacherIdx].trim() : '';
+          let students = (studentsIdx >= 0 && cols[studentsIdx]) ? parseInt(cols[studentsIdx], 10) : 0;
+
+          // If name is still empty, look for any column matching standard class patterns like '10A', '12B', etc.
+          if (!name) {
+            const classPatternCol = cols.find(c => /^(10|11|12|[1-9])[A-Za-z0-9\s\-]+$/.test(c.trim()));
+            if (classPatternCol) {
+              name = classPatternCol.trim();
+            } else {
+              name = cols[1] || cols[0] || `ថ្នាក់ ${idx + 1}`;
+            }
+          }
+
+          parsed.push({
+            id: code || generatedIds[idx],
+            name: name,
+            teacher: teacher,
+            students: Number(students) || 0
+          });
+        });
+
+        setImportModal({
+          open: true,
+          parsedData: parsed,
+          isUploaded: true,
+          fileName: file.name
+        });
+      } else {
+        // Subjects tab
+        let nameIdx = lowerHeaders.findIndex(h =>
+          h.includes('ឈ្មោះមុខវិជ្ជា') ||
+          (h.includes('មុខវិជ្ជា') && !h.includes('កូដ') && !h.includes('ប្រភេទ')) ||
+          h === 'name' || h === 'subject'
+        );
+
+        let codeIdx = lowerHeaders.findIndex(h =>
+          h.includes('កូដមុខវិជ្ជា') ||
+          h.includes('កូដ') ||
+          h.includes('code') ||
+          h.includes('id')
+        );
+
+        let typeIdx = lowerHeaders.findIndex(h =>
+          h.includes('ប្រភេទ') ||
+          h.includes('type')
+        );
+
+        if (nameIdx === -1) {
+          const firstColHeader = lowerHeaders[0] || '';
+          if (firstColHeader.includes('ល.រ') || firstColHeader.includes('no') || firstColHeader === '#') {
+            nameIdx = lowerHeaders.length >= 3 && codeIdx === 1 ? 2 : 1;
+          } else if (lowerHeaders.length >= 2) {
+            nameIdx = 1;
+          } else {
+            nameIdx = 0;
+          }
+        }
+
+        const generatedIds = generateBatchSubjectIds(subjects, rows.length);
+        const parsed = [];
+
+        rows.forEach((cols, idx) => {
+          let name = (nameIdx >= 0 && cols[nameIdx]) ? cols[nameIdx].trim() : (cols[1] || cols[0] || `មុខវិជ្ជា ${idx + 1}`);
+          let code = (codeIdx >= 0 && cols[codeIdx]) ? cols[codeIdx].trim() : '';
+          let type = (typeIdx >= 0 && cols[typeIdx]) ? cols[typeIdx].trim() : 'វិទ្យាសាស្ត្រ';
+
+          parsed.push({
+            id: code || generatedIds[idx],
+            name: name,
+            type: type || 'វិទ្យាសាស្ត្រ'
+          });
+        });
+
+        setImportModal({
+          open: true,
+          parsedData: parsed,
+          isUploaded: true,
+          fileName: file.name
+        });
+      }
+    } catch (err) {
+      console.error('File parsing error:', err);
+      showToast('មានបញ្ហាក្នុងការអានឯកសារ Excel!');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const handleLoadDemoImport = () => {
@@ -900,11 +994,24 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
     if (!importModal.parsedData || importModal.parsedData.length === 0) return;
 
     if (activeTab === 'classes') {
+      const existingNamesMap = new Map();
+      classes.forEach(c => {
+        if (c.name) existingNamesMap.set(c.name.trim().toLowerCase(), c);
+      });
+
       const generatedIds = generateBatchClassIds(classes, importModal.parsedData.length);
-      const finalItems = importModal.parsedData.map((item, idx) => ({
-        ...item,
-        id: item.id || generatedIds[idx]
-      }));
+      let genIdx = 0;
+
+      const finalItems = importModal.parsedData.map((item) => {
+        const cleanName = (item.name || '').trim();
+        const existing = existingNamesMap.get(cleanName.toLowerCase());
+        const id = existing ? existing.id : (item.id || generatedIds[genIdx++]);
+        return {
+          ...item,
+          id,
+          name: cleanName
+        };
+      });
 
       for (const c of finalItems) {
         try {
@@ -913,14 +1020,33 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
           console.warn('Error saving imported class:', e);
         }
       }
-      setClasses(prev => [...finalItems, ...prev]);
-      showToast(`បាននាំចូលថ្នាក់រៀនថ្មីចំនួន ${finalItems.length} ដោយជោគជ័យ!`);
+
+      setClasses(prev => {
+        const map = new Map();
+        prev.forEach(c => map.set(c.id, c));
+        finalItems.forEach(c => map.set(c.id, c));
+        return Array.from(map.values());
+      });
+      showToast(`បាននាំចូលថ្នាក់រៀនចំនួន ${finalItems.length} ដោយជោគជ័យ!`);
     } else {
+      const existingNamesMap = new Map();
+      subjects.forEach(s => {
+        if (s.name) existingNamesMap.set(s.name.trim().toLowerCase(), s);
+      });
+
       const generatedIds = generateBatchSubjectIds(subjects, importModal.parsedData.length);
-      const finalItems = importModal.parsedData.map((item, idx) => ({
-        ...item,
-        id: item.id || generatedIds[idx]
-      }));
+      let genIdx = 0;
+
+      const finalItems = importModal.parsedData.map((item) => {
+        const cleanName = (item.name || '').trim();
+        const existing = existingNamesMap.get(cleanName.toLowerCase());
+        const id = existing ? existing.id : (item.id || generatedIds[genIdx++]);
+        return {
+          ...item,
+          id,
+          name: cleanName
+        };
+      });
 
       for (const s of finalItems) {
         try {
@@ -929,8 +1055,13 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
           console.warn('Error saving imported subject:', e);
         }
       }
-      setSubjects(prev => [...finalItems, ...prev]);
-      showToast(`បាននាំចូលមុខវិជ្ជាថ្មីចំនួន ${finalItems.length} ដោយជោគជ័យ!`);
+      setSubjects(prev => {
+        const map = new Map();
+        prev.forEach(s => map.set(s.id, s));
+        finalItems.forEach(s => map.set(s.id, s));
+        return Array.from(map.values());
+      });
+      showToast(`បាននាំចូលមុខវិជ្ជាចំនួន ${finalItems.length} ដោយជោគជ័យ!`);
     }
 
     setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' });

@@ -1294,7 +1294,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                    
                   </div>
                   <p className="text-[12px] sm:text-[13px] text-slate-500 font-medium mt-0.5 sm:mt-1 leading-relaxed">
-                    ប្រព័ន្ធបិទការស្រង់វត្តមានរៀងរាល់ម៉ោង ៦:០០ យប់ (18:00) និងបើកដំណើរការឡើងវិញនៅម៉ោង ៦:៣០ ព្រឹក (06:30)។
+                    ប្រព័ន្ធបិទការស្រង់វត្តមានរៀងរាល់ម៉ោង ៦:០០ យប់ (18:00)
                   </p>
                   <div className="text-[11px] sm:text-[12px] text-rose-700 font-bold mt-1 sm:mt-1.5 flex items-center gap-1.5">
                     <span>ម៉ោងបើកដំណើរការស្រង់វត្តមាន៖ ០៦:៣០ ព្រឹក ដល់ ០៦:០០ យប់</span>
@@ -1303,14 +1303,14 @@ export default function Attendance({ session, onNavigate, onLogout }) {
               </div>
 
               <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                <button
+                {/* <button
                   type="button"
                   onClick={() => setAllowPastHoursOverride(true)}
                   className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-[11px] sm:text-[13px] px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
                   title="បើកដំណើរការស្រង់វត្តមានសាកល្បងក្រៅម៉ោង"
                 >
                   <span>+ ស្រង់សាកល្បង</span>
-                </button>
+                </button> */}
               </div>
             </div>
           </div>

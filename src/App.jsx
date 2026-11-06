@@ -5,6 +5,7 @@ import Attendance from './components/Attendance'
 import Report from './components/Report'
 import AdminLayout from './components/admin/AdminLayout'
 import InstallAppBanner from './components/common/InstallAppBanner'
+import ErrorBoundary from './components/common/ErrorBoundary'
 import { loadSession, saveSession, clearSession, api } from './utils/api'
 import { startDailySummaryScheduler } from './services/dailySummaryScheduler'
 import { startMonthlyBackupScheduler } from './services/monthlyBackupScheduler'
@@ -174,7 +175,8 @@ export default function App() {
       {/* Top-Right Floating Install Alert Banner for Mobile Users */}
       <InstallAppBanner />
       {/* Page Content */}
-      <div className="page-enter">
+      <ErrorBoundary onReset={() => setActiveTab('dashboard')}>
+        <div className="page-enter">
         {activeTab === 'dashboard' && (
           <Dashboard 
             session={session} 
@@ -186,6 +188,7 @@ export default function App() {
         {activeTab === 'attendance' && <Attendance session={session} onNavigate={setActiveTab} onLogout={handleLogout} />}
         {activeTab === 'report' && <Report session={session} onNavigate={setActiveTab} />}
       </div>
+      </ErrorBoundary>
 
       {/* Bottom Navigation */}
       <nav className="fixed bottom-0 left-0 right-0 h-[52px] bg-white/95 backdrop-blur-xl border-t border-slate-100 flex items-center justify-around z-[100] shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">

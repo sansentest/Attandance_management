@@ -459,7 +459,7 @@ export default function AdminUsers() {
               </button>
 
               {/* Copy Link for Monitors Button */}
-              <button
+              {/* <button
                 type="button"
                 onClick={() => {
                   const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) ? import.meta.env.BASE_URL : '/'
@@ -473,7 +473,7 @@ export default function AdminUsers() {
               >
                 <Link2 size={15} strokeWidth={2.3} />
                 <span>ចម្លង Link ចូលប្រើ</span>
-              </button>
+              </button> */}
 
               <button 
                 onClick={() => setIsAddModalOpen(true)}

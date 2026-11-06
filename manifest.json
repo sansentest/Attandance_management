@@ -1,20 +1,19 @@
 {
-  "name": "ប្រព័ន្ធគ្រប់គ្រងវត្តមានសិស្ស",
-  "short_name": "វត្តមានសិស្ស",
-  "description": "ប្រព័ន្ធគ្រប់គ្រងវត្តមានសិស្សតាមម៉ោង វិទ្យាល័យអង្គរកា",
+  "name": "ប្រព័ន្ធគ្រប់គ្រងអវត្តមានវិទ្យាល័យអង្គរកា",
+  "short_name": "វត្តមានអង្គរកា",
+  "description": "ប្រព័ន្ធគ្រប់គ្រងអវត្តមានសិស្សតាមម៉ោង វិទ្យាល័យអង្គរកា",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#f8fafc",
+  "background_color": "#ffffff",
   "theme_color": "#4f46e5",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "/school-logo.svg",
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ]
 }
-

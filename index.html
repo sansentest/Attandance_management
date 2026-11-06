@@ -15,23 +15,23 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="វត្តមានអង្គរកា" />
 
-    <!-- Early PWA Prompt Capture & Service Worker (GitHub Pages Compatible) -->
+    <!-- Early PWA Prompt Capture & Service Worker (Immediate Registration) -->
     <script>
       window.__pwaInstallPrompt = null;
       window.addEventListener('beforeinstallprompt', function(e) {
         e.preventDefault();
         window.__pwaInstallPrompt = e;
+        console.log('[PWA] beforeinstallprompt captured successfully!');
         window.dispatchEvent(new CustomEvent('pwa-prompt-available', { detail: e }));
       });
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          var swUrl = '/Attandance_management/sw.js';
-          navigator.serviceWorker.register(swUrl, { scope: '/Attandance_management/' }).then(function(reg) {
+        navigator.serviceWorker.register('/Attandance_management/sw.js', { scope: '/Attandance_management/' })
+          .then(function(reg) {
             console.log('[PWA] Service Worker registered:', reg.scope);
-          }).catch(function(err) {
+          })
+          .catch(function(err) {
             console.warn('[PWA] Service Worker registration failed:', err);
           });
-        });
       }
     </script>
     

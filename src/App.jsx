@@ -6,6 +6,7 @@ import Report from './components/Report'
 import AdminLayout from './components/admin/AdminLayout'
 import { loadSession, saveSession, clearSession, api } from './utils/api'
 import { startDailySummaryScheduler } from './services/dailySummaryScheduler'
+import { startMonthlyBackupScheduler } from './services/monthlyBackupScheduler'
 import { syncOfflineAttendanceQueue } from './utils/offlineSync'
 import { Home, ListChecks, LogOut, X } from 'lucide-react'
 
@@ -75,6 +76,7 @@ export default function App() {
 
     // 1. Start background 5:00 PM Daily Summary scheduler for Telegram
     const stopScheduler = startDailySummaryScheduler()
+    const stopMonthlyBackup = startMonthlyBackupScheduler()
 
     // 2. Setup online listener for automatic offline queue synchronization
     const handleOnline = () => {
@@ -89,6 +91,7 @@ export default function App() {
 
     return () => {
       stopScheduler()
+      stopMonthlyBackup()
       window.removeEventListener('online', handleOnline)
     }
   }, [])
@@ -169,7 +172,14 @@ export default function App() {
     <div className="relative min-h-screen pb-[64px] bg-bg-base font-[family-name:var(--font-primary)] overflow-x-hidden max-w-full">
       {/* Page Content */}
       <div className="page-enter">
-        {activeTab === 'dashboard' && <Dashboard session={session} onLogout={handleLogout} onNavigate={setActiveTab} />}
+        {activeTab === 'dashboard' && (
+          <Dashboard 
+            session={session} 
+            onLogout={handleLogout} 
+            onNavigate={setActiveTab} 
+            onUpdateSession={(updated) => setSession(updated)} 
+          />
+        )}
         {activeTab === 'attendance' && <Attendance session={session} onNavigate={setActiveTab} onLogout={handleLogout} />}
         {activeTab === 'report' && <Report session={session} onNavigate={setActiveTab} />}
       </div>

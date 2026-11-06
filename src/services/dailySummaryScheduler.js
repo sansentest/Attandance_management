@@ -13,13 +13,14 @@ export async function triggerDailySummary(customDate, manual = false) {
   const today = customDate || new Date().toISOString().split('T')[0]
   
   try {
-    // 1. Fetch attendance records, students, classes, and bots
-    const [attRes, stdRes, clsRes, botRes, tokRes] = await Promise.all([
+    // 1. Fetch attendance records, students, classes, bots, and discipline tracking
+    const [attRes, stdRes, clsRes, botRes, tokRes, discRes] = await Promise.all([
       api('attendance.getAll'),
       api('students.getAll'),
       api('academic.getClasses'),
       api('telegram.getBots'),
-      api('telegram.getGlobalTokens')
+      api('telegram.getGlobalTokens'),
+      api('discipline.getTracking')
     ])
 
     const records = (attRes && attRes.success && attRes.data) || JSON.parse(localStorage.getItem('school_attendance_records') || '[]')
@@ -27,6 +28,7 @@ export async function triggerDailySummary(customDate, manual = false) {
     const classes = (clsRes && clsRes.success && clsRes.data) || JSON.parse(localStorage.getItem('school_classes_cache') || '[]')
     const bots = (botRes && botRes.success && botRes.data) || JSON.parse(localStorage.getItem('school_telegram_bots_cache') || '[]')
     const globalTokens = (tokRes && tokRes.success && tokRes.data) || JSON.parse(localStorage.getItem('school_telegram_global_tokens_cache') || '[]')
+    const disciplineTracking = (discRes && discRes.success && discRes.data) || JSON.parse(localStorage.getItem('school_discipline_cache') || '[]')
 
     const result = await dispatchDailySummaryNotification({
       date: today,
@@ -35,7 +37,8 @@ export async function triggerDailySummary(customDate, manual = false) {
       students,
       bots,
       globalTokens,
-      manualTrigger: manual
+      manualTrigger: manual,
+      disciplineTracking
     })
 
     if (result && result.success) {

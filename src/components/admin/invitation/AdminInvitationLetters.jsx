@@ -3,7 +3,6 @@ import { Settings, Save, Mail, Printer, CheckCircle2, Search, Filter, Calendar, 
 import InvitationLetterPrint from './InvitationLetterPrint';
 import { exportInvitationPdf } from './exports/exportInvitationPdf';
 import { exportInvitationWord } from './exports/exportInvitationWord';
-import { exportInvitationExcel } from './exports/exportInvitationExcel';
 import { api, getCachedSchoolName } from '../../../utils/api';
 
 function normalizeGrade(className) {
@@ -314,20 +313,6 @@ export default function AdminInvitationLetters() {
     if (targets.length === 0) return;
 
     exportInvitationWord({
-      selectedStudents: targets,
-      config: printConfig
-    });
-
-    setPendingPrintTargets(targets);
-    setPrintConfirmModalOpen(true);
-  };
-
-  const executeExportExcel = () => {
-    setPrintSettingsOpen(false);
-    const targets = customPrintStudents || pendingStudents.filter(s => selectedIds.includes(s.id));
-    if (targets.length === 0) return;
-
-    exportInvitationExcel({
       selectedStudents: targets,
       config: printConfig
     });
@@ -857,20 +842,6 @@ export default function AdminInvitationLetters() {
           >
             <RefreshCw size={15} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span>{isRefreshing ? 'កំពុងទាញ...' : 'ទាញថ្មី'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => exportInvitationExcel({
-              students: activeTab === 'pending' ? filteredPending : filteredHistory,
-              tab: activeTab,
-              schoolName: getCachedSchoolName()
-            })}
-            className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-xl text-[13px] font-bold transition-all shadow-xs cursor-pointer"
-            title="ទាញយកបញ្ជីជា Excel (.csv)"
-          >
-            <Download size={15} className="text-emerald-600" />
-            <span>Excel</span>
           </button>
         </div>
       </div>
@@ -1466,14 +1437,6 @@ export default function AdminInvitationLetters() {
               >
                 <FileText size={15} className="text-blue-600" />
                 Word (.doc)
-              </button>
-              <button
-                onClick={executeExportExcel}
-                className="flex items-center justify-center gap-2 py-2 px-3.5 bg-emerald-50 border border-emerald-200 text-emerald-700 hover:bg-emerald-100 rounded-xl font-bold text-[13px] transition-all cursor-pointer"
-                title="ទាញយកជាឯកសារ Microsoft Excel (.xls)"
-              >
-                <Download size={15} className="text-emerald-600" />
-                Excel (.xls)
               </button>
               <button 
                 onClick={executePrint}

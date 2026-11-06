@@ -3,7 +3,7 @@ import {
   Settings, Save, School, MapPin, Phone, User, Calendar, BookOpen, 
   Shield, Key, Database, Upload, Download, CheckCircle2, AlertTriangle, 
   RefreshCw, Loader2, Image as ImageIcon, FileCheck, HardDrive, 
-  ArrowRight, X, AlertCircle, Trash2
+  ArrowRight, X, AlertCircle, Trash2, Clock, Check, GraduationCap
 } from 'lucide-react'
 import { api, verifyPassword } from '../../../utils/api'
 
@@ -58,7 +58,7 @@ export default function AdminSettings({ initialTab = 'school' }) {
         if (p?.discipline) return p.discipline;
       }
     } catch (e) {}
-    return { '7-9': 50, '10-12': 40 };
+    return { '7-9': 20, '10-12': 20 };
   })
 
   const [security, setSecurity] = useState({
@@ -76,6 +76,28 @@ export default function AdminSettings({ initialTab = 'school' }) {
   const [lastBackupTime, setLastBackupTime] = useState(() => {
     return localStorage.getItem('school_last_backup_time') || null;
   })
+
+  // Monthly Auto-Backup States
+  const [monthlyBackups, setMonthlyBackups] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_monthly_backups_list');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  })
+  const [loadingMonthly, setLoadingMonthly] = useState(false)
+  const [creatingMonthly, setCreatingMonthly] = useState(false)
+  const [downloadingMonthKey, setDownloadingMonthKey] = useState(null)
+  const [autoBackupSettings, setAutoBackupSettings] = useState(() => {
+    try {
+      const raw = localStorage.getItem('school_auto_backup_settings');
+      return raw ? JSON.parse(raw) : { enabled: true, dayOfMonth: 1 };
+    } catch {
+      return { enabled: true, dayOfMonth: 1 };
+    }
+  })
+  const [deleteMonthlyModal, setDeleteMonthlyModal] = useState({ open: false, item: null })
 
   // Clean / Reset Test Data States
   const [cleaningData, setCleaningData] = useState(false)
@@ -273,6 +295,146 @@ export default function AdminSettings({ initialTab = 'school' }) {
     } finally {
       setRestoringBackup(false)
     }
+  }
+
+  // ─────────────────────────────────────────────
+  // Monthly Auto-Backup Functions
+  // ─────────────────────────────────────────────
+  const loadMonthlyBackups = async () => {
+    setLoadingMonthly(true)
+    try {
+      const res = await api('backup.getMonthlyList')
+      if (res?.success && Array.isArray(res.data)) {
+        setMonthlyBackups(res.data)
+      }
+    } catch (e) {
+      console.warn('Failed to load monthly backups:', e)
+    } finally {
+      setLoadingMonthly(false)
+    }
+  }
+
+  // Load monthly backups whenever switching to backup tab
+  useEffect(() => {
+    if (activeTab === 'backup') {
+      loadMonthlyBackups()
+    }
+  }, [activeTab])
+
+  // Listen for background auto-backup creation event
+  useEffect(() => {
+    const handleAutoBackupCreated = (e) => {
+      loadMonthlyBackups()
+      if (e?.detail) {
+        showToast(`បានបង្កើតការបម្រុងទុកស្វ័យប្រវត្តប្រចាំ ${e.detail.monthKhmer || ''} រួចរាល់!`, 'success')
+      }
+    }
+    window.addEventListener('school_monthly_backup_created', handleAutoBackupCreated)
+    return () => window.removeEventListener('school_monthly_backup_created', handleAutoBackupCreated)
+  }, [])
+
+  // Create monthly backup manually now
+  const handleCreateMonthlyNow = async () => {
+    setCreatingMonthly(true)
+    try {
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = now.getMonth() + 1
+      const currentMonthKey = `${year}-${String(month).padStart(2, '0')}`
+      const KHMER_MONTHS = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ']
+      const KHMER_NUMS = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩']
+      const toKhmerNum = (num) => String(num).split('').map(c => KHMER_NUMS[parseInt(c)] || c).join('')
+      const monthKhmer = `ខែ${KHMER_MONTHS[now.getMonth()]} ឆ្នាំ${toKhmerNum(year)}`
+
+      const res = await api('backup.createMonthly', {
+        monthKey: currentMonthKey,
+        monthKhmer,
+        isAuto: false
+      })
+
+      if (res?.success) {
+        showToast(res.message || 'បានបង្កើតការបម្រុងទុកប្រចាំខែជោគជ័យ!', 'success')
+        localStorage.setItem('school_last_auto_backup_month', currentMonthKey)
+        const nowFormatted = new Date().toLocaleString('km-KH')
+        localStorage.setItem('school_last_backup_time', nowFormatted)
+        setLastBackupTime(nowFormatted)
+        await loadMonthlyBackups()
+      } else {
+        showToast('មិនអាចបង្កើត Backup បានទេ៖ ' + (res?.error || 'បញ្ហាប្រព័ន្ធ'), 'error')
+      }
+    } catch (err) {
+      showToast('កំហុសពេលបង្កើត Backup៖ ' + err.message, 'error')
+    } finally {
+      setCreatingMonthly(false)
+    }
+  }
+
+  // Download a specific monthly backup
+  const handleDownloadMonthly = async (item) => {
+    setDownloadingMonthKey(item.monthKey)
+    try {
+      const res = await api('backup.getMonthlyPayload', { monthKey: item.monthKey })
+      if (res?.success && res.data) {
+        const filename = `angroka_school_backup_${item.monthKey}.json`
+        const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+        showToast(`បានទាញយក Backup ${item.monthKhmer || item.monthKey} ជោគជ័យ!`, 'success')
+      } else {
+        showToast('មិនអាចទាញយកឯកសារនេះបានទេ៖ ' + (res?.error || 'មិនមានទិន្នន័យ'), 'error')
+      }
+    } catch (err) {
+      showToast('កំហុសពេលទាញយក៖ ' + err.message, 'error')
+    } finally {
+      setDownloadingMonthKey(null)
+    }
+  }
+
+  // Restore directly from a monthly backup
+  const handleRestoreFromMonthly = async (item) => {
+    try {
+      const res = await api('backup.getMonthlyPayload', { monthKey: item.monthKey })
+      if (res?.success && res.data) {
+        setPendingRestoreData(res.data)
+        setRestoreConfirmModal(true)
+      } else {
+        showToast('មិនអាចទាញយកទិន្នន័យ Backup សម្រាប់ស្ដារបានទេ', 'error')
+      }
+    } catch (err) {
+      showToast('កំហុស៖ ' + err.message, 'error')
+    }
+  }
+
+  // Delete a monthly backup
+  const handleDeleteMonthly = async (item) => {
+    try {
+      const res = await api('backup.deleteMonthly', { id: item.id, monthKey: item.monthKey })
+      if (res?.success) {
+        showToast(`បានលុប Backup ${item.monthKhmer || item.monthKey} ដោយជោគជ័យ`, 'success')
+        setDeleteMonthlyModal({ open: false, item: null })
+        await loadMonthlyBackups()
+      } else {
+        showToast('មិនអាចលុបបានទេ៖ ' + (res?.error || 'បញ្ហាប្រព័ន្ធ'), 'error')
+      }
+    } catch (err) {
+      showToast('កំហុស៖ ' + err.message, 'error')
+    }
+  }
+
+  // Toggle or change Auto-Backup Settings
+  const handleUpdateAutoBackupSetting = (key, value) => {
+    const updated = { ...autoBackupSettings, [key]: value }
+    setAutoBackupSettings(updated)
+    try {
+      localStorage.setItem('school_auto_backup_settings', JSON.stringify(updated))
+      showToast(key === 'enabled' ? (value ? 'បានបើកដំណើរការ Auto-Backup ប្រចាំខែ' : 'បានបិទដំណើរការ Auto-Backup') : 'បានធ្វើបច្ចុប្បន្នភាពកាលវិភាគ Auto-Backup', 'success')
+    } catch {}
   }
 
   // Clean / Reset Data Handler
@@ -550,7 +712,7 @@ export default function AdminSettings({ initialTab = 'school' }) {
                 </div>
                 <div>
                   <h3 className="text-[16px] font-black text-slate-800">កំណត់កម្រិតវិន័យអវត្តមាន</h3>
-                  <p className="text-[13px] text-slate-500 mt-0.5 font-medium">កំណត់ចំនួនដងអវត្តមានអត់ច្បាប់អតិបរមាមុនឈានដល់ការកោះហៅអាណាព្យាបាល</p>
+                  <p className="text-[13px] text-slate-500 mt-0.5 font-medium">កំណត់ចំនួនថ្ងៃអវត្តមានអត់ច្បាប់អតិបរមាមុនឈានដល់ការកោះហៅអាណាព្យាបាល (គិតជាថ្ងៃ)</p>
                 </div>
               </div>
 
@@ -569,7 +731,7 @@ export default function AdminSettings({ initialTab = 'school' }) {
                         onChange={e => setDiscipline({...discipline, '7-9': parseInt(e.target.value) || 0})} 
                         className="w-24 bg-white border border-slate-200 rounded-lg p-2.5 text-center font-bold text-[15px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-sm" 
                       />
-                      <span className="text-[14px] text-slate-500 font-bold">ដង</span>
+                      <span className="text-[14px] text-slate-500 font-bold">ថ្ងៃ</span>
                     </div>
                   </div>
 
@@ -584,9 +746,9 @@ export default function AdminSettings({ initialTab = 'school' }) {
                         min="1" 
                         value={discipline['10-12']} 
                         onChange={e => setDiscipline({...discipline, '10-12': parseInt(e.target.value) || 0})} 
-                        className="w-24 bg-white  border-slate-200 rounded-lg p-2.5 text-center font-bold text-[15px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-sm" 
+                        className="w-24 bg-white border-slate-200 rounded-lg p-2.5 text-center font-bold text-[15px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all shadow-sm" 
                       />
-                      <span className="text-[14px] text-slate-500 font-bold">ដង</span>
+                      <span className="text-[14px] text-slate-500 font-bold">ថ្ងៃ</span>
                     </div>
                   </div>
                 </div>
@@ -670,177 +832,314 @@ export default function AdminSettings({ initialTab = 'school' }) {
           )}
 
           {/* Backup & Restore Tab */}
+          {/* Backup & Restore Tab */}
           {activeTab === 'backup' && (
-            <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-300">
-              <div className="flex items-center gap-3 mb-8">
-                <div className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
-                  <Database size={20} />
-                </div>
-                <div>
-                  <h3 className="text-[16px] font-black text-slate-800">ការបម្រុងទុក និងស្ដារទិន្នន័យ</h3>
-                  <p className="text-[13px] text-slate-500 mt-0.5 font-medium">គ្រប់គ្រងការទាញយក Backup រក្សាទុកក្នុងកុំព្យូទ័រ និងការស្ដារទិន្នន័យ</p>
-                </div>
-              </div>
+            <div className="max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-5">
 
-              {/* Status Header Banner */}
-              <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-indigo-50/40 border border-indigo-100/80 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-11 h-11 rounded-xl bg-white shadow-sm flex items-center justify-center text-indigo-600 border border-indigo-100 shrink-0">
-                    <HardDrive size={22} />
+              {/* Status Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200/80 rounded-2xl px-4 py-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 border border-indigo-100 shrink-0">
+                    <HardDrive size={16} />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-[14px] font-black text-slate-800">ស្ថានភាពទិន្នន័យ Cloud</span>
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
+                      <span className="text-[13px] font-extrabold text-slate-800">Firebase Cloud</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        Firebase Firestore Active
+                        Active
                       </span>
                     </div>
-                    <p className="text-[12px] font-medium text-slate-500 mt-0.5">
-                      {lastBackupTime ? `បានទាញយក Backup ចុងក្រោយ៖ ${lastBackupTime}` : 'មិនទាន់មានការទាញយក Backup ក្នុង browser នេះទេ'}
+                    <p className="text-[11px] font-medium text-slate-400">
+                      {lastBackupTime ? `Backup ចុងក្រោយ: ${lastBackupTime}` : 'មិនទាន់ Backup ក្នុង browser នេះទេ'}
                     </p>
                   </div>
                 </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] font-bold text-slate-600">
+                    <User size={11} className="text-indigo-500" />
+                    <span>អ្នកប្រើ <strong className="text-slate-800">{(() => { try { return (JSON.parse(localStorage.getItem('school_users_cache') || '[]')).length } catch { return 1 } })()}</strong></span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] font-bold text-slate-600">
+                    <GraduationCap size={11} className="text-emerald-500" />
+                    <span>សិស្ស <strong className="text-slate-800">{(() => { try { return (JSON.parse(localStorage.getItem('school_students_cache') || '[]')).length } catch { return 0 } })()}</strong></span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[11px] font-bold text-slate-600">
+                    <CheckCircle2 size={11} className="text-blue-500" />
+                    <span>វត្តមាន <strong className="text-slate-800">{(() => { try { return (JSON.parse(localStorage.getItem('school_attendance_records') || '[]')).length } catch { return 0 } })()}</strong></span>
+                  </span>
+                </div>
               </div>
 
-              {/* Grid with 2 primary cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                
-                {/* 1. Export Backup Card */}
-                <div className="flex flex-col bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-7 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
-                      <Download size={20} />
+              {/* Monthly Auto-Backup */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                      <Calendar size={18} />
                     </div>
                     <div>
-                      <h4 className="text-[15px] font-black text-slate-800">ទាញយកទិន្នន័យ Backup</h4>
-                      <span className="text-[11px] font-bold text-slate-400">Export Complete JSON</span>
+                      <h4 className="text-[14px] font-extrabold text-slate-800">Auto-Backup ប្រចាំខែ</h4>
+                      <p className="text-[11px] font-medium text-slate-400 mt-0.5">រក្សាទុក Cloud ស្វ័យប្រវត្តិ · ទិន្នន័យ Admin ផ្ទៃក្នុង</p>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleCreateMonthlyNow}
+                    disabled={creatingMonthly}
+                    className="inline-flex items-center justify-center gap-2 py-2 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white rounded-xl font-bold text-[12px] shadow-xs transition-all cursor-pointer disabled:opacity-60 shrink-0 self-start sm:self-auto"
+                  >
+                    {creatingMonthly ? (
+                      <><Loader2 size={13} className="animate-spin" /> កំពុង Backup...</>
+                    ) : (
+                      <><RefreshCw size={13} /> Backup ខែនេះ</>
+                    )}
+                  </button>
+                </div>
 
-                  <p className="text-[13px] font-medium text-slate-500 leading-relaxed mb-5">
-                    ទាញយកទិន្នន័យសាលាទាំងមូលជាឯកសារ <b>.json</b> តែមួយ រួមមាន៖ បញ្ជីសិស្ស, កំណត់ត្រាវត្តមាន, ថ្នាក់រៀន, មុខវិជ្ជា, កាលវិភាគ, Bot Telegram និងការកំណត់នានា។
-                  </p>
+                {/* Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-5 py-4 border-b border-slate-100 bg-slate-50/40">
+                  <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200/80">
+                    <div>
+                      <span className="text-[12px] font-bold text-slate-700 block">Auto-Backup</span>
+                      <span className="text-[10.5px] text-slate-400 font-medium">
+                        {autoBackupSettings.enabled ? 'បើកដំណើរការ · រៀងរាល់ខែ' : 'បានបិទ'}
+                      </span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(autoBackupSettings.enabled)}
+                        onChange={(e) => handleUpdateAutoBackupSetting('enabled', e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-10 h-5.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4.5 after:w-4.5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200/80">
+                    <div>
+                      <span className="text-[12px] font-bold text-slate-700 block">ថ្ងៃ Backup</span>
+                      <span className="text-[10.5px] text-slate-400 font-medium">ថ្ងៃក្នុងខែ</span>
+                    </div>
+                    <select
+                      value={autoBackupSettings.dayOfMonth || 1}
+                      onChange={(e) => handleUpdateAutoBackupSetting('dayOfMonth', Number(e.target.value))}
+                      className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11.5px] font-bold text-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                    >
+                      <option value={1}>ថ្ងៃទី ១ (លំនាំដើម)</option>
+                      <option value={15}>ថ្ងៃទី ១៥</option>
+                      <option value={25}>ថ្ងៃទី ២៥</option>
+                      <option value={28}>ថ្ងៃទី ២៨ (ចុងខែ)</option>
+                    </select>
+                  </div>
+                </div>
 
-                  <div className="bg-slate-50 rounded-xl p-4 mb-6 border border-slate-100 space-y-2 text-[12px] font-bold text-slate-600">
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">បញ្ជីសិស្ស</span>
-                      <span className="text-indigo-600 font-extrabold">រួមបញ្ចូល</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">កំណត់ត្រាវត្តមានទាំងអស់</span>
-                      <span className="text-indigo-600 font-extrabold">រួមបញ្ចូល</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">ថ្នាក់ មុខវិជ្ជា និងកាលវិភាគ</span>
-                      <span className="text-indigo-600 font-extrabold">រួមបញ្ចូល</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-2">ការកំណត់ & Telegram Bots</span>
-                      <span className="text-indigo-600 font-extrabold">រួមបញ្ចូល</span>
-                    </div>
+                {/* Archives List */}
+                <div className="px-5 py-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h5 className="text-[12.5px] font-extrabold text-slate-700 flex items-center gap-1.5">
+                      <Database size={13} className="text-indigo-500" />
+                      ប្រវត្តិ Backup ប្រចាំខែ
+                    </h5>
+                    <button
+                      type="button"
+                      onClick={loadMonthlyBackups}
+                      disabled={loadingMonthly}
+                      className="text-[11px] font-bold text-slate-400 hover:text-indigo-600 flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw size={11} className={loadingMonthly ? 'animate-spin' : ''} />
+                      ផ្ទុកឡើងវិញ
+                    </button>
                   </div>
 
-                  <div className="mt-auto">
-                    <button 
+                  {monthlyBackups.length === 0 ? (
+                    <div className="text-center py-8 bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+                      <HardDrive size={26} className="mx-auto text-slate-300 mb-2" />
+                      <p className="text-[12px] font-bold text-slate-500">មិនទាន់មាន Backup ប្រចាំខែ</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        ស្វ័យប្រវត្តិនៅថ្ងៃទី {autoBackupSettings.dayOfMonth || 1} · ឬចុច «Backup ខែនេះ»
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-100">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                            <th className="py-2 px-3">ខែ</th>
+                            <th className="py-2 px-3">ទិន្នន័យ</th>
+                            <th className="py-2 px-3 hidden sm:table-cell">កាលបរិច្ឆេទ</th>
+                            <th className="py-2 px-3 text-right">សកម្មភាព</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-[11.5px]">
+                          {monthlyBackups.map((item) => (
+                            <tr key={item.id || item.monthKey} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="py-2.5 px-3">
+                                <div className="font-extrabold text-slate-800 text-[12px] leading-tight">
+                                  {item.monthKhmer || item.monthKey}
+                                </div>
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold mt-0.5 ${
+                                  item.isAuto ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'
+                                }`}>
+                                  {item.isAuto ? 'Auto' : 'Manual'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3">
+                                <div className="flex items-center gap-2 flex-wrap text-[10.5px] text-slate-500 font-medium">
+                                  <span>សិស្ស <strong className="text-slate-700">{item.counts?.students ?? 0}</strong></span>
+                                  <span className="text-slate-200">|</span>
+                                  <span>វត្តមាន <strong className="text-slate-700">{item.counts?.attendance ?? 0}</strong></span>
+                                  <span className="text-slate-200">|</span>
+                                  <span>Users <strong className="text-indigo-600">{item.counts?.users ?? 0}</strong></span>
+                                </div>
+                              </td>
+                              <td className="py-2.5 px-3 hidden sm:table-cell text-[10.5px] text-slate-400 font-mono">
+                                {item.createdAt ? new Date(item.createdAt).toLocaleDateString('km-KH') : item.monthKey}
+                                {item.sizeKb && <div className="text-[9.5px] text-slate-300">{item.sizeKb} KB</div>}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <div className="inline-flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadMonthly(item)}
+                                    disabled={downloadingMonthKey === item.monthKey}
+                                    className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 transition-colors cursor-pointer"
+                                    title="ទាញយក .json"
+                                  >
+                                    {downloadingMonthKey === item.monthKey
+                                      ? <Loader2 size={12} className="animate-spin" />
+                                      : <Download size={12} />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRestoreFromMonthly(item)}
+                                    className="flex items-center gap-1 py-1 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] transition-colors cursor-pointer"
+                                    title="ស្ដារទិន្នន័យ"
+                                  >
+                                    <Upload size={11} /> ស្ដារ
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteMonthlyModal({ open: true, item })}
+                                    className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-300 hover:text-rose-500 transition-colors cursor-pointer"
+                                    title="លុប"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Manual Backup & Restore */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                {/* Download */}
+                <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                  <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 border border-indigo-100">
+                      <Download size={16} />
+                    </div>
+                    <div>
+                      <h4 className="text-[13px] font-extrabold text-slate-800">ទាញយក Backup</h4>
+                      <span className="text-[10px] font-bold text-slate-400">Export · Download .json</span>
+                    </div>
+                  </div>
+                  <div className="px-5 py-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-1.5 text-[11px] font-bold text-slate-600">
+                      {['បញ្ជីសិស្ស', 'វត្តមានទាំងអស់', 'ថ្នាក់ · មុខវិជ្ជា', 'Users · Bots · ការកំណត់'].map(label => (
+                        <div key={label} className="flex items-center gap-1.5 bg-slate-50 rounded-lg px-2.5 py-1.5 border border-slate-100">
+                          <Check size={11} className="text-indigo-500 shrink-0" />
+                          <span>{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button
                       onClick={handleExportBackup}
                       disabled={exportingBackup}
-                      className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 disabled:opacity-70 disabled:hover:translate-y-0 cursor-pointer"
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white rounded-xl font-bold text-[12px] transition-all shadow-xs hover:shadow disabled:opacity-70 cursor-pointer"
                     >
-                      {exportingBackup ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Download size={16} />
-                      )}
-                      <span>{exportingBackup ? 'កំពុងទាញយកទិន្នន័យពី Firebase...' : 'ទាញយក Backup ឥឡូវនេះ (Download .json)'}</span>
+                      {exportingBackup ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                      {exportingBackup ? 'កំពុងទាញយក...' : 'ទាញយក Backup (.json)'}
                     </button>
                   </div>
                 </div>
 
-                {/* 2. Restore Backup Card */}
-                <div className="flex flex-col bg-white border border-slate-200/80 rounded-2xl p-6 sm:p-7 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
-                      <Upload size={20} />
+                {/* Restore */}
+                <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+                  <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 border border-emerald-100">
+                      <Upload size={16} />
                     </div>
                     <div>
-                      <h4 className="text-[15px] font-black text-slate-800">ស្ដារទិន្នន័យឡើងវិញ (Restore)</h4>
-                      <span className="text-[11px] font-bold text-slate-400">Import & Sync to Cloud</span>
+                      <h4 className="text-[13px] font-extrabold text-slate-800">ស្ដារទិន្នន័យ (Restore)</h4>
+                      <span className="text-[10px] font-bold text-slate-400">Import · Sync to Cloud</span>
                     </div>
                   </div>
-
-                  <p className="text-[13px] font-medium text-slate-500 leading-relaxed mb-5">
-                    ជ្រើសរើសឯកសារ <b>.json</b> ដែលបាន Backup ពីមុន ដើម្បីបញ្ចូលទិន្នន័យឡើងវិញទៅក្នុង Firebase Cloud Firestore ដោយសុវត្ថិភាព។
-                  </p>
-
-                  <div 
-                    onClick={() => backupFileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-200 hover:border-emerald-400 bg-slate-50/70 hover:bg-emerald-50/30 rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all mb-6 group"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-slate-400 group-hover:text-emerald-600 group-hover:scale-110 transition-all border border-slate-100">
-                      <FileCheck size={20} />
+                  <div className="px-5 py-4 space-y-3">
+                    <div
+                      onClick={() => backupFileInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-200 hover:border-emerald-400 bg-slate-50/60 hover:bg-emerald-50/20 rounded-xl py-6 flex flex-col items-center gap-1.5 cursor-pointer transition-all group"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-white shadow-xs flex items-center justify-center text-slate-400 group-hover:text-emerald-600 group-hover:scale-110 transition-all border border-slate-100">
+                        <FileCheck size={16} />
+                      </div>
+                      <span className="text-[12px] font-bold text-slate-600 group-hover:text-emerald-700 transition-colors">ជ្រើសរើសឯកសារ .json</span>
+                      <span className="text-[10px] text-slate-400">គាំទ្រ JSON Backup ពីប្រព័ន្ធ</span>
+                      <input
+                        type="file"
+                        ref={backupFileInputRef}
+                        onChange={handleBackupFileSelect}
+                        accept=".json,application/json"
+                        className="hidden"
+                      />
                     </div>
-                    <span className="text-[13px] font-bold text-slate-700 group-hover:text-emerald-700 transition-colors">
-                      ចុចទីនេះដើម្បីជ្រើសរើសឯកសារ Backup (.json)
-                    </span>
-                    <span className="text-[11px] font-medium text-slate-400">
-                      គាំទ្រតែឯកសារទម្រង់ JSON ផ្លូវការរបស់ប្រព័ន្ធប៉ុណ្ណោះ
-                    </span>
-                    <input 
-                      type="file" 
-                      ref={backupFileInputRef}
-                      onChange={handleBackupFileSelect}
-                      accept=".json,application/json"
-                      className="hidden" 
-                    />
-                  </div>
-
-                  <div className="mt-auto">
-                    <div className="bg-gradient-to-br from-red-100 to-rose-50 text-danger rounded-xl p-3 flex items-start gap-2.5">
-                      <AlertTriangle size={16} className="text-danger shrink-0 mt-0.5" />
-                      <p className="text-[11px] font-medium text-danger leading-relaxed">
-                        ការ Restore នឹងបញ្ចូល ឬធ្វើបច្ចុប្បន្នភាពទិន្នន័យដែលមានស្រាប់។ លោកអ្នកនឹងអាចមើលចំនួនទិន្នន័យផ្ទៀងផ្ទាត់មុនពេលអនុវត្ត។
+                    <div className="flex items-start gap-2 bg-amber-50 border border-amber-200/60 rounded-xl px-3 py-2.5">
+                      <AlertTriangle size={13} className="text-amber-500 shrink-0 mt-0.5" />
+                      <p className="text-[10.5px] font-medium text-amber-800 leading-relaxed">
+                        Restore នឹងធ្វើបច្ចុប្បន្នភាព Cloud Firestore · អ្នកត្រូវបញ្ជាក់មុនពេលអនុវត្ត
                       </p>
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* 3. Clean / Reset Test Data Card */}
-                <div className="md:col-span-2 flex flex-col bg-rose-50/30 border border-rose-200/70 rounded-2xl p-6 sm:p-7 shadow-sm">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
-                      <Trash2 size={20} />
+              {/* Danger Zone */}
+              <div className="bg-rose-50/50 border border-rose-200/70 rounded-2xl px-5 py-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                      <Trash2 size={15} />
                     </div>
                     <div>
-                      <h4 className="text-[15px] font-black text-rose-950">សម្អាតទិន្នន័យតេស្ត និងកំណត់ប្រព័ន្ធឡើងវិញ</h4>
-                      <span className="text-[11px] font-bold text-rose-500">Wipe Test Records for Fresh School Deployment</span>
+                      <h4 className="text-[13px] font-extrabold text-rose-900">Danger Zone · សម្អាតទិន្នន័យ</h4>
+                      <p className="text-[10.5px] font-medium text-rose-500">លុបទិន្នន័យតេស្ត · Reset ប្រព័ន្ធ</p>
                     </div>
                   </div>
-
-                  <p className="text-[13px] font-medium text-slate-600 leading-relaxed mb-5">
-                    ប្រើមុខងារនេះដើម្បីសម្អាតរាល់កំណត់ត្រាវត្តមានសាកល្បង ឬកំណត់ត្រាសិស្សតេស្តទាំងអស់ចេញពី database និង Cache ក្នុង Browser ដើម្បីឱ្យសាលាអាចចាប់ផ្តើមកត់ត្រាវត្តមានពិតប្រាកដពីលេខ ០ ឡើងវិញ។
-                  </p>
-
-                  <div className="flex flex-col sm:flex-row gap-4">
-                    <button 
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <button
                       onClick={() => setCleanModal({ open: true, type: 'attendance' })}
-                      className="flex-1 flex items-center justify-center gap-2 py-3.5 px-5 bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-300 text-rose-700 hover:text-rose-800 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow cursor-pointer"
+                      className="flex items-center gap-1.5 py-2 px-3.5 bg-white hover:bg-rose-50 border border-rose-200 hover:border-rose-300 text-rose-700 rounded-xl font-bold text-[11.5px] transition-all cursor-pointer whitespace-nowrap"
                     >
-                      <Trash2 size={16} />
-                      <span>សម្អាតទិន្នន័យវត្តមានតេស្តទាំងអស់ </span>
+                      <Trash2 size={13} /> សម្អាតវត្តមាន
                     </button>
-
-                    <button 
+                    <button
                       onClick={() => setCleanModal({ open: true, type: 'all' })}
-                      className="flex-1 flex items-center justify-center gap-2 py-3.5 px-5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow cursor-pointer"
+                      className="flex items-center gap-1.5 py-2 px-3.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white rounded-xl font-bold text-[11.5px] transition-all cursor-pointer whitespace-nowrap"
                     >
-                      <AlertTriangle size={16} />
-                      <span>សម្អាតទាំងអស់ដែលមានក្នុងប្រព័ន្ធ</span>
+                      <AlertTriangle size={13} /> សម្អាតទាំងអស់
                     </button>
                   </div>
                 </div>
-
               </div>
+
             </div>
           )}
 
@@ -912,6 +1211,18 @@ export default function AdminSettings({ initialTab = 'school' }) {
                   <span className="text-[11px] font-bold text-slate-400">Telegram Bots</span>
                   <span className="text-[16px] font-black text-slate-800">
                     {pendingRestoreData.counts?.telegramBots ?? (pendingRestoreData.data?.telegramBots?.length || 0)} bot
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-bold text-slate-400">អ្នកប្រើប្រាស់ (Users)</span>
+                  <span className="text-[16px] font-black text-indigo-600">
+                    {pendingRestoreData.counts?.users ?? (pendingRestoreData.data?.users?.length || 0)} នាក់
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-bold text-slate-400">ការកំណត់ប្រព័ន្ធ</span>
+                  <span className="text-[16px] font-black text-emerald-600">
+                    {pendingRestoreData.data?.settings ? 'រួមបញ្ចូល' : 'លំនាំដើម'}
                   </span>
                 </div>
               </div>
@@ -997,6 +1308,37 @@ export default function AdminSettings({ initialTab = 'school' }) {
               >
                 {cleaningData ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                 <span>{cleaningData ? 'កំពុងសម្អាត...' : 'យល់ព្រម សម្អាតឥឡូវនេះ'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Monthly Backup Modal */}
+      {deleteMonthlyModal.open && deleteMonthlyModal.item && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3">
+              <Trash2 size={24} />
+            </div>
+            <h4 className="text-[16px] font-black text-slate-800 mb-1">លុប Backup ប្រចាំខែ?</h4>
+            <p className="text-[13px] text-slate-500 font-medium leading-relaxed mb-5">
+              តើអ្នកប្រាកដថាចង់លុបឯកសារ Backup សម្រាប់ <b>{deleteMonthlyModal.item.monthKhmer || deleteMonthlyModal.item.monthKey}</b> នេះឬទេ?
+            </p>
+            <div className="flex items-center gap-2.5 justify-center">
+              <button
+                type="button"
+                onClick={() => setDeleteMonthlyModal({ open: false, item: null })}
+                className="py-2 px-4 rounded-xl border border-slate-200 text-slate-600 font-bold text-[13px] hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                បោះបង់
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteMonthly(deleteMonthlyModal.item)}
+                className="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-[13px] transition-colors shadow-xs cursor-pointer"
+              >
+                យល់ព្រម លុប
               </button>
             </div>
           </div>

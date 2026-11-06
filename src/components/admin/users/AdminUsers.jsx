@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Plus, Shield, User, Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown, CheckCircle, RefreshCw, CheckCircle2, Loader2 } from 'lucide-react'
+import { Search, Plus, Shield, User, Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown, CheckCircle, RefreshCw, CheckCircle2, Loader2, Download, FileText, FileCode, FileImage, FileSpreadsheet } from 'lucide-react'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
+import ImportUsersModal from './ImportUsersModal'
 import SearchableDropdown from '../../common/SearchableDropdown'
-import { api } from '../../../utils/api'
+import { api, getCachedSchoolName } from '../../../utils/api'
+import { exportUsersPdf } from './exports/exportUsersPdf.js'
+import { exportUsersWord } from './exports/exportUsersWord.js'
+import { exportUsersExcel } from './exports/exportUsersExcel.js'
 
 export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState('')
@@ -12,6 +16,7 @@ export default function AdminUsers() {
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false)
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState(null)
   const [deleteModal, setDeleteModal] = useState({ open: false, user: null })
 
@@ -19,6 +24,10 @@ export default function AdminUsers() {
   const [isLoading, setIsLoading] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [toast, setToast] = useState(null)
+
+  // Export State
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef(null)
 
   const showToast = (message) => {
     setToast(message)
@@ -115,6 +124,45 @@ export default function AdminUsers() {
     fetchUsersData(false)
   }, [])
 
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) {
+        setExportOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleExport = async (type = 'Excel') => {
+    setExportOpen(false)
+    if (!filteredUsers || filteredUsers.length === 0) {
+      showToast('មិនមានទិន្នន័យសម្រាប់ទាញយកទេ')
+      return
+    }
+
+    const exportParams = {
+      users: filteredUsers,
+      schoolName: getCachedSchoolName()
+    }
+
+    try {
+      if (type === 'Excel') {
+        await exportUsersExcel(exportParams)
+        showToast(`បានទាញយកបញ្ជីអ្នកប្រើប្រាស់ (${filteredUsers.length} នាក់) ជាឯកសារ Excel ដោយជោគជ័យ`)
+      } else if (type === 'Word') {
+        exportUsersWord(exportParams)
+        showToast(`បានទាញយកបញ្ជីអ្នកប្រើប្រាស់ (${filteredUsers.length} នាក់) ជាឯកសារ Word (.doc) ដោយជោគជ័យ`)
+      } else {
+        exportUsersPdf(exportParams)
+        showToast(`បានបើកផ្ទាំងបោះពុម្ពបញ្ជីអ្នកប្រើប្រាស់ (${filteredUsers.length} នាក់) សម្រាប់ Save as PDF`)
+      }
+    } catch (err) {
+      console.error('Users export error:', err)
+      showToast('មានបញ្ហាក្នុងការទាញយកឯកសារ')
+    }
+  }
+
   const handleAddUserSave = async (newUser) => {
     const userWithId = {
       id: `USR-${String(users.length + 1).padStart(3, '0')}`,
@@ -147,6 +195,23 @@ export default function AdminUsers() {
     } catch (e) {
       console.error('Edit user error:', e)
       showToast('មានបញ្ហាក្នុងការកែប្រែគណនី')
+    }
+  }
+
+  const handleImportSuccess = async (importedUsers) => {
+    try {
+      for (const u of importedUsers) {
+        await api('users.save', { user: u })
+      }
+      setUsers(prev => {
+        const importedUsernames = new Set(importedUsers.map(u => (u.username || '').toLowerCase().trim()))
+        const remaining = prev.filter(u => !importedUsernames.has((u.username || '').toLowerCase().trim()))
+        return [...importedUsers, ...remaining]
+      })
+      showToast(`បាននាំចូលអ្នកប្រើប្រាស់/ប្រធានថ្នាក់ (${importedUsers.length} នាក់) ដោយជោគជ័យ!`)
+    } catch (err) {
+      console.error('Import save error:', err)
+      showToast('មានបញ្ហាក្នុងការរក្សាទុកទិន្នន័យនាំចូល')
     }
   }
 
@@ -326,7 +391,7 @@ export default function AdminUsers() {
               </div>
             </div>
 
-            {/* Action Buttons: Refresh & Add User */}
+            {/* Action Buttons: Refresh, Export & Add User */}
             <div className="w-full lg:w-auto flex items-center gap-2.5 flex-shrink-0">
               <button 
                 type="button"
@@ -337,6 +402,60 @@ export default function AdminUsers() {
               >
                 <RefreshCw size={15} strokeWidth={2.5} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
                 <span>ទាញទិន្នន័យថ្មី</span>
+              </button>
+
+              {/* Export Dropdown */}
+              <div className="relative shrink-0" ref={exportRef}>
+                <button
+                  type="button"
+                  onClick={() => setExportOpen(!exportOpen)}
+                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 cursor-pointer"
+                  title="នាំចេញបញ្ជីអ្នកប្រើប្រាស់ជា PDF, Excel ឬ Word"
+                >
+                  <Download size={15} strokeWidth={2.5} />
+                  <span>នាំចេញ (Export)</span>
+                  <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-0.5 ${exportOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {exportOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <button
+                      type="button"
+                      onClick={() => handleExport('PDF')}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileText size={16} className="text-rose-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExport('Excel')}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileCode size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as Excel</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExport('Word')}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileImage size={16} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as Word</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Import Button */}
+              <button
+                type="button"
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/90 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 cursor-pointer shrink-0"
+                title="នាំចូលអ្នកប្រើប្រាស់/ប្រធានថ្នាក់ពីឯកសារ Excel"
+              >
+                <FileSpreadsheet size={15} strokeWidth={2.3} className="text-emerald-600" />
+                <span>នាំចូល (Import)</span>
               </button>
 
               <button 
@@ -559,6 +678,17 @@ export default function AdminUsers() {
           onSave={handleEditUserSave} 
           classOptions={classOptions} 
           userData={editingUser}
+        />
+      )}
+
+      {isImportModalOpen && (
+        <ImportUsersModal
+          isOpen={isImportModalOpen}
+          onClose={() => setIsImportModalOpen(false)}
+          onImportSuccess={handleImportSuccess}
+          existingUsers={users}
+          classOptions={classOptions}
+          showToast={showToast}
         />
       )}
 

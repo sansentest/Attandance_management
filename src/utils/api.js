@@ -58,6 +58,10 @@ import {
   saveSchoolSettingsToFirestore,
   exportCompleteDatabaseBackup,
   restoreCompleteDatabaseBackup,
+  saveMonthlyBackupToFirestore,
+  getMonthlyBackupsFromFirestore,
+  getMonthlyBackupPayload,
+  deleteMonthlyBackupFromFirestore,
   clearAllAttendanceDataFromFirestore,
   clearAllStudentsFromFirestore,
   wipeAllDatabaseDataFromFirestore,
@@ -65,7 +69,8 @@ import {
 } from '../services/firebase'
 import {
   testTelegramBotConnection,
-  dispatchAttendanceNotification
+  dispatchAttendanceNotification,
+  dispatchDisciplineWarningNotification
 } from '../services/telegram'
 
 const PASSWORD_SALT = 'angroka_school_salt_2026';
@@ -1195,14 +1200,26 @@ export async function api(action, body = {}, token = null) {
         // ── Telegram Bot Notification Auto-Dispatch (Non-blocking background job) ──
         (async () => {
           try {
-            const bots = isFirebaseConfigured()
-              ? await getTelegramBotsFromFirestore()
-              : JSON.parse(localStorage.getItem('school_telegram_bots_cache') || '[]');
-            const globalTokens = isFirebaseConfigured()
-              ? await getGlobalTelegramTokensFromFirestore()
-              : JSON.parse(localStorage.getItem('school_telegram_global_tokens_cache') || '[]');
+            let bots = [];
+            let globalTokens = [];
+            if (isFirebaseConfigured()) {
+              try {
+                bots = await getTelegramBotsFromFirestore();
+                globalTokens = await getGlobalTelegramTokensFromFirestore();
+              } catch (cloudErr) {
+                console.warn('[Telegram Dispatch] Firestore fetch failed, falling back to local cache:', cloudErr);
+              }
+            }
+            if (!bots || bots.length === 0) {
+              bots = JSON.parse(localStorage.getItem('school_telegram_bots_cache') || '[]');
+            }
+            if (!globalTokens || globalTokens.length === 0) {
+              globalTokens = JSON.parse(localStorage.getItem('school_telegram_global_tokens_cache') || '[]');
+            }
 
-            await dispatchAttendanceNotification({ payload: body, bots, globalTokens });
+            console.log(`[Telegram Dispatch] Found ${bots.length} bot(s), ${globalTokens.length} global token(s). Dispatching for class:`, body.className);
+            const dispatchRes = await dispatchAttendanceNotification({ payload: body, bots, globalTokens });
+            console.log('[Telegram Dispatch] Result:', dispatchRes);
           } catch (tgErr) {
             console.warn('[Telegram Dispatch] Background notification error:', tgErr);
           }
@@ -2464,6 +2481,34 @@ export async function api(action, body = {}, token = null) {
       return res;
     }
 
+    case 'telegram.sendDisciplineWarning': {
+      const { student, totalAbsences, totalHours, warningLevel, className } = body;
+      let bots = [];
+      let globalTokens = [];
+      if (isFirebaseConfigured()) {
+        try {
+          bots = await getTelegramBotsFromFirestore();
+          globalTokens = await getGlobalTelegramTokensFromFirestore();
+        } catch (e) {}
+      }
+      if (!bots || bots.length === 0) {
+        bots = JSON.parse(localStorage.getItem('school_telegram_bots_cache') || '[]');
+      }
+      if (!globalTokens || globalTokens.length === 0) {
+        globalTokens = JSON.parse(localStorage.getItem('school_telegram_global_tokens_cache') || '[]');
+      }
+      const res = await dispatchDisciplineWarningNotification({
+        student,
+        totalAbsences,
+        totalHours,
+        warningLevel,
+        className: className || student?.class,
+        bots,
+        globalTokens
+      });
+      return res;
+    }
+
     case 'settings.get': {
       if (isFirebaseConfigured()) {
         try {
@@ -2547,6 +2592,57 @@ export async function api(action, body = {}, token = null) {
       try {
         const backupData = body.backupData || body;
         const res = await restoreCompleteDatabaseBackup(backupData);
+        return res;
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    case 'backup.getMonthlyList': {
+      try {
+        const list = await getMonthlyBackupsFromFirestore();
+        return { success: true, data: list };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    case 'backup.createMonthly': {
+      try {
+        const expRes = await exportCompleteDatabaseBackup();
+        if (!expRes.success || !expRes.backup) {
+          return { success: false, error: expRes.error || 'បរាជ័យក្នុងការទាញយកទិន្នន័យសម្រាប់ Backup' };
+        }
+        const saveRes = await saveMonthlyBackupToFirestore(expRes.backup, {
+          monthKey: body.monthKey,
+          monthKhmer: body.monthKhmer,
+          isAuto: body.isAuto
+        });
+        return {
+          success: true,
+          backupInfo: saveRes.backupDoc,
+          message: `បានបង្កើតការបម្រុងទុកទិន្នន័យប្រចាំខែ (${body.monthKhmer || body.monthKey}) ដោយជោគជ័យ!`
+        };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    case 'backup.getMonthlyPayload': {
+      try {
+        const payload = await getMonthlyBackupPayload(body.monthKey);
+        if (!payload) {
+          return { success: false, error: 'រកមិនឃើញទិន្នន័យ Backup សម្រាប់ខែនេះទេ' };
+        }
+        return { success: true, data: payload };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    }
+
+    case 'backup.deleteMonthly': {
+      try {
+        const res = await deleteMonthlyBackupFromFirestore(body.id, body.monthKey);
         return res;
       } catch (err) {
         return { success: false, error: err.message };

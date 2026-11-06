@@ -6,6 +6,9 @@ import {
   Upload, FileSpreadsheet, ArrowRight, RefreshCw, FileImage, Sparkles
 } from 'lucide-react';
 import { api, getCachedSchoolName } from '../../../utils/api';
+import { exportAcademicPdf } from './exports/exportAcademicPdf.js';
+import { exportAcademicWord } from './exports/exportAcademicWord.js';
+import { exportAcademicExcel } from './exports/exportAcademicExcel.js';
 
 // Helper to generate sequential IDs for classes
 function generateBatchClassIds(existingList, count) {
@@ -427,303 +430,39 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
   };
 
   // ── Export (Excel, Word, PDF) ──
-  const handleExport = (type = 'Excel') => {
+  const handleExport = async (type = 'Excel') => {
     setExportOpen(false);
     const isClasses = activeTab === 'classes';
     const currentDataset = isClasses ? filteredClasses : filteredSubjects;
 
-    if (currentDataset.length === 0) {
+    if (!currentDataset || currentDataset.length === 0) {
       showToast('មិនមានទិន្នន័យសម្រាប់ទាញយកទេ');
       return;
     }
 
+    const exportParams = {
+      type: isClasses ? 'classes' : 'subjects',
+      data: currentDataset,
+      schoolName: getCachedSchoolName()
+    };
+
     const title = isClasses ? 'បញ្ជីថ្នាក់រៀន' : 'បញ្ជីមុខវិជ្ជា';
-    const subtitle = isClasses
-      ? `ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបចំនួន៖ ${filteredClasses.length} ថ្នាក់`
-      : `ឆ្នាំសិក្សា ២០២៥ - ២០២៦ | សរុបចំនួន៖ ${filteredSubjects.length} មុខវិជ្ជា`;
+    const countStr = isClasses ? `${currentDataset.length} ថ្នាក់` : `${currentDataset.length} មុខវិជ្ជា`;
 
-    if (type === 'Excel') {
-      if (isClasses) {
-        const headers = ['ល.រ', 'កូដថ្នាក់', 'ឈ្មោះថ្នាក់', 'គ្រូបន្ទុកថ្នាក់', 'ចំនួនសិស្ស', 'ស្ថានភាព'];
-        const rows = filteredClasses.map((c, i) => [
-          `"${i + 1}"`,
-          `"${c.id || `CLS-${String(i + 1).padStart(3, '0')}`}"`,
-          `"${c.name}"`,
-          `"${c.teacher || '-'}"`,
-          `"${c.students || 0}"`,
-          `"សកម្ម"`
-        ]);
-        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `បញ្ជីថ្នាក់រៀន_${getCachedSchoolName()}_${new Date().toISOString().slice(0, 10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        showToast(`បានទាញយកបញ្ជីថ្នាក់រៀន (${filteredClasses.length} ថ្នាក់) ជា Excel ដោយជោគជ័យ`);
+    try {
+      if (type === 'Excel') {
+        await exportAcademicExcel(exportParams);
+        showToast(`បានទាញយក${title} (${countStr}) ជាឯកសារ Excel ដោយជោគជ័យ`);
+      } else if (type === 'Word') {
+        exportAcademicWord(exportParams);
+        showToast(`បានទាញយក${title} (${countStr}) ជាឯកសារ Word (.doc) ដោយជោគជ័យ`);
       } else {
-        const headers = ['ល.រ', 'កូដមុខវិជ្ជា', 'ឈ្មោះមុខវិជ្ជា', 'ប្រភេទមុខវិជ្ជា', 'ស្ថានភាព'];
-        const rows = filteredSubjects.map((s, i) => [
-          `"${i + 1}"`,
-          `"${s.id || `SUB-${String(i + 1).padStart(3, '0')}`}"`,
-          `"${s.name}"`,
-          `"${s.type}"`,
-          `"សកម្ម"`
-        ]);
-        const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `បញ្ជីមុខវិជ្ជា_${getCachedSchoolName()}_${new Date().toISOString().slice(0, 10)}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        showToast(`បានទាញយកបញ្ជីមុខវិជ្ជា (${filteredSubjects.length} មុខវិជ្ជា) ជា Excel ដោយជោគជ័យ`);
+        exportAcademicPdf(exportParams);
+        showToast(`បានបើកផ្ទាំងបោះពុម្ព${title} (${countStr}) សម្រាប់ Save as PDF`);
       }
-    } else if (type === 'Word') {
-      const tableHeaders = isClasses
-        ? `<tr>
-            <th style="width: 40px;">ល.រ</th>
-            <th style="width: 90px;">កូដថ្នាក់</th>
-            <th>ឈ្មោះថ្នាក់</th>
-            <th>គ្រូបន្ទុកថ្នាក់</th>
-            <th style="width: 90px;">ចំនួនសិស្ស</th>
-            <th style="width: 80px;">ស្ថានភាព</th>
-          </tr>`
-        : `<tr>
-            <th style="width: 40px;">ល.រ</th>
-            <th style="width: 100px;">កូដមុខវិជ្ជា</th>
-            <th>ឈ្មោះមុខវិជ្ជា</th>
-            <th style="width: 130px;">ប្រភេទមុខវិជ្ជា</th>
-            <th style="width: 80px;">ស្ថានភាព</th>
-          </tr>`;
-
-      const tableRows = isClasses
-        ? filteredClasses.map((c, i) => `
-          <tr>
-            <td class="text-center">${i + 1}</td>
-            <td class="text-center" style="font-weight: bold;">${c.id || `CLS-${String(i + 1).padStart(3, '0')}`}</td>
-            <td style="font-weight: bold;">${c.name}</td>
-            <td>${c.teacher || '-'}</td>
-            <td class="text-center">${c.students || 0}</td>
-            <td class="text-center">សកម្ម</td>
-          </tr>
-        `).join('')
-        : filteredSubjects.map((s, i) => `
-          <tr>
-            <td class="text-center">${i + 1}</td>
-            <td class="text-center" style="font-weight: bold;">${s.id || `SUB-${String(i + 1).padStart(3, '0')}`}</td>
-            <td style="font-weight: bold;">${s.name}</td>
-            <td class="text-center">${s.type}</td>
-            <td class="text-center">សកម្ម</td>
-          </tr>
-        `).join('');
-
-      const htmlContent = `
-<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-<head>
-  <meta charset='utf-8'>
-  <title>${title} - ${getCachedSchoolName()}</title>
-  <!--[if gte mso 9]>
-  <xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-      <w:DoNotOptimizeForBrowser/>
-    </w:WordDocument>
-  </xml>
-  <![endif]-->
-  <style>
-    @page { size: A4 portrait; margin: 1.5cm; }
-    body { font-family: 'Khmer OS Siemreap', 'Khmer OS', 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1e293b; line-height: 1.5; }
-    .header-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-    .header-table td { border: none; padding: 4px; }
-    .kingdom-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 12pt; font-weight: bold; color: #1e3a8a; text-align: center; }
-    .motto-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 11pt; color: #1e3a8a; text-align: center; }
-    .doc-title { font-family: 'Khmer OS Muol Light', 'Khmer OS Muol', serif; font-size: 15pt; font-weight: bold; color: #0f172a; text-align: center; margin: 15px 0 5px 0; }
-    .doc-subtitle { text-align: center; font-size: 10pt; color: #64748b; margin-bottom: 15px; }
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 10pt; }
-    table.data-table th, table.data-table td { border: 1px solid #94a3b8; padding: 6px 8px; }
-    table.data-table th { background-color: #f1f5f9; font-weight: bold; text-align: center; color: #1e293b; }
-    .text-center { text-align: center; }
-    .footer-table { width: 100%; border-collapse: collapse; margin-top: 30px; }
-    .footer-table td { border: none; text-align: center; font-size: 10pt; }
-  </style>
-</head>
-<body>
-  <table class="header-table">
-    <tr>
-      <td style="width: 50%; vertical-align: top;">
-        <strong>ក្រសួងអប់រំ យុវជន និងកីឡា</strong><br>
-        <strong>មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ</strong><br>
-        <strong>${getCachedSchoolName()}</strong>
-      </td>
-      <td style="width: 50%; vertical-align: top;">
-        <div class="kingdom-title">ព្រះរាជាណាចក្រកម្ពុជា</div>
-        <div class="motto-title">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
-      </td>
-    </tr>
-  </table>
-
-  <div class="doc-title">${title}</div>
-  <div class="doc-subtitle">${subtitle}</div>
-
-  <table class="data-table">
-    <thead>${tableHeaders}</thead>
-    <tbody>${tableRows}</tbody>
-  </table>
-
-  <table class="footer-table">
-    <tr>
-      <td style="width: 50%; vertical-align: top;">
-        <br>
-        <strong>បានឃើញ និងឯកភាព</strong><br>
-        នាយក${getCachedSchoolName()}
-      </td>
-      <td style="width: 50%; vertical-align: top;">
-        ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
-        <strong>អ្នករៀបចំបញ្ជី</strong>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
-      const blob = new Blob(['\ufeff', htmlContent], { type: 'application/msword;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `${title}_${getCachedSchoolName()}_${new Date().toISOString().slice(0, 10)}.doc`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      showToast(`បានទាញយក${title} (${currentDataset.length}) ជាឯកសារ Word (.doc) ដោយជោគជ័យ`);
-    } else {
-      // PDF Export via high-fidelity print window
-      const printWindow = window.open('', '_blank', 'width=1000,height=800');
-      if (!printWindow) {
-        window.print();
-        return;
-      }
-
-      const tableHeaders = isClasses
-        ? `<tr>
-            <th style="width: 40px;">ល.រ</th>
-            <th style="width: 90px;">កូដថ្នាក់</th>
-            <th>ឈ្មោះថ្នាក់</th>
-            <th>គ្រូបន្ទុកថ្នាក់</th>
-            <th style="width: 90px;">ចំនួនសិស្ស</th>
-            <th style="width: 80px;">ស្ថានភាព</th>
-          </tr>`
-        : `<tr>
-            <th style="width: 40px;">ល.រ</th>
-            <th style="width: 100px;">កូដមុខវិជ្ជា</th>
-            <th>ឈ្មោះមុខវិជ្ជា</th>
-            <th style="width: 130px;">ប្រភេទមុខវិជ្ជា</th>
-            <th style="width: 80px;">ស្ថានភាព</th>
-          </tr>`;
-
-      const tableRows = isClasses
-        ? filteredClasses.map((c, i) => `
-          <tr>
-            <td class="text-center">${i + 1}</td>
-            <td class="text-center" style="font-weight: 700;">${c.id || `CLS-${String(i + 1).padStart(3, '0')}`}</td>
-            <td style="font-weight: 600;">${c.name}</td>
-            <td>${c.teacher || '-'}</td>
-            <td class="text-center">${c.students || 0} នាក់</td>
-            <td class="text-center"><span class="badge status-active">សកម្ម</span></td>
-          </tr>
-        `).join('')
-        : filteredSubjects.map((s, i) => `
-          <tr>
-            <td class="text-center">${i + 1}</td>
-            <td class="text-center" style="font-weight: 700;">${s.id || `SUB-${String(i + 1).padStart(3, '0')}`}</td>
-            <td style="font-weight: 600;">${s.name}</td>
-            <td class="text-center">${s.type}</td>
-            <td class="text-center"><span class="badge status-active">សកម្ម</span></td>
-          </tr>
-        `).join('');
-
-      printWindow.document.write(`
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>${title} - ${getCachedSchoolName()}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@400;500;600;700&family=Moul&display=swap');
-    @page { size: A4 portrait; margin: 1.2cm; }
-    * { box-sizing: border-box; }
-    body { font-family: 'Kantumruy Pro', 'Khmer OS Siemreap', sans-serif; color: #1e293b; margin: 0; padding: 20px; background: #fff; font-size: 12px; }
-    .header-grid { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-    .school-title { font-size: 12px; font-weight: 700; line-height: 1.6; color: #1e293b; }
-    .kingdom-box { text-align: center; }
-    .kingdom { font-family: 'Moul', 'Khmer OS Muol Light', serif; font-size: 13px; color: #1e3a8a; }
-    .motto { font-family: 'Moul', 'Khmer OS Muol Light', serif; font-size: 11px; color: #1e3a8a; margin-top: 4px; }
-    .doc-title { text-align: center; margin: 15px 0 4px 0; font-family: 'Moul', 'Khmer OS Muol Light', serif; font-size: 16px; color: #0f172a; }
-    .doc-subtitle { text-align: center; font-size: 11.5px; color: #64748b; margin-bottom: 20px; font-weight: 500; }
-    table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
-    th, td { border: 1px solid #cbd5e1; padding: 7px 10px; text-align: left; }
-    th { background-color: #f8fafc; font-weight: 700; color: #334155; text-align: center; }
-    tr:nth-child(even) { background-color: #fdfdfd; }
-    .text-center { text-align: center; }
-    .badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10.5px; font-weight: 600; }
-    .status-active { color: #166534; background: #dcfce7; }
-    .footer-sign { margin-top: 40px; display: flex; justify-content: space-between; text-align: center; font-size: 11.5px; page-break-inside: avoid; }
-    .sign-col { width: 240px; }
-    @media print { body { padding: 0; } .no-print { display: none !important; } }
-  </style>
-</head>
-<body>
-  <div class="no-print" style="margin-bottom: 15px; padding: 10px; background: #f1f5f9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-    <span style="font-weight: 600;">មើលគំរូមុនពេលបោះពុម្ព ឬរក្សាទុកជា PDF (Print / Save as PDF)</span>
-    <button onclick="window.print()" style="padding: 6px 14px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer;">បោះពុម្ព / រក្សាទុកជា PDF</button>
-  </div>
-
-  <div class="header-grid">
-    <div class="school-title">
-      ក្រសួងអប់រំ យុវជន និងកីឡា<br>
-      មន្ទីរអប់រំ យុវជន និងកីឡាខេត្តតាកែវ<br>
-      ${getCachedSchoolName()}
-    </div>
-    <div class="kingdom-box">
-      <div class="kingdom">ព្រះរាជាណាចក្រកម្ពុជា</div>
-      <div class="motto">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
-    </div>
-  </div>
-
-  <div class="doc-title">${title}</div>
-  <div class="doc-subtitle">${subtitle}</div>
-
-  <table>
-    <thead>${tableHeaders}</thead>
-    <tbody>${tableRows}</tbody>
-  </table>
-
-  <div class="footer-sign">
-    <div class="sign-col">
-      <br>
-      <strong>បានឃើញ និងឯកភាព</strong><br>
-      នាយក${getCachedSchoolName()}
-    </div>
-    <div class="sign-col">
-      ថ្ងៃទី....... ខែ....... ឆ្នាំ២០២...<br>
-      <strong>អ្នករៀបចំបញ្ជី</strong>
-    </div>
-  </div>
-</body>
-</html>
-`);
-      printWindow.document.close();
-      setTimeout(() => {
-        printWindow.print();
-      }, 400);
-      showToast(`បានបើកផ្ទាំងបោះពុម្ព${title} (${currentDataset.length}) សម្រាប់ Save as PDF`);
+    } catch (err) {
+      console.error('Academic export error:', err);
+      showToast('មានបញ្ហាក្នុងការទាញយកឯកសារ');
     }
   };
 

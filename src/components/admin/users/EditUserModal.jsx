@@ -118,7 +118,7 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
                     <input 
                       type="text"
                       value={user.username}
-                      onChange={(e) => setUser({...user, username: e.target.value})}
+                      onChange={(e) => setUser({...user, username: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '')})}
                       placeholder="ឧ. user12a"
                       className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-amber-400 focus:ring-4 focus:ring-amber-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300"
                     />

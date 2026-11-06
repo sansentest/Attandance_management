@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
 import { getSchoolStatus } from '../utils/academicCalendar'
-import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, BarChart3, ChevronRight, AlertCircle } from 'lucide-react'
+import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, BarChart3, ChevronRight, AlertCircle, Edit3 } from 'lucide-react'
+import MonitorProfileModal from './MonitorProfileModal'
 
-export default function Dashboard({ session, onLogout, onNavigate }) {
+export default function Dashboard({ session, onLogout, onNavigate, onUpdateSession }) {
   const [currentPeriod, setCurrentPeriod] = useState(null)
   const [selectedPeriod, setSelectedPeriod] = useState('day') // day, week, month, year
   const [loadingStats, setLoadingStats] = useState(false)
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [stats, setStats] = useState({
     present: '—',
     absent: '—',
@@ -157,18 +159,53 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
               </span>
             </div>
           </div>
-          <div className="lg:hidden w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-xs">
-            <User size={20} className="text-white" />
-          </div>
+          <button 
+            type="button"
+            onClick={() => setIsProfileModalOpen(true)}
+            className="lg:hidden w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-xs cursor-pointer transition-all relative group shrink-0"
+            title="ចុចដើម្បីកែប្រែ Username និង Password"
+          >
+            {session.avatar ? (
+              <img src={session.avatar} alt="Avatar" className="w-full h-full object-cover rounded-full" />
+            ) : (
+              <User size={20} className="text-white" />
+            )}
+            <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-amber-400 border border-white rounded-full flex items-center justify-center text-[9px] text-slate-900 shadow-xs">
+              <Edit3 size={9} strokeWidth={2.5} />
+            </span>
+          </button>
 
           {/* Desktop Header Text */}
           <div className="hidden lg:flex gap-5 items-center w-full">
-            <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-lg">
-              <User size={32} className="text-white" />
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsProfileModalOpen(true)}
+              className="w-16 h-16 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-lg cursor-pointer transition-all relative group shrink-0"
+              title="ចុចដើម្បីកែប្រែ Username និង Password"
+            >
+              {session.avatar ? (
+                <img src={session.avatar} alt="Avatar" className="w-full h-full object-cover rounded-full" />
+              ) : (
+                <User size={32} className="text-white group-hover:scale-110 transition-transform" />
+              )}
+              <span className="absolute -bottom-1 -right-1 w-6 h-6 bg-amber-400 hover:bg-amber-300 border-2 border-white rounded-full flex items-center justify-center text-slate-900 shadow-md">
+                <Edit3 size={12} strokeWidth={2.5} />
+              </span>
+            </button>
             <div>
               <div className="text-[15px] text-indigo-100 font-medium tracking-wide mb-1 opacity-90">{greeting}</div>
-              <div className="text-[34px] font-black leading-tight mb-3 drop-shadow-md">{session.fullName || session.username}</div>
+              <div className="text-[34px] font-black leading-tight mb-3 drop-shadow-md flex items-center gap-3">
+                <span>{session.fullName || session.username}</span>
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(true)}
+                  className="text-[12px] bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-full font-bold transition-all border border-white/25 cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                  title="កែប្រែគណនី និងពាក្យសម្ងាត់"
+                >
+                  <Edit3 size={12} />
+                  <span>កែប្រែគណនី</span>
+                </button>
+              </div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="flex items-center gap-1.5 bg-white/20 backdrop-blur-md text-white border border-white/30 px-3 py-1.5 rounded-full text-[13px] font-bold shadow-sm">
                   <Crown size={14} className="text-yellow-300" fill="currentColor" /> ប្រធានថ្នាក់
@@ -499,6 +536,16 @@ export default function Dashboard({ session, onLogout, onNavigate }) {
 
         </div>
       </div>
+
+      {/* Monitor Profile Modal */}
+      {isProfileModalOpen && (
+        <MonitorProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          session={session}
+          onUpdateSession={onUpdateSession}
+        />
+      )}
     </div>
   )
 }

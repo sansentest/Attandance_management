@@ -15,14 +15,35 @@ export function escapeTelegramHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+const khmerNumbers = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
+export const toKhmerNum = (num) => String(num ?? '').replace(/\d/g, c => khmerNumbers[parseInt(c, 10)] ?? c);
+
+/**
+ * Get current configured school name for Telegram messages
+ */
+export function getTelegramSchoolName() {
+  try {
+    const settingsRaw = localStorage.getItem('school_settings_cache');
+    if (settingsRaw) {
+      const parsed = JSON.parse(settingsRaw);
+      if (parsed?.school?.name) return parsed.school.name.replace(/\s*\(.*\)$/, '').trim();
+      if (parsed?.name) return parsed.name.replace(/\s*\(.*\)$/, '').trim();
+    }
+    const raw = localStorage.getItem('school_profile_settings');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.name) return parsed.name.replace(/\s*\(.*\)$/, '').trim();
+    }
+  } catch (e) {}
+  return 'វិទ្យាល័យអង្គរកា';
+}
+
 /**
  * Format a standard Date to Khmer readable date
  */
 export function getKhmerCurrentDateString(d = new Date()) {
   const daysKhmer = ['អាទិត្យ', 'ច័ន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហស្បតិ៍', 'សុក្រ', 'សៅរ៍'];
   const monthsKhmer = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
-  const khmerNumbers = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
-  const toKhmerNum = (num) => String(num).split('').map(c => khmerNumbers[parseInt(c)] || c).join('');
 
   const dayName = daysKhmer[d.getDay()];
   const day = toKhmerNum(d.getDate());
@@ -69,6 +90,31 @@ export async function sendTelegramMessage({ token, chatId, text, parseMode = 'HT
     const data = await response.json();
     if (!response.ok || !data.ok) {
       console.warn('[Telegram] API error:', data);
+
+      // Auto-fallback: If Telegram rejected due to HTML entities parsing error, retry sending as plain text!
+      if (parseMode && data.description && (data.description.includes("can't parse entities") || data.description.includes('tag'))) {
+        try {
+          console.warn('[Telegram] Retrying sending as plain text without HTML...');
+          const plainText = text.replace(/<[^>]+>/g, '');
+          const retryRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: cleanChatId,
+              text: plainText,
+              disable_web_page_preview: true
+            })
+          });
+          const retryData = await retryRes.json();
+          if (retryData.ok) {
+            console.log('[Telegram] Plain-text fallback sent successfully!');
+            return { success: true, result: retryData.result };
+          }
+        } catch (retryErr) {
+          console.warn('[Telegram] Fallback retry failed:', retryErr);
+        }
+      }
+
       return {
         success: false,
         error: data.description || `HTTP ${response.status}: បរាជ័យក្នុងការផ្ញើសារ`
@@ -120,9 +166,15 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   if (!payload || !payload.className) return { success: false, count: 0 };
 
   const targetClass = payload.className;
+  const norm = (c) => String(c || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim().toLowerCase();
+  const targetNorm = norm(targetClass);
 
-  // Resolve matching active bots
-  let matchingBots = bots.filter(b => b.status === 'active' && (b.class === targetClass || b.class === 'ALL'));
+  // Resolve matching active bots with tolerant class matching
+  let matchingBots = bots.filter(b => {
+    if (b.status === 'inactive') return false;
+    if (!b.class || b.class === 'ALL' || norm(b.class) === 'all') return true;
+    return norm(b.class) === targetNorm || b.class === targetClass;
+  });
 
   // If bot uses GLOBAL_TOKEN, resolve actual token from active global tokens
   const activeGlobal = globalTokens.find(t => t.isActive) || globalTokens[0];
@@ -132,6 +184,14 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   matchingBots.forEach(b => {
     let finalToken = b.token;
     if (finalToken === 'GLOBAL_TOKEN' || !finalToken) {
+      if (b.globalTokenId) {
+        const specificGlobal = globalTokens.find(t => t.id === b.globalTokenId);
+        finalToken = specificGlobal ? specificGlobal.token : globalTokenVal;
+      } else {
+        finalToken = globalTokenVal;
+      }
+    }
+    if (finalToken === 'GLOBAL_TOKEN') {
       finalToken = globalTokenVal;
     }
     if (finalToken && b.chatId) {
@@ -144,6 +204,7 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   });
 
   if (validRecipients.length === 0) {
+    console.warn(`[Telegram Dispatch] No valid recipients found for class "${targetClass}". Total bots: ${bots.length}, Matching: ${matchingBots.length}`);
     return { success: true, count: 0, message: 'មិនមាន Telegram Bot សកម្មសម្រាប់ថ្នាក់នេះទេ' };
   }
 
@@ -156,42 +217,93 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   const totalCount = records.length;
 
   const dateStr = getKhmerCurrentDateString();
-  const periodLabel = payload.periodLabel || (payload.period ? `ម៉ោងទី ${payload.period}` : 'ម៉ោងសិក្សា');
-  const hoursNum = payload.hours || 1;
+
+  const cleanClass = String(targetClass || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim() || targetClass;
+  const rawRecorder = payload.recordedBy || 'ប្រធានថ្នាក់';
+  const recorderAlreadyHasClass = rawRecorder.includes('(') || (cleanClass && rawRecorder.toLowerCase().includes(cleanClass.toLowerCase()));
+  const recorderText = (!recorderAlreadyHasClass && cleanClass) ? `${rawRecorder} (${cleanClass})` : rawRecorder;
+
+  const rawPeriod = payload.period || payload.periodLabel || '';
+  const rawPeriodClean = String(rawPeriod).replace(/^(ម៉ោងទី|ម៉ោង|\s)+/i, '').trim();
+  const periodDisplay = rawPeriodClean
+    ? `ម៉ោងទី ${toKhmerNum(rawPeriodClean).replace(/-/g, '–')}`
+    : 'ម៉ោងសិក្សា';
+  const hoursNum = payload.hours || (rawPeriodClean.includes('-') || rawPeriodClean.includes('–') ? 2 : 1);
+  const hoursText = `(${toKhmerNum(hoursNum)} ម៉ោង)`;
+
+  const subjectText = payload.subject || 'ភាសាខ្មែរ';
 
   let absentListText = '';
   const nonPresent = [...absentRecords, ...leaveRecords, ...dropoutRecords];
   if (nonPresent.length === 0) {
-    absentListText = '  • <i>សិស្សមានវត្តមានគ្រប់ចំនួន (គ្មានអវត្តមាន)</i>';
+    absentListText = '✅ <i>សិស្សមានវត្តមានគ្រប់ចំនួន (គ្មានអវត្តមានឡើយ 🎉)</i>';
   } else {
     absentListText = nonPresent.map((s, idx) => {
-      const typeLabel = s.status === 'ABSENT' ? '❌ អវត្តមាន' : s.status === 'DROPOUT' ? '🚫 ឈប់រៀន' : '📝 សុំច្បាប់';
-      const reasonPart = s.reason ? ` (${escapeTelegramHtml(s.reason)})` : '';
-      return `  ${idx + 1}. <b>${escapeTelegramHtml(s.name)}</b> - ${typeLabel}${reasonPart}`;
+      const numKh = toKhmerNum(idx + 1);
+      const icon = s.status === 'ABSENT' ? '' : s.status === 'DROPOUT' ? '' : '';
+      const statusText = s.status === 'ABSENT'
+        ? 'អវត្តមាន'
+        : s.status === 'DROPOUT'
+          ? 'ឈប់រៀន'
+          : 'សុំច្បាប់';
+
+      let reasonPart = '';
+      if (s.reason) {
+        const rClean = s.reason.trim();
+        const genericReasons = [
+          'គ្មានច្បាប់',
+          'គ្មានច្បាប់ / គេចម៉ោង',
+          'មានច្បាប់ត្រឹមត្រូវ',
+          'មានច្បាប់',
+          'សុំច្បាប់',
+          'ឈប់រៀន'
+        ];
+        if (!genericReasons.includes(rClean)) {
+          reasonPart = ` (${escapeTelegramHtml(rClean)})`;
+        }
+      }
+
+      return `${numKh}. ${icon} <b>${escapeTelegramHtml(s.name)}</b> — ${statusText}${reasonPart}`;
     }).join('\n');
   }
 
+  let summaryLine = '';
+  if (nonPresent.length === 0) {
+    summaryLine = `📊 <b>សរុប៖</b> មកគ្រប់ <b>${toKhmerNum(totalCount)}/${toKhmerNum(totalCount)}</b> នាក់ (<b>១០០%</b>)`;
+  } else {
+    const totalAbsentNum = absentRecords.length + leaveRecords.length + dropoutRecords.length;
+    if (leaveRecords.length === 0 && dropoutRecords.length === 0) {
+      summaryLine = `📊 <b>សរុប៖</b> សិស្សអវត្តមាន <b>${toKhmerNum(totalAbsentNum)}</b> នាក់`;
+    } else {
+      const parts = [];
+      if (absentRecords.length > 0) parts.push(`អវត្តមាន <b>${toKhmerNum(absentRecords.length)}</b> នាក់`);
+      if (leaveRecords.length > 0) parts.push(`សុំច្បាប់ <b>${toKhmerNum(leaveRecords.length)}</b> នាក់`);
+      if (dropoutRecords.length > 0) parts.push(`ឈប់រៀន <b>${toKhmerNum(dropoutRecords.length)}</b> នាក់`);
+      summaryLine = `📊 <b>សរុប៖</b> សិស្សអវត្តមាន <b>${toKhmerNum(totalAbsentNum)}</b> នាក់ (${parts.join(', ')})`;
+    }
+  }
+
+  const schoolName = getTelegramSchoolName();
+
+  const isUpdate = Boolean(payload && payload.isUpdate);
+  const updateTag = isUpdate ? ' [កែប្រែ]' : '';
+
   const message = [
-    '🏫 <b>វិទ្យាល័យអង្គរកា - របាយការណ៍វត្តមានសិស្ស</b>',
-    '━━━━━━━━━━━━━━━━━━━━',
-    `📚 <b>ថ្នាក់:</b> ${escapeTelegramHtml(targetClass)}`,
-    `⏰ <b>វេន/ម៉ោង:</b> ${escapeTelegramHtml(periodLabel)} (${hoursNum} ម៉ោង)`,
-    payload.subject ? `📖 <b>មុខវិជ្ជា:</b> ${escapeTelegramHtml(payload.subject)}` : null,
-    payload.teacher ? `👨‍🏫 <b>គ្រូបង្រៀន:</b> ${escapeTelegramHtml(payload.teacher)}` : null,
-    payload.recordedBy ? `👤 <b>អ្នកស្រង់:</b> ${escapeTelegramHtml(payload.recordedBy)}` : null,
-    `📅 <b>កាលបរិច្ឆេទ:</b> ${dateStr}`,
-    '━━━━━━━━━━━━━━━━━━━━',
-    '📊 <b>ស្ថិតិវត្តមាន:</b>',
-    `  • សិស្សសរុប: <b>${totalCount}</b> នាក់`,
-    `  • វត្តមាន: <b>${presentCount}</b> នាក់`,
-    `  • អវត្តមាន (គ្មានច្បាប់): <b>${absentRecords.length}</b> នាក់`,
-    `  • សុំច្បាប់: <b>${leaveRecords.length}</b> នាក់`,
-    dropoutRecords.length > 0 ? `  • ឈប់រៀន: <b>${dropoutRecords.length}</b> នាក់` : null,
-    '━━━━━━━━━━━━━━━━━━━━',
-    '⚠️ <b>បញ្ជីឈ្មោះសិស្សអវត្តមាន / សុំច្បាប់ / ឈប់រៀន:</b>',
-    absentListText,
-    '━━━━━━━━━━━━━━━━━━━━',
-    '<i>ប្រព័ន្ធគ្រប់គ្រងវត្តមានស្វ័យប្រវត្តិតាម Telegram</i>'
+    `🏫 <b>${escapeTelegramHtml(schoolName)}   អវត្តមានសិស្សតាមម៉ោង${updateTag}</b>`,
+    ' ',
+    `${dateStr}`,
+    `<b>ថ្នាក់ទី៖</b> ${escapeTelegramHtml(cleanClass)}`,
+    `<b>ម៉ោងសិក្សា៖</b> ${periodDisplay} ${hoursText}`,
+    `<b>មុខវិជ្ជា៖</b> ${escapeTelegramHtml(subjectText)}`,
+    payload.teacher ? `<b>គ្រូបង្រៀន៖</b> ${escapeTelegramHtml(payload.teacher)}` : null,
+    ' ',
+    '⚠️ <b>បញ្ជីឈ្មោះសិស្សអវត្តមាន</b>',
+    ' ',
+    `${absentListText}`,
+    ' ',
+    `${summaryLine}`,
+    ' ',
+    `<i>អ្នកស្រង់៖ ${escapeTelegramHtml(recorderText)} </i>`,
   ].filter(Boolean).join('\n');
 
   // Dispatch to all matching recipients in parallel
@@ -200,6 +312,13 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
       token: recipient.token,
       chatId: recipient.chatId,
       text: message
+    }).then(res => {
+      if (res && res.success) {
+        console.log(`[Telegram Dispatch] ✅ Sent to ${recipient.name} (${recipient.chatId})`);
+      } else {
+        console.warn(`[Telegram Dispatch] ❌ Failed sending to ${recipient.name} (${recipient.chatId}):`, res ? res.error : 'Unknown error');
+      }
+      return res;
     })
   );
 
@@ -223,7 +342,8 @@ export async function dispatchDailySummaryNotification({
   students = [],
   bots = [],
   globalTokens = [],
-  manualTrigger = false
+  manualTrigger = false,
+  disciplineTracking = []
 }) {
   // 1. Resolve matching recipients (Bots for ALL or with notifyDailySummary enabled)
   let matchingBots = bots.filter(b => b.status === 'active' && (b.class === 'ALL' || b.notifyDailySummary === true));
@@ -269,8 +389,10 @@ export async function dispatchDailySummaryNotification({
   const classSummaries = [];
 
   classList.forEach(className => {
-    const classStudents = students.filter(s => (s.className || s.class) === className);
-    const classRecs = dayRecords.filter(r => r.class === className);
+    const norm = (c) => String(c || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim().toLowerCase();
+    const classNorm = norm(className);
+    const classStudents = students.filter(s => norm(s.className || s.class) === classNorm);
+    const classRecs = dayRecords.filter(r => norm(r.class) === classNorm);
 
     // Unique students marked absent or leave today in this class
     const absentMap = new Map();
@@ -293,6 +415,9 @@ export async function dispatchDailySummaryNotification({
         }
         if (r.isFullDay) {
           item.isFullDay = true;
+        }
+        if (r.reason && !item.reason) {
+          item.reason = r.reason;
         }
       }
     });
@@ -331,45 +456,211 @@ export async function dispatchDailySummaryNotification({
   const now = new Date();
   const timeText = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  // 4. Construct Khmer message
-  let classListLines = classSummaries.map(c => {
-    const header = `• <b>ថ្នាក់ ${escapeTelegramHtml(c.className)}:</b> វត្តមាន <b>${c.presentCount}/${c.studentCount}</b> (${c.rate}%) | អវត្តមាន: <b>${c.absentCount}</b>, ច្បាប់: <b>${c.leaveCount}</b>`;
-    if (c.absentList.length > 0) {
-      const details = c.absentList.map(a => {
-        const badge = a.status === 'ABSENT' ? '❌' : '📝';
-        const singleNote = (a.status === 'LEAVE' && !a.isFullDay && a.records.length === 1) ? ' (ច្បាប់ ១ ម៉ោង)' : '';
-        const reason = a.reason ? ` - ${escapeTelegramHtml(a.reason)}` : '';
-        return `    └ ${badge} ${escapeTelegramHtml(a.name)}${singleNote}${reason}`;
-      }).join('\n');
-      return `${header}\n${details}`;
-    }
-    return `${header} <i>(មកគ្រប់)</i>`;
-  }).join('\n\n');
+  // 4. Construct Khmer message: Filter ONLY classes that have absences or leave
+  const classesWithAbsence = classSummaries.filter(
+    c => c.absentCount > 0 || c.leaveCount > 0 || (c.absentList && c.absentList.length > 0)
+  );
 
-  if (!classListLines) {
-    classListLines = '<i>មិនទាន់មានទិន្នន័យស្រង់វត្តមាននៅឡើយទេ</i>';
+  let classListLines = ' ';
+  if (classesWithAbsence.length > 0) {
+    classListLines = classesWithAbsence.map(c => {
+      const cleanClass = String(c.className || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim() || c.className;
+      const classHeader = `<b>${escapeTelegramHtml(cleanClass)}</b>`;
+
+      const studentLines = (c.absentList || []).map(a => {
+        const absentRecords = (a.records || []).filter(r => r.status === 'ABSENT');
+        const leaveRecords = (a.records || []).filter(r => r.status === 'LEAVE');
+        const dropoutRecords = (a.records || []).filter(r => r.status === 'DROPOUT');
+
+        const getHours = (recs) => recs.reduce((sum, r) => {
+          const h = Number(r.hours);
+          if (!isNaN(h) && h > 0) return sum + h;
+          const p = String(r.period || '');
+          return sum + (p.includes('-') || p === '1-2' ? 2 : 1);
+        }, 0);
+
+        const absentHrs = getHours(absentRecords);
+        const leaveHrs = getHours(leaveRecords);
+        const totalHrs = getHours(a.records || []);
+
+        let statusText = ' ';
+        if (absentHrs > 0 && leaveHrs > 0) {
+          statusText = `អវត្តមាន ${toKhmerNum(absentHrs)} ម៉ោង, សុំច្បាប់ ${toKhmerNum(leaveHrs)} ម៉ោង`;
+        } else if (a.status === 'ABSENT' || absentHrs > 0) {
+          statusText = absentHrs > 0 ? `អវត្តមាន ${toKhmerNum(absentHrs)} ម៉ោង` : 'អវត្តមាន';
+        } else if (a.status === 'LEAVE' || leaveHrs > 0) {
+          statusText = leaveHrs > 0 ? `សុំច្បាប់ ${toKhmerNum(leaveHrs)} ម៉ោង` : 'សុំច្បាប់';
+        } else if (a.status === 'DROPOUT' || dropoutRecords.length > 0) {
+          statusText = 'ឈប់រៀន';
+        } else {
+          statusText = totalHrs > 0 ? `អវត្តមាន ${toKhmerNum(totalHrs)} ម៉ោង` : 'អវត្តមាន';
+        }
+
+        let reasonSuffix = ' ';
+        if (a.reason) {
+          const rClean = a.reason.trim();
+          const genericReasons = [
+            'គ្មានច្បាប់',
+            'គ្មានច្បាប់ / គេចម៉ោង',
+            'មានច្បាប់ត្រឹមត្រូវ',
+            'មានច្បាប់',
+            'សុំច្បាប់',
+            'ឈប់រៀន'
+          ];
+          if (!genericReasons.includes(rClean)) {
+            reasonSuffix = ` (${escapeTelegramHtml(rClean)})`;
+          }
+        }
+
+        return `- ${escapeTelegramHtml(a.name)} ${statusText}${reasonSuffix}`;
+      }).join('\n');
+
+      return `${classHeader}\n${studentLines}`;
+    }).join('\n\n');
+  } else {
+    classListLines = '✅ <i>គ្រប់ថ្នាក់ទាំងអស់មកគ្រប់ ១០០% (គ្មានសិស្សអវត្តមានឡើយ 🎉)</i>';
   }
 
   const triggerType = manualTrigger ? ' [ផ្ញើដោយផ្ទាល់]' : ' [ម៉ោង ០៥:០០ រសៀល]';
+  const detailTitle = '📋 <b>ឈ្មោះសិស្សអវត្តមានតាមថ្នាក់មាន៖</b>';
+
+  // 5. Build discipline warning students list
+  let thresholds = { '7-9': 20, '10-12': 20 };
+  try {
+    const rawThresh = localStorage.getItem('disciplineThresholds');
+    if (rawThresh) thresholds = { ...thresholds, ...JSON.parse(rawThresh) };
+    const settingsRaw = localStorage.getItem('school_settings_cache');
+    if (settingsRaw) {
+      const parsedSettings = JSON.parse(settingsRaw);
+      if (parsedSettings?.discipline) {
+        thresholds = { ...thresholds, ...parsedSettings.discipline };
+      }
+    }
+  } catch (e) {}
+
+  const getThresholdForClass = (cls) => {
+    const match = String(cls || '').match(/\d+/);
+    const grade = match ? parseInt(match[0], 10) : 10;
+    if (grade >= 7 && grade <= 9 && thresholds['7-9'] !== undefined) return Number(thresholds['7-9']) || 20;
+    if (grade >= 10 && grade <= 12 && thresholds['10-12'] !== undefined) return Number(thresholds['10-12']) || 20;
+    return Number(thresholds['10-12']) || Number(thresholds['7-9']) || 20;
+  };
+
+  const isCriticalWarningStudent = (s) => {
+    const limit = getThresholdForClass(s.class || s.className);
+    const absentDays = Number(s.absent) || (s.absentDates ? s.absentDates.size : 0);
+    // Strictly must reach or exceed the school threshold in DAYS
+    return absentDays >= limit;
+  };
+
+  let warningStudents = [];
+  if (Array.isArray(disciplineTracking) && disciplineTracking.length > 0) {
+    warningStudents = disciplineTracking.filter(isCriticalWarningStudent);
+  } else {
+    try {
+      const cachedRaw = localStorage.getItem('school_discipline_cache');
+      if (cachedRaw) {
+        const cachedList = JSON.parse(cachedRaw);
+        if (Array.isArray(cachedList)) {
+          warningStudents = cachedList.filter(isCriticalWarningStudent);
+        }
+      }
+    } catch (e) {}
+
+    // Fallback: check from all attendance records
+    if (warningStudents.length === 0) {
+      try {
+        const rawRecs = localStorage.getItem('school_attendance_records');
+        const allRecs = rawRecs ? JSON.parse(rawRecs) : (records || []);
+        const studentMap = new Map();
+        allRecs.forEach(r => {
+          if (r.status === 'ABSENT' || !r.status) {
+            const key = String(r.studentId || r.name).toLowerCase().trim();
+            if (!studentMap.has(key)) {
+              studentMap.set(key, {
+                name: r.name,
+                class: r.class,
+                absentDates: new Set(r.date ? [r.date] : []),
+                absentHours: Number(r.hours) || 1
+              });
+            } else {
+              const item = studentMap.get(key);
+              if (r.date) item.absentDates.add(r.date);
+              item.absentHours += (Number(r.hours) || 1);
+            }
+          }
+        });
+
+        studentMap.forEach(item => {
+          const limit = getThresholdForClass(item.class);
+          const absentDays = item.absentDates.size;
+          // Strictly must reach or exceed the school threshold in DAYS
+          if (absentDays >= limit) {
+            warningStudents.push({
+              name: item.name,
+              class: item.class,
+              absent: absentDays,
+              absentHours: item.absentHours
+            });
+          }
+        });
+      } catch (e) {}
+    }
+  }
+
+  // Ensure unique students in warning list to prevent duplicate rows
+  const uniqueWarningMap = new Map();
+  warningStudents.forEach(s => {
+    const key = String(s.id || s.studentId || s.name).toLowerCase().trim();
+    if (!uniqueWarningMap.has(key)) {
+      uniqueWarningMap.set(key, s);
+    }
+  });
+  warningStudents = Array.from(uniqueWarningMap.values());
+  warningStudents.sort((a, b) => (Number(b.absent) || 0) - (Number(a.absent) || 0));
+
+  const disciplineWarningBlock = warningStudents.length > 0 ? [
+    '━━━━━━━━━━━━━━━━━━━━',
+    '⚠️ <b>សេចក្តីជូនដំណឹងអំពីការព្រមានវិន័យសិស្ស៖</b>',
+    ' ',
+    '🚨 <b>កម្រិតព្រមាន:</b> ត្រូវហៅអាណាព្យាបាល',
+    ' ',
+    ...warningStudents.map((s, idx) => {
+      const cleanClass = String(s.class || s.className || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim() || s.class;
+      const days = Number(s.absent) || (s.absentDates ? s.absentDates.size : 0);
+      const daysText = days > 0
+        ? `_អវត្តមាន${toKhmerNum(days)}ថ្ងៃ`
+        : (s.absentHours ? `_អវត្តមាន${toKhmerNum(s.absentHours)}ម៉ោង` : '_អវត្តមាន');
+      return `${idx + 1}. <b>${escapeTelegramHtml(s.name)}</b> (ថ្នាក់ ${escapeTelegramHtml(cleanClass)}) ${daysText}`;
+    }),
+    ' ',
+    '<i>សូមអាណាព្យាបាល ឬលោកគ្រូអ្នកគ្រូជួយតាមដាន និងអប់រំណែនាំសិស្សជាបន្ទាន់។</i>'
+  ] : [];
+
+  const schoolName = getTelegramSchoolName();
 
   const message = [
-    '🏫 <b>វិទ្យាល័យអង្គរកា (Ang Roka High School)</b>',
+    `🏫 <b>${escapeTelegramHtml(schoolName)}</b>`,
+    ' ',
     `📊 <b>របាយការណ៍សង្ខេបវត្តមានសិស្សប្រចាំថ្ងៃ</b>${triggerType}`,
     '━━━━━━━━━━━━━━━━━━━━',
     `📅 <b>កាលបរិច្ឆេទ:</b> ${dateText}`,
     `⏰ <b>ពេលវេលា:</b> ម៉ោង ${timeText}`,
     '━━━━━━━━━━━━━━━━━━━━',
-    '📈 <b>ស្ថិតិសរុបទូទាំងសាលា:</b>',
-    `  • ចំនួនថ្នាក់សរុប: <b>${classList.length}</b> ថ្នាក់`,
-    `  • សិស្សសរុប: <b>${totalSchoolStudents}</b> នាក់`,
-    `  • មានវត្តមាន: <b>${totalSchoolPresent}</b> នាក់ (<b>${overallRate}%</b>)`,
-    `  • អវត្តមានគ្មានច្បាប់: <b>${totalSchoolAbsent}</b> នាក់`,
-    `  • សុំច្បាប់: <b>${totalSchoolLeave}</b> នាក់`,
+    '📈 <b>ស្ថិតិសរុបទូទាំងសាលា៖</b>',
+    ' ',
+    `  • ចំនួនថ្នាក់សរុប: <b>${toKhmerNum(classList.length)}</b> ថ្នាក់`,
+    `  • សិស្សសរុប: <b>${toKhmerNum(totalSchoolStudents)}</b> នាក់`,
+    `  • មានវត្តមានសរុប: <b>${toKhmerNum(totalSchoolPresent)}</b> នាក់ (<b>${toKhmerNum(overallRate)}%</b>)`,
+    `  • អវត្តមានសរុប: <b>${toKhmerNum(totalSchoolAbsent)}</b> នាក់`,
+    `  • សុំច្បាប់សរុប: <b>${toKhmerNum(totalSchoolLeave)}</b> នាក់`,
     '━━━━━━━━━━━━━━━━━━━━',
-    '📋 <b>ព័ត៌មានលម្អិតតាមថ្នាក់នីមួយៗ:</b>',
+    detailTitle,
+    ' ',
     classListLines,
+    ...disciplineWarningBlock,
     '━━━━━━━━━━━━━━━━━━━━',
-    '<i>🤖 ប្រព័ន្ធគ្រប់គ្រងវត្តមានសិស្សស្វ័យប្រវត្តិតាម Telegram Bot</i>'
+    `<i>🤖 ប្រព័ន្ធគ្រប់គ្រងវត្តមាន${escapeTelegramHtml(schoolName)}</i>`
   ].join('\n');
 
   // Dispatch to recipients
@@ -398,34 +689,107 @@ export async function dispatchDailySummaryNotification({
  */
 export async function dispatchDisciplineWarningNotification({
   student,
-  totalAbsences,
-  totalHours,
-  warningLevel,
+  totalAbsences = 0,
+  totalHours = 0,
+  warningLevel = 'ត្រូវហៅអាណាព្យាបាល (Critical)',
+  bots = [],
+  globalTokens = [],
+  className = '',
   botToken,
   chatId
 }) {
-  if (!botToken || !chatId || !student) return { success: false };
+  if (!student) return { success: false, error: 'មិនមានព័ត៌មានសិស្ស' };
 
-  const dateStr = getKhmerCurrentDateString();
+  const schoolName = getTelegramSchoolName();
+
+  const targetClass = className || student.class || student.className || '';
+  const cleanClass = String(targetClass).replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim() || targetClass;
+  const days = Number(totalAbsences) || 1;
+
   const message = [
-    '⚠️ <b>សេចក្តីជូនដំណឹងអំពីការព្រមានវិន័យសិស្ស</b>',
-    '🏫 <b>វិទ្យាល័យអង្គរកា (Ang Roka High School)</b>',
-    '━━━━━━━━━━━━━━━━━━━━',
-    `👤 <b>ឈ្មោះសិស្ស:</b> ${escapeTelegramHtml(student.name)}`,
-    student.studentId ? `🆔 <b>អត្តលេខ:</b> ${escapeTelegramHtml(student.studentId)}` : null,
-    `📚 <b>ថ្នាក់:</b> ${escapeTelegramHtml(student.class || student.className || 'ទូទៅ')}`,
-    '━━━━━━━━━━━━━━━━━━━━',
-    `🚨 <b>កម្រិតព្រមាន:</b> <b>${escapeTelegramHtml(warningLevel)}</b>`,
-    `⏱️ <b>ចំនួនម៉ោងអវត្តមានសរុប:</b> <b>${totalHours}</b> ម៉ោង`,
-    `📅 <b>ចំនួនថ្ងៃអវត្តមាន:</b> <b>${totalAbsences}</b> ថ្ងៃ`,
-    `📅 <b>កាលបរិច្ឆេទ:</b> ${dateStr}`,
-    '━━━━━━━━━━━━━━━━━━━━',
-    '<i>សូមអាណាព្យាបាល ឬលោកគ្រូអ្នកគ្រូជួយតាមដាន និងអប់រំណែនាំសិស្សជាបន្ទាន់។</i>'
+    '⚠️ <b>សេចក្តីជូនដំណឹងអំពីការព្រមានវិន័យសិស្ស៖</b>',
+    ' ',
+    `🏫 <b>${escapeTelegramHtml(schoolName)}</b>`,
+    ' ',
+    '🚨 <b>កម្រិតព្រមាន:</b> ត្រូវហៅអាណាព្យាបាល',
+    ' ',
+    `1. <b>${escapeTelegramHtml(student.name)}</b> (ថ្នាក់ ${escapeTelegramHtml(cleanClass)}) _អវត្តមាន${toKhmerNum(days)}ថ្ងៃ`,
+    ' ',
+    '<i>សូមអាណាព្យាបាល ឬលោកគ្រូអ្នកគ្រូជួយតាមដាន និងអប់រំណែនាំសិស្សជាបន្ទាន់។</i>',
+    ' '
   ].filter(Boolean).join('\n');
 
-  return await sendTelegramMessage({
-    token: botToken,
-    chatId,
-    text: message
+  // Direct recipient if provided
+  if (botToken && chatId) {
+    return await sendTelegramMessage({
+      token: botToken,
+      chatId,
+      text: message
+    });
+  }
+
+  // Resolve matching bots for class or ALL
+  const norm = (c) => String(c || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim().toLowerCase();
+  const targetNorm = norm(targetClass);
+
+  let matchingBots = bots.filter(b => {
+    if (b.status === 'inactive') return false;
+    if (!b.class || b.class === 'ALL' || norm(b.class) === 'all') return true;
+    return norm(b.class) === targetNorm || b.class === targetClass;
   });
+
+  const activeGlobal = globalTokens.find(t => t.isActive) || globalTokens[0];
+  const globalTokenVal = activeGlobal ? activeGlobal.token : '';
+
+  const validRecipients = [];
+  matchingBots.forEach(b => {
+    let finalToken = b.token;
+    if (finalToken === 'GLOBAL_TOKEN' || !finalToken) {
+      if (b.globalTokenId) {
+        const specificGlobal = globalTokens.find(t => t.id === b.globalTokenId);
+        finalToken = specificGlobal ? specificGlobal.token : globalTokenVal;
+      } else {
+        finalToken = globalTokenVal;
+      }
+    }
+    if (finalToken === 'GLOBAL_TOKEN') {
+      finalToken = globalTokenVal;
+    }
+    if (finalToken && b.chatId) {
+      validRecipients.push({
+        name: b.name || `Bot ថ្នាក់ ${b.class}`,
+        token: finalToken,
+        chatId: b.chatId
+      });
+    }
+  });
+
+  if (validRecipients.length === 0) {
+    console.warn('[Discipline Telegram Dispatch] No valid recipients for class:', targetClass);
+    return { success: false, count: 0, message: 'មិនមាន Telegram Bot សកម្មសម្រាប់ទទួលការព្រមានទេ' };
+  }
+
+  const sendPromises = validRecipients.map(recipient =>
+    sendTelegramMessage({
+      token: recipient.token,
+      chatId: recipient.chatId,
+      text: message
+    }).then(res => {
+      if (res && res.success) {
+        console.log(`[Discipline Warning] ✅ Sent to ${recipient.name} (${recipient.chatId}) for student ${student.name}`);
+      } else {
+        console.warn(`[Discipline Warning] ❌ Failed to ${recipient.name}:`, res ? res.error : 'Unknown error');
+      }
+      return res;
+    })
+  );
+
+  const results = await Promise.allSettled(sendPromises);
+  const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+
+  return {
+    success: successCount > 0,
+    count: successCount,
+    totalAttempted: validRecipients.length
+  };
 }

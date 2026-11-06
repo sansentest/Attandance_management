@@ -96,6 +96,7 @@ const COL_USERS = 'users';
 const COL_TIMETABLES = 'academic_timetables';
 const COL_TELEGRAM_BOTS = 'telegram_bots';
 const COL_SETTINGS = 'school_settings';
+const COL_MONTHLY_BACKUPS = 'monthly_backups';
 
 // ─────────────────────────────────────────────
 // High-Speed In-Memory Cache (RAM Acceleration)
@@ -2130,15 +2131,16 @@ export async function exportCompleteDatabaseBackup() {
       getUsersFromFirestore()
     ]);
 
-    // Omit sensitive authentication passwords from export for security
-    const safeUsers = (users || []).map(u => ({
+    // Include full user accounts for complete school restoration
+    const userRecords = (users || []).map(u => ({
       id: u.id,
       username: u.username,
       name: u.name,
       role: u.role,
       status: u.status,
       assignedClass: u.assignedClass || null,
-      phone: u.phone || ''
+      phone: u.phone || '',
+      password: u.password || ''
     }));
 
     const backupPayload = {
@@ -2153,7 +2155,7 @@ export async function exportCompleteDatabaseBackup() {
         timetables: Object.keys(timetables || {}).length,
         invitations: (invitations || []).length,
         telegramBots: (bots || []).length,
-        users: safeUsers.length
+        users: userRecords.length
       },
       data: {
         students: students || [],
@@ -2164,7 +2166,7 @@ export async function exportCompleteDatabaseBackup() {
         invitations: invitations || [],
         telegramBots: bots || [],
         settings: settings || DEFAULT_SCHOOL_SETTINGS,
-        users: safeUsers
+        users: userRecords
       }
     };
 
@@ -2254,6 +2256,11 @@ export async function restoreCompleteDatabaseBackup(backupPayload) {
       if (data.settings) {
         await saveSchoolSettingsToFirestore(data.settings);
       }
+
+      // 9. Restore User Accounts
+      if (data.users && Array.isArray(data.users)) {
+        await commitInBatches(data.users, COL_USERS, u => u.id || u.username);
+      }
     } catch (err) {
       console.error('[Firebase] Firestore batch restore error:', err);
     }
@@ -2271,6 +2278,7 @@ export async function restoreCompleteDatabaseBackup(backupPayload) {
     if (data.timetables) localStorage.setItem('school_timetable_cache', JSON.stringify(data.timetables));
     if (data.telegramBots) localStorage.setItem('school_telegram_bots_cache', JSON.stringify(data.telegramBots));
     if (data.settings) localStorage.setItem('school_settings_cache', JSON.stringify(data.settings));
+    if (data.users) localStorage.setItem('school_users_cache', JSON.stringify(data.users));
   } catch (e) {
     console.warn('[Cache] LocalStorage cache update error:', e);
   }
@@ -2282,6 +2290,155 @@ export async function restoreCompleteDatabaseBackup(backupPayload) {
     message: 'ការស្ដារទិន្នន័យពី Backup ត្រូវបានបញ្ចប់ដោយជោគជ័យ!',
     counts: backupPayload.counts || {}
   };
+}
+
+/**
+ * Monthly Backups & Auto-Backup Archives (Private Admin Data, No Telegram)
+ */
+export async function saveMonthlyBackupToFirestore(backupPayload, meta = {}) {
+  const monthKey = meta.monthKey || backupPayload.exportedAt?.slice(0, 7) || new Date().toISOString().slice(0, 7);
+  const docId = `backup_${monthKey.replace('-', '_')}`;
+
+  const jsonString = JSON.stringify(backupPayload);
+  const sizeBytes = jsonString.length;
+  // Firestore limit is 1MB per document; keep safely under 900KB
+  const isEmbeddable = sizeBytes < 900000;
+
+  const backupDoc = {
+    id: docId,
+    monthKey,
+    monthKhmer: meta.monthKhmer || monthKey,
+    createdAt: new Date().toISOString(),
+    isAuto: Boolean(meta.isAuto),
+    sizeBytes,
+    sizeKb: Math.round(sizeBytes / 1024),
+    counts: backupPayload.counts || {},
+    isEmbeddable,
+    data: isEmbeddable ? backupPayload : null
+  };
+
+  // Save to Firestore if available
+  if (db) {
+    try {
+      await setDoc(doc(db, COL_MONTHLY_BACKUPS, docId), {
+        ...backupDoc,
+        restoredAt: serverTimestamp()
+      }, { merge: true });
+    } catch (err) {
+      console.warn('[Firebase] saveMonthlyBackupToFirestore error:', err);
+    }
+  }
+
+  // Always save in LocalStorage so it's instantly available offline / locally
+  try {
+    const listRaw = localStorage.getItem('school_monthly_backups_list');
+    let list = listRaw ? JSON.parse(listRaw) : [];
+    list = list.filter(item => item.monthKey !== monthKey);
+    // Put newest at the top
+    list.unshift({
+      id: docId,
+      monthKey,
+      monthKhmer: backupDoc.monthKhmer,
+      createdAt: backupDoc.createdAt,
+      isAuto: backupDoc.isAuto,
+      sizeBytes,
+      sizeKb: backupDoc.sizeKb,
+      counts: backupDoc.counts
+    });
+    localStorage.setItem('school_monthly_backups_list', JSON.stringify(list));
+
+    // Store the full JSON backup object locally
+    localStorage.setItem(`school_monthly_payload_${monthKey}`, jsonString);
+  } catch (e) {
+    console.warn('[Cache] saveMonthlyBackup LocalStorage error:', e);
+  }
+
+  return { success: true, docId, backupDoc };
+}
+
+export async function getMonthlyBackupsFromFirestore() {
+  const localListRaw = localStorage.getItem('school_monthly_backups_list');
+  const localList = localListRaw ? JSON.parse(localListRaw) : [];
+
+  if (!db) return localList;
+
+  try {
+    const q = query(collection(db, COL_MONTHLY_BACKUPS));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const cloudList = [];
+      snap.forEach(d => {
+        const item = d.data();
+        cloudList.push({
+          id: d.id,
+          monthKey: item.monthKey,
+          monthKhmer: item.monthKhmer || item.monthKey,
+          createdAt: item.createdAt,
+          isAuto: Boolean(item.isAuto),
+          sizeKb: item.sizeKb || Math.round((item.sizeBytes || 0) / 1024),
+          counts: item.counts || {}
+        });
+      });
+      // Sort newest first
+      cloudList.sort((a, b) => (b.monthKey || '').localeCompare(a.monthKey || ''));
+      try {
+        localStorage.setItem('school_monthly_backups_list', JSON.stringify(cloudList));
+      } catch {}
+      return cloudList;
+    }
+  } catch (err) {
+    console.warn('[Firebase] getMonthlyBackupsFromFirestore error:', err);
+  }
+
+  return localList;
+}
+
+export async function getMonthlyBackupPayload(monthKey) {
+  // 1. Check local storage
+  try {
+    const raw = localStorage.getItem(`school_monthly_payload_${monthKey}`);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+
+  // 2. Check Firestore
+  if (db) {
+    try {
+      const docId = `backup_${monthKey.replace('-', '_')}`;
+      const snap = await getDoc(doc(db, COL_MONTHLY_BACKUPS, docId));
+      if (snap.exists()) {
+        const d = snap.data();
+        if (d.data) return d.data;
+      }
+    } catch (e) {
+      console.warn('[Firebase] getMonthlyBackupPayload error:', e);
+    }
+  }
+
+  return null;
+}
+
+export async function deleteMonthlyBackupFromFirestore(backupId, monthKey) {
+  if (db) {
+    try {
+      await deleteDoc(doc(db, COL_MONTHLY_BACKUPS, backupId));
+    } catch (err) {
+      console.warn('[Firebase] deleteMonthlyBackup error:', err);
+    }
+  }
+
+  try {
+    const listRaw = localStorage.getItem('school_monthly_backups_list');
+    if (listRaw) {
+      const list = JSON.parse(listRaw);
+      const filtered = list.filter(item => item.id !== backupId && item.monthKey !== monthKey);
+      localStorage.setItem('school_monthly_backups_list', JSON.stringify(filtered));
+    }
+    if (monthKey) {
+      localStorage.removeItem(`school_monthly_payload_${monthKey}`);
+    }
+  } catch {}
+
+  return { success: true };
 }
 
 /**

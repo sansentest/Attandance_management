@@ -3,10 +3,10 @@ import {
   ArrowLeft, Phone, Calendar, ShieldAlert, CheckCircle2,
   AlertTriangle, FileText, Download, ChevronDown, FileCode, FileImage,
   Mail, BookOpen, Clock, Search, ChevronLeft, ChevronRight, PhoneCall,
-  Users
+  Users, Send
 } from 'lucide-react'
 import { SearchableDropdown } from '../attendance/AdminStudentAttendance'
-import { getCachedSchoolName } from '../../../utils/api'
+import api, { getCachedSchoolName } from '../../../utils/api'
 import { exportTrackingDetailExcel } from './exports/exportTrackingExcel'
 import { exportTrackingDetailWord } from './exports/exportTrackingWord'
 import { exportTrackingDetailPdf } from './exports/exportTrackingPdf'
@@ -58,6 +58,8 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
   const [detailExportOpen, setDetailExportOpen] = useState(false)
   const detailExportRef = useRef(null)
   const itemsPerPage = 10
+  const [sendingTelegram, setSendingTelegram] = useState(false)
+  const [telegramFeedback, setTelegramFeedback] = useState(null)
 
   const allRecords = useMemo(() => generateDisciplineRecords(student), [student])
   const statusInfo = getStatusBadge(status)
@@ -147,8 +149,46 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
           </button>
         </div>
 
-        {/* Action Button: Invitation Letter */}
+        {/* Action Button: Invitation Letter & Telegram Warning */}
         <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
+          {(status === 'CRITICAL' || status === 'WARNING') && (
+            <button
+              onClick={async () => {
+                setSendingTelegram(true)
+                try {
+                  const res = await api('telegram.sendDisciplineWarning', {
+                    student: {
+                      id: student.id,
+                      studentId: student.studentId || student.id,
+                      name: student.name,
+                      class: student.class || student.className
+                    },
+                    totalAbsences: student.absent,
+                    totalHours: student.totalHours || student.absentHours || 0,
+                    warningLevel: status === 'CRITICAL' ? 'ត្រូវហៅអាណាព្យាបាល (Critical)' : 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន (Warning)',
+                    className: student.class || student.className
+                  })
+                  if (res && res.success) {
+                    setTelegramFeedback({ type: 'success', text: `បានផ្ញើដំណឹងព្រមានទៅកាន់ Telegram (${res.count || 1} ក្រុម) ជោគជ័យ!` })
+                  } else {
+                    setTelegramFeedback({ type: 'error', text: res?.message || res?.error || 'មិនមាន Telegram Bot សកម្មសម្រាប់ថ្នាក់នេះទេ' })
+                  }
+                } catch (e) {
+                  setTelegramFeedback({ type: 'error', text: 'បរាជ័យក្នុងការផ្ញើដំណឹង: ' + e.message })
+                } finally {
+                  setSendingTelegram(false)
+                  setTimeout(() => setTelegramFeedback(null), 4000)
+                }
+              }}
+              disabled={sendingTelegram}
+              className="flex items-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white py-2.5 px-4 rounded-xl font-bold text-[13px] shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer disabled:opacity-50"
+              title="ផ្ញើសេចក្តីជូនដំណឹងអំពីការព្រមានវិន័យសិស្សនេះទៅកាន់ Telegram Bot"
+            >
+              <Send size={15} strokeWidth={2.5} />
+              <span>{sendingTelegram ? 'កំពុងផ្ញើ...' : 'ផ្ញើដំណឹង Telegram'}</span>
+            </button>
+          )}
+
           {status === 'CRITICAL' && onNavigate && (
             <button
               onClick={() => {
@@ -163,6 +203,17 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
           )}
         </div>
       </div>
+
+      {telegramFeedback && (
+        <div className={`p-3.5 rounded-xl border text-[13px] font-bold flex items-center justify-between animate-in fade-in ${
+          telegramFeedback.type === 'success'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            : 'bg-rose-50 text-rose-800 border-rose-200'
+        }`}>
+          <span>{telegramFeedback.text}</span>
+          <button onClick={() => setTelegramFeedback(null)} className="text-slate-400 hover:text-slate-600 ml-3">✕</button>
+        </div>
+      )}
 
       {/* ── Stats Cards (4 Cards) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">

@@ -10,7 +10,7 @@ import {
   User, Check, X, FileText, AlertCircle, CheckCircle2,
   Loader2, Send, LogOut, Search, BookOpen, ChevronDown,
   ArrowLeftRight, Calendar, WifiOff, CloudUpload, RefreshCw, Wifi, Lock,
-  UserX, Info
+  UserX, Info, Edit3
 } from 'lucide-react'
 
 // Helper to format today's date in polite, complete Khmer text
@@ -378,7 +378,12 @@ export default function Attendance({ session, onNavigate, onLogout }) {
   const isPastSchoolHours = (currentMinutes >= SYSTEM_CLOSE_MINUTES || currentMinutes < SYSTEM_OPEN_MINUTES)
   const isTimeDisabled = Boolean(isPastSchoolHours && !allowPastHoursOverride)
 
-  const isActionDisabled = isLibreDisabled || isOffDisabled || !hasTimetable || isTimeDisabled
+  const [isEditMode, setIsEditMode] = useState(false)
+
+  // Reset edit mode when period or class changes
+  useEffect(() => {
+    setIsEditMode(false)
+  }, [periodInfo.period, currentClass])
 
   // Helper to check if a specific period has already been submitted today
   const isPeriodSubmitted = (periodNum) => {
@@ -404,6 +409,10 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     } catch {}
     return false
   }
+
+  const isAlreadySubmitted = Boolean(isPeriodSubmitted(periodInfo.period))
+  const isLockedAfterSubmit = Boolean(isAlreadySubmitted && !isEditMode)
+  const isActionDisabled = isLibreDisabled || isOffDisabled || !hasTimetable || isTimeDisabled || isLockedAfterSubmit
 
   // Helper to get saved state for a specific period from local cache
   const getSavedPeriodState = (periodNum) => {
@@ -944,6 +953,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
   // Point 2: Select period manually from quick dropdown (Auto-restores if submitted)
   const selectPeriodManually = (periodObj) => {
     setShowPeriodDropdown(false)
+    setIsEditMode(false)
     try {
       localStorage.setItem(`school_active_period_${today}_${currentClass}`, String(periodObj.period))
     } catch {}
@@ -1045,6 +1055,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       endTime: periodInfo.endTime,
       hours: hoursMissed,
       isSubstituted: isSubstituted,
+      isUpdate: Boolean(isAlreadyDone),
       recordedBy: session.fullName || 'ប្រធានថ្នាក់',
       periodState,
       records
@@ -1095,6 +1106,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
         localStorage.setItem(`school_active_period_${today}_${currentClass}`, String(periodInfo.period))
       } catch (e) {}
 
+      setIsEditMode(false)
       setLastUpdatedTime(Date.now())
       setAlertMessage({
         show: true,
@@ -1374,10 +1386,14 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                   </span>
                 )}
 
-                {/* Point 5: Substitution Badge if swapped */}
-                {isPeriodSubmitted(periodInfo.period) && (
-                  <span className="inline-flex items-center gap-1  text-emerald-700 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold animate-in fade-in duration-150">
-                    បានស្រង់រួច
+                {/* Submitted / Edit Mode Badge */}
+                {isAlreadySubmitted && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold animate-in fade-in duration-150 ${
+                    isEditMode
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                      : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                  }`}>
+                    {isEditMode ? <><Edit3 size={11} /> កំពុងកែប្រែ</> : <><Lock size={11} /> បានស្រង់រួច</>}
                   </span>
                 )}
               </div>
@@ -1527,6 +1543,9 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       </div>
       )}
 
+      {/* ── Status Banner for Submitted Period: Locked vs Edit Mode ── */}
+    
+
       {/* ── Search Bar ── */}
       <div className="relative mb-3 sm:mb-5">
         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -1555,7 +1574,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
           className="text-[11px] sm:text-[13px] font-bold text-accent hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg transition-colors flex items-center gap-1 sm:gap-1.5 border border-indigo-100 cursor-pointer"
           onClick={resetAll}
           disabled={isActionDisabled}
-          title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? "មិនអាចកំណត់វត្តមានក្នុងម៉ោងទំនេរទេ" : "កំណត់សិស្សទាំងអស់ជាមានវត្តមានវិញ"}
+          title={isLockedAfterSubmit ? "បានចាក់សោរ! សូមចុច «កែប្រែ» ជាមុនសិនទើបអាចកំណត់ឡើងវិញបាន" : isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? "មិនអាចកំណត់វត្តមានក្នុងម៉ោងទំនេរទេ" : "កំណត់សិស្សទាំងអស់ជាមានវត្តមានវិញ"}
         >
           <RotateCcw size={13} className="sm:w-3.5 sm:h-3.5" strokeWidth={2.5} /> លុបទាំងអស់
         </button>
@@ -1638,13 +1657,15 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                     disabled={isActionDisabled}
                     onClick={() => handleStatusClick(s, 'PRESENT')}
                     className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${
-                      isActionDisabled
-                        ? 'opacity-40 cursor-not-allowed bg-slate-100/70 border-slate-200 text-slate-400'
-                        : !isAbsent && !isLeave && !isDropout
-                        ? 'bg-success/10 border-success text-success shadow-xs cursor-pointer'
+                      !isAbsent && !isLeave && !isDropout
+                        ? isActionDisabled
+                          ? 'bg-success/15 border-success text-success shadow-xs cursor-default'
+                          : 'bg-success/10 border-success text-success shadow-xs cursor-pointer'
+                        : isActionDisabled
+                        ? 'opacity-30 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-300'
                         : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
                     }`}
-                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
+                    title={isLockedAfterSubmit ? 'វត្តមាន (បានចាក់សោរ - ចុច «កែប្រែ» ដើម្បីប្តូរ)' : isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
                   >
                     <Check size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={!isAbsent && !isLeave && !isDropout ? 3 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">វត្តមាន</span>
@@ -1655,13 +1676,15 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                     disabled={isActionDisabled}
                     onClick={() => handleStatusClick(s, 'ABSENT')}
                     className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${
-                      isActionDisabled
-                        ? 'opacity-40 cursor-not-allowed bg-slate-100/70 border-slate-200 text-slate-400'
-                        : isAbsent
-                        ? 'bg-danger/10 border-danger text-danger shadow-xs cursor-pointer'
+                      isAbsent
+                        ? isActionDisabled
+                          ? 'bg-danger/15 border-danger text-danger shadow-xs cursor-default'
+                          : 'bg-danger/10 border-danger text-danger shadow-xs cursor-pointer'
+                        : isActionDisabled
+                        ? 'opacity-30 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-300'
                         : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
                     }`}
-                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
+                    title={isLockedAfterSubmit ? 'អវត្តមាន (បានចាក់សោរ - ចុច «កែប្រែ» ដើម្បីប្តូរ)' : isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
                   >
                     <X size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={isAbsent ? 3 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">អវត្តមាន</span>
@@ -1672,13 +1695,15 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                     disabled={isActionDisabled}
                     onClick={() => handleStatusClick(s, 'LEAVE')}
                     className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${
-                      isActionDisabled
-                        ? 'opacity-40 cursor-not-allowed bg-slate-100/70 border-slate-200 text-slate-400'
-                        : isLeave
-                        ? 'bg-amber-500/10 border-amber-500 text-amber-600 shadow-xs cursor-pointer'
+                      isLeave
+                        ? isActionDisabled
+                          ? 'bg-amber-500/15 border-amber-500 text-amber-600 shadow-xs cursor-default'
+                          : 'bg-amber-500/10 border-amber-500 text-amber-600 shadow-xs cursor-pointer'
+                        : isActionDisabled
+                        ? 'opacity-30 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-300'
                         : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
                     }`}
-                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
+                    title={isLockedAfterSubmit ? 'ច្បាប់ (បានចាក់សោរ - ចុច «កែប្រែ» ដើម្បីប្តូរ)' : isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : undefined}
                   >
                     <FileText size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={isLeave ? 3 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">ច្បាប់</span>
@@ -1689,13 +1714,15 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                     disabled={isActionDisabled}
                     onClick={() => handleStatusClick(s, 'DROPOUT')}
                     className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${
-                      isActionDisabled
-                        ? 'opacity-40 cursor-not-allowed bg-slate-100/70 border-slate-200 text-slate-400'
-                        : isDropout
-                        ? 'bg-slate-800 border-slate-900 text-white shadow-xs cursor-pointer'
+                      isDropout
+                        ? isActionDisabled
+                          ? 'bg-slate-800 border-slate-900 text-white shadow-xs cursor-default'
+                          : 'bg-slate-800 border-slate-900 text-white shadow-xs cursor-pointer'
+                        : isActionDisabled
+                        ? 'opacity-30 cursor-not-allowed bg-slate-50 border-slate-200 text-slate-300'
                         : 'bg-white border-slate-200 text-slate-400 hover:bg-slate-50 cursor-pointer'
                     }`}
-                    title={isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : 'កំណត់សិស្សឈប់រៀនគ្រប់ម៉ោងនិងគ្រប់ថ្ងៃ'}
+                    title={isLockedAfterSubmit ? 'ឈប់រៀន (បានចាក់សោរ - ចុច «កែប្រែ» ដើម្បីប្តូរ)' : isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? 'ម៉ោងទំនេរ មិនអាចស្រង់វត្តមានបានទេ' : isTimeDisabled ? 'ផុតម៉ោងសិក្សាហើយ មិនអាចស្រង់វត្តមានបានទេ' : 'កំណត់សិស្សឈប់រៀនគ្រប់ម៉ោងនិងគ្រប់ថ្ងៃ'}
                   >
                     <UserX size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={isDropout ? 2.5 : 2} />
                     <span className="text-[10px] sm:text-[11px] font-bold mt-0.5 sm:mt-1">ឈប់រៀន</span>
@@ -1711,9 +1738,12 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setReactivateModal({ show: true, student: s, targetStatus: 'PRESENT' })}
-                      className="text-[10px] sm:text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline shrink-0 cursor-pointer"
-                      title="ចុចដើម្បីកំណត់សិស្សឱ្យចូលរៀនវិញ"
+                      disabled={isActionDisabled}
+                      onClick={() => !isActionDisabled && setReactivateModal({ show: true, student: s, targetStatus: 'PRESENT' })}
+                      className={`text-[10px] sm:text-[11px] font-bold underline shrink-0 ${
+                        isActionDisabled ? 'text-slate-400 cursor-not-allowed' : 'text-indigo-600 hover:text-indigo-800 cursor-pointer'
+                      }`}
+                      title={isLockedAfterSubmit ? 'សូមចុច «កែប្រែ» ជាមុនសិន' : 'ចុចដើម្បីកំណត់សិស្សឱ្យចូលរៀនវិញ'}
                     >
                       ចូលរៀនវិញ
                     </button>
@@ -1721,7 +1751,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                 )}
 
                 {/* Input មូលហេតុសុំច្បាប់ when student is on LEAVE */}
-                {isLeave && !isActionDisabled && (
+                {isLeave && (
                   <div className="mt-1.5 sm:mt-2.5 pt-1.5 sm:pt-2.5 border-t border-amber-200/70 flex flex-col gap-1 sm:gap-1.5 animate-in fade-in duration-200 relative z-10">
                     <div className="flex items-center justify-between flex-wrap gap-1">
                       <label className="text-[10px] sm:text-[11px] font-bold text-amber-900 flex items-center gap-1">
@@ -1730,30 +1760,38 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                       </label>
 
                       {/* Quick preset chips */}
-                      <div className="flex items-center gap-1">
-                        {['ឈឺ', 'ធុរៈគ្រួសារ', 'ទៅស្រុក'].map(preset => (
-                          <button
-                            key={preset}
-                            type="button"
-                            onClick={() => setLeaveReason(s.id, preset)}
-                            className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded transition-all cursor-pointer border ${
-                              leaveReasons[s.id] === preset
-                                ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
-                                : 'bg-white/90 hover:bg-amber-100 text-amber-800 border-amber-200'
-                            }`}
-                          >
-                            {preset}
-                          </button>
-                        ))}
-                      </div>
+                      {!isActionDisabled && (
+                        <div className="flex items-center gap-1">
+                          {['ឈឺ', 'ធុរៈគ្រួសារ', 'ទៅស្រុក'].map(preset => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setLeaveReason(s.id, preset)}
+                              className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded transition-all cursor-pointer border ${
+                                leaveReasons[s.id] === preset
+                                  ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                                  : 'bg-white/90 hover:bg-amber-100 text-amber-800 border-amber-200'
+                              }`}
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <input
                       type="text"
+                      disabled={isActionDisabled}
+                      readOnly={isActionDisabled}
                       value={leaveReasons[s.id] || ''}
                       onChange={(e) => setLeaveReason(s.id, e.target.value)}
-                      placeholder="វាយបញ្ចូលមូលហេតុ (ឧ. ឈឺ, គ្រុនក្តៅ, ធុរៈ...)"
-                      className="w-full px-2 sm:px-2.5 py-1 text-[11px] sm:text-[12px] bg-white border border-amber-300 rounded-md sm:rounded-lg text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400 font-medium transition-all shadow-xs"
+                      placeholder={isActionDisabled ? (leaveReasons[s.id] || 'មានច្បាប់ត្រឹមត្រូវ') : "វាយបញ្ចូលមូលហេតុ (ឧ. ឈឺ, គ្រុនក្តៅ, ធុរៈ...)"}
+                      className={`w-full px-2 sm:px-2.5 py-1 text-[11px] sm:text-[12px] rounded-md sm:rounded-lg font-medium transition-all shadow-xs ${
+                        isActionDisabled
+                          ? 'bg-amber-50/60 border border-amber-200 text-amber-900 cursor-not-allowed'
+                          : 'bg-white border border-amber-300 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400'
+                      }`}
                     />
                   </div>
                 )}
@@ -1832,17 +1870,54 @@ export default function Attendance({ session, onNavigate, onLogout }) {
           <Lock size={13} className="text-slate-400" />
           <span>ផុតម៉ោង (បិទម៉ោង ៦ យប់)</span>
         </button>
+      ) : isAlreadySubmitted && !isEditMode ? (
+        <button
+          type="button"
+          className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-bold py-1.5 sm:py-2 px-3 sm:px-5 rounded-lg sm:rounded-xl shadow-[0_4px_12px_0_rgba(245,158,11,0.3)] transition-all duration-200 flex items-center gap-1.5 cursor-pointer text-[11px] sm:text-[13px]"
+          onClick={() => setIsEditMode(true)}
+          disabled={loading || students.length === 0}
+          title="ចុចដើម្បីបើកសិទ្ធិកែប្រែវត្តមានសម្រាប់ម៉ោងនេះ"
+        >
+          <Edit3 size={14} className="sm:w-4 sm:h-4" />
+          <span>កែប្រែវត្តមាន</span>
+        </button>
+      ) : isAlreadySubmitted && isEditMode ? (
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            type="button"
+            className="bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold py-1.5 sm:py-2 px-2.5 sm:px-3 rounded-lg sm:rounded-xl border border-slate-200 transition-all flex items-center gap-1 cursor-pointer text-[11px] sm:text-[13px]"
+            onClick={() => {
+              loadPeriodData(periodInfo, students)
+              setIsEditMode(false)
+            }}
+            disabled={saving}
+            title="បោះបង់ការកែប្រែ និងវិលទៅទិន្នន័យដើមវិញ"
+          >
+            <X size={13} className="sm:w-4 sm:h-4" />
+            <span>បោះបង់</span>
+          </button>
+          <button
+            type="button"
+            className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-1.5 sm:py-2 px-3 sm:px-4 rounded-lg sm:rounded-xl shadow-[0_4px_12px_0_rgba(16,185,129,0.3)] transition-all duration-200 flex items-center gap-1.5 cursor-pointer text-[11px] sm:text-[13px]"
+            onClick={saveAttendance}
+            disabled={saving || loading || students.length === 0}
+          >
+            {saving ? (
+              <><Loader2 size={14} className="animate-spin sm:w-4 sm:h-4" /> កំពុងកែប្រែ...</>
+            ) : (
+              <><RefreshCw size={13} className="sm:w-4 sm:h-4" /> ធ្វើបច្ចុប្បន្នភាព </>
+            )}
+          </button>
+        </div>
       ) : (
         <button
           type="button"
-          className="bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-1.5 sm:py-2 px-3 sm:px-5 rounded-lg sm:rounded-xl shadow-[0_4px_12px_0_rgb(99,102,241,0.3)] hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-1.5 cursor-pointer text-[11px] sm:text-[13px]"
+          className="bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-1.5 sm:py-2 px-3 sm:px-5 rounded-lg sm:rounded-xl shadow-[0_4px_12px_0_rgb(99,102,241,0.3)] hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-1.5 cursor-pointer text-[11px] sm:text-[13px]"
           onClick={saveAttendance}
           disabled={saving || loading || students.length === 0 || !hasTimetable || isActionDisabled}
         >
           {saving ? (
-            <><Loader2 size={14} className="animate-spin sm:w-4 sm:h-4" /> រក្សាទុក...</>
-          ) : isPeriodSubmitted(periodInfo.period) ? (
-            <><Send size={13} className="sm:w-4 sm:h-4" /> រក្សាទុក ({periodInfo.periodLabel || `ម៉ោងទី ${periodInfo.period}`})</>
+            <><Loader2 size={14} className="animate-spin sm:w-4 sm:h-4" /> កំពុងរក្សាទុក...</>
           ) : (
             <><Send size={14} className="sm:w-4 sm:h-4" /> បញ្ជូន ({periodInfo.periodLabel || `ម៉ោងទី ${periodInfo.period}`})</>
           )}

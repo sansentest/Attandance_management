@@ -1,15 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   Search, Plus, Bot, MessageCircle, Edit, Trash2,
-  CheckCircle, XCircle, ChevronLeft, ChevronRight, ChevronsRight,
-  Activity, Globe, Save, Loader2, Copy, Check, Send, AlertCircle, Clock
+  CheckCircle, XCircle, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown,
+  Activity, Globe, Save, Loader2, Copy, Check, Send, AlertCircle, Clock,
+  Download, FileText, FileCode, FileImage
 } from 'lucide-react'
 import AddBotModal from './AddBotModal'
 import EditBotModal from './EditBotModal'
 import GlobalTokenModal from './GlobalTokenModal'
 import SearchableDropdown from '../../common/SearchableDropdown'
-import { api } from '../../../utils/api'
+import { api, getCachedSchoolName } from '../../../utils/api'
 import { triggerDailySummary, isDailySummarySentToday, getDailySummarySentLog } from '../../../services/dailySummaryScheduler'
+import { exportTelegramPdf } from './exports/exportTelegramPdf.js'
+import { exportTelegramWord } from './exports/exportTelegramWord.js'
+import { exportTelegramExcel } from './exports/exportTelegramExcel.js'
 
 const isDummyToken = (t) => {
   if (!t) return false;
@@ -47,6 +51,20 @@ export default function AdminTelegramBot() {
   const [toast, setToast] = useState(null)
   const [isSendingDailySummary, setIsSendingDailySummary] = useState(false)
   const [summarySentToday, setSummarySentToday] = useState(() => isDailySummarySentToday())
+
+  // Export State
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportRef.current && !exportRef.current.contains(e.target)) {
+        setExportOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type })
@@ -241,6 +259,35 @@ export default function AdminTelegramBot() {
     }
   }
 
+  const handleExport = async (type = 'Excel') => {
+    setExportOpen(false)
+    if (!filteredBots || filteredBots.length === 0) {
+      showToast('មិនមានទិន្នន័យសម្រាប់ទាញយកទេ', 'error')
+      return
+    }
+
+    const exportParams = {
+      bots: filteredBots,
+      schoolName: getCachedSchoolName()
+    }
+
+    try {
+      if (type === 'Excel') {
+        await exportTelegramExcel(exportParams)
+        showToast(`បានទាញយកបញ្ជី Telegram Bot (${filteredBots.length} គណនី) ជាឯកសារ Excel ដោយជោគជ័យ`, 'success')
+      } else if (type === 'Word') {
+        exportTelegramWord(exportParams)
+        showToast(`បានទាញយកបញ្ជី Telegram Bot (${filteredBots.length} គណនី) ជាឯកសារ Word (.doc) ដោយជោគជ័យ`, 'success')
+      } else {
+        exportTelegramPdf(exportParams)
+        showToast(`បានបើកផ្ទាំងបោះពុម្ពបញ្ជី Telegram Bot (${filteredBots.length} គណនី) សម្រាប់ Save as PDF`, 'success')
+      }
+    } catch (err) {
+      console.error('Telegram bot export error:', err)
+      showToast('មានបញ្ហាក្នុងការទាញយកឯកសារ', 'error')
+    }
+  }
+
   // Filter Data
   let filteredBots = bots
 
@@ -411,6 +458,49 @@ export default function AdminTelegramBot() {
             </div>
 
             <div className="w-full lg:w-auto flex-shrink-0 flex items-center justify-end gap-3 flex-wrap">
+              {/* Export Dropdown */}
+              <div className="relative shrink-0 w-full sm:w-auto" ref={exportRef}>
+                <button
+                  type="button"
+                  onClick={() => setExportOpen(!exportOpen)}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 cursor-pointer"
+                  title="នាំចេញបញ្ជី Telegram Bot ជា PDF, Excel ឬ Word"
+                >
+                  <Download size={15} strokeWidth={2.5} />
+                  <span>នាំចេញ (Export)</span>
+                  <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-0.5 ${exportOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {exportOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2 animate-in fade-in slide-in-from-top-2 duration-150">
+                    <button
+                      type="button"
+                      onClick={() => handleExport('PDF')}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileText size={16} className="text-rose-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as PDF</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExport('Excel')}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileCode size={16} className="text-emerald-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as Excel</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExport('Word')}
+                      className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"
+                    >
+                      <FileImage size={16} className="text-blue-500 group-hover:scale-110 transition-transform" />
+                      <span>Export as Word</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
               <button
                 onClick={() => setIsGlobalTokenModalOpen(true)}
                 className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white py-2.5 px-4 sm:px-6 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full sm:w-auto"

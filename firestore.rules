@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to validate basic data integrity
+    function hasValidTimestamp() {
+      return request.time != null;
+    }
+
+    // 1. Attendance Records & Period States
+    match /attendance_records/{docId} {
+      allow read, write: if true;
+    }
+    match /period_states/{docId} {
+      allow read, write: if true;
+    }
+    match /full_day_leaves/{docId} {
+      allow read, write: if true;
+    }
+
+    // 2. Academic Structure
+    match /academic_classes/{docId} {
+      allow read, write: if true;
+    }
+    match /academic_subjects/{docId} {
+      allow read, write: if true;
+    }
+    match /academic_timetables/{docId} {
+      allow read, write: if true;
+    }
+
+    // 3. Students & Discipline
+    match /students/{docId} {
+      allow read, write: if true;
+    }
+    match /invitation_letters/{docId} {
+      allow read, write: if true;
+    }
+    match /discipline_resolutions/{docId} {
+      allow read, write: if true;
+    }
+
+    // 4. System Settings & Bots
+    match /school_settings/{docId} {
+      allow read, write: if true;
+    }
+    match /telegram_bots/{docId} {
+      allow read, write: if true;
+    }
+
+    // 5. Backups (Sensitive Admin Archives)
+    match /monthly_backups/{docId} {
+      allow read, write: if true;
+    }
+
+    // 6. Users (Contains hashed credentials)
+    match /users/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
+

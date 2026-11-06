@@ -207,7 +207,7 @@ const BASE_CSS = `
   vertical-align: baseline; /* ប្តូរពី bottom */
   border-bottom: 1px dotted #000;
 }
-.w-parent  { min-width: 28mm; }
+.w-parent  { min-width: 25mm; }
 .w-student { min-width: 28mm; }
 .w-gender  { min-width: 14mm; }
 .w-age     { min-width: 12mm; }

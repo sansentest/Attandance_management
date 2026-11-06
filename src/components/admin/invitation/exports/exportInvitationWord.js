@@ -18,7 +18,7 @@ const KH_MONTHS = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេ
 
 const formatMeetingDate = (dateString, timeString) => {
   if (!dateString) {
-    return `នៅថ្ងៃ.............. ទី............ ខែ.............. ឆ្នាំ................ វេលាម៉ោង.................... ជាកំណត់។`;
+    return `នៅថ្ងៃ............. ទី............ ខែ............. ឆ្នាំ.............. វេលាម៉ោង................. ជាកំណត់។`;
   }
   const date = new Date(dateString);
   const dayNames = ['អាទិត្យ', 'ចន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហស្បតិ៍', 'សុក្រ', 'សៅរ៍'];
@@ -118,12 +118,14 @@ const WORD_CSS = `
     line-height: 1.8;
   }
   .signature-box {
-    margin-top: 4pt;
-    padding-left: 70pt;
+    margin-top: -2mm;
     text-align: right;
   }
   .text-sig-role {
-    font-size: 11pt;
+    font-size: 12.5pt;
+    margin: 0;
+    margin-right: 20mm;
+    text-align: right;
   }
   .divider-line {
     border-top: 1pt dashed #555555;
@@ -253,9 +255,9 @@ function buildWordSingleLetter(student = {}, config = {}) {
     </div>
 
     <!-- Signature Area -->
-    <div class="signature-box">
-      <div class="muol text-sig-role">នាយកសាលា</div>
-      <div style="height: 40pt; line-height: 40pt;">&nbsp;</div>
+    <div class="signature-box" style="margin-top: 2mm; text-align: right;">
+      <p class="muol text-sig-role" style="font-size: 12.5pt; margin: 0; margin-right: 20mm; text-align: right;">នាយកសាលា</p>
+      <div style="height: 40pt; line-height: 40pt; font-size: 1pt;">&nbsp;</div>
     </div>
   `;
 }

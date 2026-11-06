@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api, saveSession, getCachedSchoolSettings } from '../utils/api'
 import { User, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react'
+import InstallAppBanner from './common/InstallAppBanner'
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('')
@@ -9,6 +10,16 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
   const [schoolInfo, setSchoolInfo] = useState(() => getCachedSchoolSettings())
+
+  useEffect(() => {
+    let isMounted = true
+    api('settings.get').then(res => {
+      if (isMounted && res?.success && res.data?.school) {
+        setSchoolInfo(res.data.school)
+      }
+    }).catch(() => {})
+    return () => { isMounted = false }
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -71,6 +82,13 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-slate-50 relative overflow-hidden font-[family-name:var(--font-primary)]">
+      
+      {/* ── Top-Right Floating Install Alert Banner ── */}
+      <InstallAppBanner 
+        schoolName={schoolInfo?.name || 'វិទ្យាល័យអង្គរកា'} 
+        logoUrl={schoolInfo?.logo || 'icon-192.png'} 
+      />
+
       {/* Decorative background elements */}
       <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] rounded-full bg-gradient-to-br from-indigo-300/30 via-purple-300/30 to-fuchsia-300/30 blur-[100px] pointer-events-none"></div>
       <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-gradient-to-tl from-sky-300/30 via-blue-300/30 to-cyan-300/30 blur-[100px] pointer-events-none"></div>
@@ -167,9 +185,10 @@ export default function Login({ onLogin }) {
           </form>
         </div>
 
-        <div className="mt-10 text-[13px] font-medium text-slate-400 text-center relative z-10 animate-in fade-in duration-700 delay-300 fill-mode-both">
+        <div className="mt-8 text-[13px] font-medium text-slate-400 text-center relative z-10 animate-in fade-in duration-700 delay-300 fill-mode-both">
           &copy; {new Date().getFullYear()} ប្រព័ន្ធគ្រប់គ្រងសាលារៀន. រក្សាសិទ្ធិគ្រប់យ៉ាង.
         </div>
+
       </div>
     </div>
   )

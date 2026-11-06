@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Plus, Shield, User, Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown, CheckCircle, RefreshCw, CheckCircle2, Loader2, Download, FileText, FileCode, FileImage, FileSpreadsheet } from 'lucide-react'
+import { Search, Plus, Shield, User, Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown, CheckCircle, RefreshCw, CheckCircle2, Loader2, Download, FileText, FileCode, FileImage, FileSpreadsheet, Link2 } from 'lucide-react'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
 import ImportUsersModal from './ImportUsersModal'
@@ -456,6 +456,23 @@ export default function AdminUsers() {
               >
                 <FileSpreadsheet size={15} strokeWidth={2.3} className="text-emerald-600" />
                 <span>នាំចូល (Import)</span>
+              </button>
+
+              {/* Copy Link for Monitors Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) ? import.meta.env.BASE_URL : '/'
+                  const cleanBase = base.startsWith('/') ? base : '/' + base
+                  const url = window.location.origin + (cleanBase.endsWith('/') ? cleanBase : cleanBase + '/')
+                  navigator.clipboard.writeText(url)
+                  showToast(`បានចម្លង Link: ${url} សម្រាប់ផ្ញើជូនប្រធានថ្នាក់!`)
+                }}
+                className="flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 cursor-pointer shrink-0"
+                title="ចម្លង Link វេបសាយសម្រាប់ផ្ញើទៅ Telegram អោយប្រធានថ្នាក់ចុចបើក"
+              >
+                <Link2 size={15} strokeWidth={2.3} />
+                <span>ចម្លង Link ចូលប្រើ</span>
               </button>
 
               <button 

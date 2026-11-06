@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard'
 import Attendance from './components/Attendance'
 import Report from './components/Report'
 import AdminLayout from './components/admin/AdminLayout'
+import InstallAppBanner from './components/common/InstallAppBanner'
 import { loadSession, saveSession, clearSession, api } from './utils/api'
 import { startDailySummaryScheduler } from './services/dailySummaryScheduler'
 import { startMonthlyBackupScheduler } from './services/monthlyBackupScheduler'
@@ -170,6 +171,8 @@ export default function App() {
 
   return (
     <div className="relative min-h-screen pb-[64px] bg-bg-base font-[family-name:var(--font-primary)] overflow-x-hidden max-w-full">
+      {/* Top-Right Floating Install Alert Banner for Mobile Users */}
+      <InstallAppBanner />
       {/* Page Content */}
       <div className="page-enter">
         {activeTab === 'dashboard' && (

@@ -15,7 +15,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="វត្តមានអង្គរកា" />
 
-    <!-- Early PWA Prompt Capture & Service Worker -->
+    <!-- Early PWA Prompt Capture & Service Worker (GitHub Pages Compatible) -->
     <script>
       window.__pwaInstallPrompt = null;
       window.addEventListener('beforeinstallprompt', function(e) {
@@ -23,9 +23,14 @@
         window.__pwaInstallPrompt = e;
         window.dispatchEvent(new CustomEvent('pwa-prompt-available', { detail: e }));
       });
-      if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      if ('serviceWorker' in navigator) {
         window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js').catch(function() {});
+          var swUrl = '/Attandance_management/sw.js';
+          navigator.serviceWorker.register(swUrl, { scope: '/Attandance_management/' }).then(function(reg) {
+            console.log('[PWA] Service Worker registered:', reg.scope);
+          }).catch(function(err) {
+            console.warn('[PWA] Service Worker registration failed:', err);
+          });
         });
       }
     </script>
@@ -37,7 +42,7 @@
     
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-    <script type="module" crossorigin src="/Attandance_management/assets/index-BM110oxD.js"></script>
+    <script type="module" crossorigin src="/Attandance_management/assets/index-Bkyli5nr.js"></script>
     <link rel="stylesheet" crossorigin href="/Attandance_management/assets/index-Cc-Kxjru.css">
   </head>
   <body>

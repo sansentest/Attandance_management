@@ -7,7 +7,7 @@ import {
   Calendar, Coffee, Sparkles, Check, ArrowRight,
   Sun, Sunset, Upload, FileSpreadsheet,
   ChevronDown, FileText, FileCode, FileImage,
-  Layers, Clipboard
+  Layers, Clipboard, Loader2
 } from 'lucide-react'
 import SearchableDropdown from '../../common/SearchableDropdown'
 
@@ -375,23 +375,79 @@ function parseSpreadsheetXmlWorkbook(xmlText) {
 }
 
 // ─────────────────────────────────────────────
+// Dynamically Load SheetJS (XLSX) from CDN
+// ─────────────────────────────────────────────
+const loadSheetJS = async () => {
+  if (typeof window !== 'undefined' && window.XLSX) return window.XLSX
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'
+    s.onload = () => resolve(window.XLSX)
+    s.onerror = () => {
+      const fallback = document.createElement('script')
+      fallback.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+      fallback.onload = () => resolve(window.XLSX)
+      fallback.onerror = () => reject(new Error('Cannot load XLSX library'))
+      document.head.appendChild(fallback)
+    }
+    document.head.appendChild(s)
+  })
+}
+
+// ─────────────────────────────────────────────
+// Normalize Sheet Name to Clean Class ID (e.g. "ថ្នាក់ 12A" -> "12A")
+// ─────────────────────────────────────────────
+function normalizeClassName(sheetName) {
+  if (!sheetName) return ''
+  let cleaned = String(sheetName).trim()
+  cleaned = cleaned.replace(/^(ថ្នាក់ទី|ថ្នាក់|Grade|Class)\s*/i, '').trim()
+  const khmerToLatinDigits = { '០': '0', '១': '1', '២': '2', '៣': '3', '៤': '4', '៥': '5', '៦': '6', '៧': '7', '៨': '8', '៩': '9' }
+  cleaned = cleaned.replace(/[០-៩]/g, d => khmerToLatinDigits[d] || d)
+  return cleaned
+}
+
+// Find Matching Class from System Class List or Options
+function findMatchingClass(sheetName, classesList = [], classOptions = []) {
+  if (!sheetName) return ''
+  const norm = normalizeClassName(sheetName).toLowerCase().trim()
+  const allKnown = [
+    ...(classesList || []).map(c => c?.name || c?.id),
+    ...(classOptions || []).map(c => c?.id || c?.name)
+  ].filter(Boolean)
+
+  // 1. Exact match with normalized class name
+  const exact = allKnown.find(c => normalizeClassName(c).toLowerCase().trim() === norm)
+  if (exact) return exact
+
+  // 2. Contains match
+  const contains = allKnown.find(c => {
+    const cNorm = normalizeClassName(c).toLowerCase().trim()
+    return cNorm && (cNorm.includes(norm) || norm.includes(cNorm))
+  })
+  if (contains) return contains
+
+  // 3. Fallback to normalized sheetName
+  return normalizeClassName(sheetName) || sheetName
+}
+
+// ─────────────────────────────────────────────
 // Convert 2D Matrix to Clean Timetable Slots (Error-Free)
 // ─────────────────────────────────────────────
 function convertMatrixToSlots(matrix, targetClassName = '12B') {
   if (!matrix || matrix.length === 0) return []
 
-  // 1. Find Header Row containing 'ច័ន្ទ' or 'mon'
+  // 1. Find Header Row containing 'ច័ន្ទ' / 'ចន្ទ' or 'mon'
   let headerRowIdx = -1
   for (let r = 0; r < matrix.length; r++) {
     const row = matrix[r] || []
-    if (row.some(c => /ច័ន្ទ|mon/i.test(c)) && row.some(c => /អង្គារ|tue/i.test(c))) {
+    if (row.some(c => /ច័ន្ទ|ចន្ទ|mon|monday/i.test(String(c))) && row.some(c => /អង្គារ|tue|tuesday/i.test(String(c)))) {
       headerRowIdx = r
       break
     }
   }
 
   if (headerRowIdx === -1) {
-    headerRowIdx = matrix.findIndex(r => (r || []).some(c => /ច័ន្ទ|mon|អង្គារ|tue/i.test(c)))
+    headerRowIdx = matrix.findIndex(r => (r || []).some(c => /ច័ន្ទ|ចន្ទ|mon|អង្គារ|tue/i.test(String(c))))
   }
 
   if (headerRowIdx === -1) return []
@@ -399,13 +455,13 @@ function convertMatrixToSlots(matrix, targetClassName = '12B') {
   const headerRow = matrix[headerRowIdx]
   const colToDayMap = {}
   headerRow.forEach((cell, cIdx) => {
-    const txt = (cell || '').toLowerCase().trim()
-    if (/ច័ន្ទ|mon/i.test(txt)) colToDayMap[cIdx] = 'mon'
+    const txt = String(cell || '').toLowerCase().trim()
+    if (/ច័ន្ទ|ចន្ទ|mon/i.test(txt)) colToDayMap[cIdx] = 'mon'
     else if (/អង្គារ|tue/i.test(txt)) colToDayMap[cIdx] = 'tue'
     else if (/ពុធ|wed/i.test(txt)) colToDayMap[cIdx] = 'wed'
-    else if (/ព្រហ|thu/i.test(txt)) colToDayMap[cIdx] = 'thu'
+    else if (/ព្រហស្បតិ៍|ព្រហស្បត៍|ព្រហ|thu/i.test(txt)) colToDayMap[cIdx] = 'thu'
     else if (/សុក្រ|fri/i.test(txt)) colToDayMap[cIdx] = 'fri'
-    else if (/សៅរ៍|sat/i.test(txt)) colToDayMap[cIdx] = 'sat'
+    else if (/សៅរ៍|សៅរ|sat/i.test(txt)) colToDayMap[cIdx] = 'sat'
   })
 
   const dayKeys = Object.values(colToDayMap)
@@ -424,11 +480,17 @@ function convertMatrixToSlots(matrix, targetClassName = '12B') {
     const row = matrix[r] || []
     if (row.length === 0) continue
 
-    const firstCell = (row[0] || '').trim()
+    const firstCell = String(row[0] || '').trim()
+    const fullRowStr = row.map(c => String(c || '').trim()).join(' ')
 
     // Afternoon Divider
-    if (/រសៀល|afternoon|lunch|សម្រាក/i.test(firstCell) || row.some(c => /ពេលរសៀល/i.test(c))) {
+    if (/រសៀល|afternoon|lunch/i.test(firstCell) || /ពេលរសៀល/i.test(fullRowStr)) {
       isAfternoon = true
+      continue
+    }
+
+    // Short 15mn break row (សម្រាក ១៥ នាទី / សម្រាក) without "រសៀល": skip without advancing period
+    if (/សម្រាក/i.test(firstCell) && !/រសៀល|afternoon/i.test(firstCell)) {
       continue
     }
 
@@ -437,14 +499,45 @@ function convertMatrixToSlots(matrix, targetClassName = '12B') {
       break
     }
 
+    // Check if the row has any non-empty cell in day columns
+    const hasAnyContent = Object.keys(colToDayMap).some(cIdx => {
+      const val = String(row[cIdx] || '').trim()
+      return val && val !== '—' && val !== '-' && val !== 'X' && val !== 'x'
+    })
+
+    if (!hasAnyContent) {
+      continue
+    }
+
     let periodKey = null
     if (isAfternoon) {
-      if (afternoonIdx < afternoonPeriods.length) {
+      if (/ម៉ោងទី\s*១|ម៉ោង\s*១|14:00|02:00/i.test(firstCell)) {
+        periodKey = 'a1'
+        afternoonIdx = 1
+      } else if (/ម៉ោងទី\s*២|ម៉ោង\s*២|15:00|03:00/i.test(firstCell)) {
+        periodKey = 'a2'
+        afternoonIdx = 2
+      } else if (/ម៉ោងទី\s*៣|ម៉ោង\s*៣|16:00|04:00/i.test(firstCell)) {
+        periodKey = 'a3'
+        afternoonIdx = 3
+      } else if (afternoonIdx < afternoonPeriods.length) {
         periodKey = afternoonPeriods[afternoonIdx]
         afternoonIdx++
       }
     } else {
-      if (morningIdx < morningPeriods.length) {
+      if (/ម៉ោងទី\s*១|ម៉ោង\s*១|07:00|7:00/i.test(firstCell)) {
+        periodKey = 'm1'
+        morningIdx = 1
+      } else if (/ម៉ោងទី\s*២|ម៉ោង\s*២|08:00|8:00/i.test(firstCell)) {
+        periodKey = 'm2'
+        morningIdx = 2
+      } else if (/ម៉ោងទី\s*៣|ម៉ោង\s*៣|09:00|9:00|09:15|9:15/i.test(firstCell)) {
+        periodKey = 'm3'
+        morningIdx = 3
+      } else if (/ម៉ោងទី\s*៤|ម៉ោង\s*៤|10:00|10:15/i.test(firstCell)) {
+        periodKey = 'm4'
+        morningIdx = 4
+      } else if (morningIdx < morningPeriods.length) {
         periodKey = morningPeriods[morningIdx]
         morningIdx++
       } else {
@@ -460,7 +553,7 @@ function convertMatrixToSlots(matrix, targetClassName = '12B') {
 
     for (const [colIdxStr, dayId] of Object.entries(colToDayMap)) {
       const cIdx = parseInt(colIdxStr, 10)
-      const cellText = (row[cIdx] || '').trim()
+      const cellText = String(row[cIdx] || '').trim()
       const decoded = decodeTimetableCell(cellText)
       if (decoded) {
         rawSlotsGrid[`${dayId}_${periodKey}`] = decoded
@@ -880,8 +973,12 @@ export default function AdminTimetable() {
     availableSheets: [],
     selectedSheet: '',
     rawWorkbookData: null,
+    sheetsSummary: {},
+    validSheetsCount: 0,
+    totalSlotsAllSheets: 0,
     pasteMode: false,
-    pasteText: ''
+    pasteText: '',
+    isParsing: false
   })
   const fileInputRef = useRef(null)
 
@@ -1469,15 +1566,85 @@ export default function AdminTimetable() {
       availableSheets: [selectedClass],
       selectedSheet: selectedClass,
       rawWorkbookData: { [selectedClass]: [] },
+      sheetsSummary: { [selectedClass]: { targetClass: selectedClass, slotsCount: demo.length } },
+      validSheetsCount: 1,
+      totalSlotsAllSheets: demo.length,
       pasteMode: false,
-      pasteText: ''
+      pasteText: '',
+      isParsing: false
     })
+  }
+
+  // Finish Workbook Processing and Prepare Summaries for All Sheets
+  const finishWorkbookProcessing = (parsedSheetsData, availableSheets, fileName) => {
+    if (!availableSheets || availableSheets.length === 0) {
+      showToast('ឯកសារគ្មានសន្លឹកទិន្នន័យ (Sheets) សម្រាប់នាំចូលទេ')
+      setImportModal(prev => ({ ...prev, isParsing: false }))
+      return
+    }
+
+    const sheetsSummary = {}
+    let totalSlotsAllSheets = 0
+    let validSheetsCount = 0
+
+    availableSheets.forEach(sName => {
+      const targetCls = findMatchingClass(sName, classesList, classOptions)
+      const matrix = parsedSheetsData[sName] || []
+      const slots = convertMatrixToSlots(matrix, targetCls)
+      sheetsSummary[sName] = {
+        targetClass: targetCls,
+        slotsCount: slots.length
+      }
+      if (slots.length > 0) {
+        validSheetsCount++
+        totalSlotsAllSheets += slots.length
+      }
+    })
+
+    // Default sheet: matching selectedClass or first sheet with slots, or first sheet
+    let defaultSheet = availableSheets.find(s => {
+      const cls = sheetsSummary[s]?.targetClass || findMatchingClass(s, classesList, classOptions)
+      return cls && cls.toLowerCase() === selectedClass.toLowerCase()
+    })
+
+    if (!defaultSheet) {
+      defaultSheet = availableSheets.find(s => sheetsSummary[s]?.slotsCount > 0) || availableSheets[0]
+    }
+
+    const activeTargetClass = sheetsSummary[defaultSheet]?.targetClass || findMatchingClass(defaultSheet, classesList, classOptions)
+    const activeMatrix = parsedSheetsData[defaultSheet] || []
+    const parsedSlots = convertMatrixToSlots(activeMatrix, activeTargetClass)
+
+    setImportModal({
+      open: true,
+      parsedData: parsedSlots,
+      isUploaded: true,
+      fileName: fileName || 'ឯកសារកាលវិភាគ.xlsx',
+      availableSheets,
+      selectedSheet: defaultSheet,
+      rawWorkbookData: parsedSheetsData,
+      sheetsSummary,
+      validSheetsCount,
+      totalSlotsAllSheets,
+      pasteMode: false,
+      pasteText: '',
+      isParsing: false
+    })
+
+    if (totalSlotsAllSheets === 0 && parsedSlots.length === 0) {
+      showToast('មិនអាចស្រង់ម៉ោងសិក្សាពីតារាងបានទេ សូមពិនិត្យទម្រង់កាលវិភាគ')
+    } else {
+      showToast(`បានរកឃើញ ${availableSheets.length} Sheets (${validSheetsCount} ថ្នាក់មានកាលវិភាគ)`)
+    }
   }
 
   // Process Workbook Text (XML .xls, HTML .xls, or CSV/TSV)
   const handleProcessWorkbookText = (text, fileName = '') => {
     try {
-      if (!text || typeof text !== 'string') return
+      if (!text || typeof text !== 'string') {
+        setImportModal(prev => ({ ...prev, isParsing: false }))
+        return
+      }
 
       let availableSheets = []
       let parsedSheetsData = {}
@@ -1517,38 +1684,15 @@ export default function AdminTimetable() {
 
       if (availableSheets.length === 0) {
         showToast('ឯកសារគ្មានទិន្នន័យសម្រាប់នាំចូលទេ')
+        setImportModal(prev => ({ ...prev, isParsing: false }))
         return
       }
 
-      // Default sheet: matching selectedClass or first available
-      const defaultSheet = availableSheets.find(s => 
-        s.toLowerCase().trim() === selectedClass.toLowerCase().trim() ||
-        s.toLowerCase().includes(selectedClass.toLowerCase()) || 
-        selectedClass.toLowerCase().includes(s.toLowerCase())
-      ) || availableSheets[0]
-
-      const activeMatrix = parsedSheetsData[defaultSheet] || []
-      const parsedSlots = convertMatrixToSlots(activeMatrix, defaultSheet)
-
-      if (parsedSlots.length === 0) {
-        showToast('មិនអាចស្រង់ទិន្នន័យម៉ោងសិក្សាបានទេ សូមពិនិត្យទម្រង់តារាង')
-        return
-      }
-
-      setImportModal({
-        open: true,
-        parsedData: parsedSlots,
-        isUploaded: true,
-        fileName: fileName || 'ឯកសារកាលវិភាគ',
-        availableSheets,
-        selectedSheet: defaultSheet,
-        rawWorkbookData: parsedSheetsData,
-        pasteMode: false,
-        pasteText: ''
-      })
+      finishWorkbookProcessing(parsedSheetsData, availableSheets, fileName)
     } catch (err) {
       console.error('Process workbook error:', err)
       showToast('មានបញ្ហាក្នុងការអានឯកសារ')
+      setImportModal(prev => ({ ...prev, isParsing: false }))
     }
   }
 
@@ -1556,7 +1700,8 @@ export default function AdminTimetable() {
   const handleSwitchSheet = (sheetName) => {
     if (!importModal.rawWorkbookData || !importModal.rawWorkbookData[sheetName]) return
     const matrix = importModal.rawWorkbookData[sheetName]
-    const parsedSlots = convertMatrixToSlots(matrix, sheetName)
+    const targetClass = findMatchingClass(sheetName, classesList, classOptions)
+    const parsedSlots = convertMatrixToSlots(matrix, targetClass)
     setImportModal(prev => ({
       ...prev,
       selectedSheet: sheetName,
@@ -1578,33 +1723,80 @@ export default function AdminTimetable() {
           isUploaded: true,
           fileName: 'បិទភ្ជាប់ (Paste) ពី Excel',
           availableSheets: [selectedClass],
-          selectedSheet: selectedClass
+          selectedSheet: selectedClass,
+          rawWorkbookData: { [selectedClass]: matrix },
+          sheetsSummary: { [selectedClass]: { targetClass: selectedClass, slotsCount: parsedSlots.length } },
+          validSheetsCount: 1,
+          totalSlotsAllSheets: parsedSlots.length
         }))
       }
     }
   }
 
-  // Select File & Parse
-  const handleSelectFile = (e) => {
+  // Select File & Parse (.xlsx, .xls, .csv, .xml)
+  const handleSelectFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const text = event.target?.result
-      if (typeof text === 'string') {
-        handleProcessWorkbookText(text, file.name)
+    setImportModal(prev => ({ ...prev, isParsing: true, fileName: file.name }))
+
+    try {
+      const fileNameLower = (file.name || '').toLowerCase()
+      let parsedSheetsData = {}
+      let availableSheets = []
+
+      // 1. If modern or binary Excel (.xlsx / .xls), use SheetJS first
+      if (fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls')) {
+        try {
+          const XLSX = await loadSheetJS()
+          const arrayBuffer = await file.arrayBuffer()
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+
+          if (workbook && workbook.SheetNames && workbook.SheetNames.length > 0) {
+            workbook.SheetNames.forEach(sName => {
+              const ws = workbook.Sheets[sName]
+              if (ws) {
+                const matrix = XLSX.utils.sheet_to_json(ws, {
+                  header: 1,
+                  defval: '',
+                  blankrows: false
+                })
+                if (Array.isArray(matrix) && matrix.length > 0) {
+                  parsedSheetsData[sName] = matrix
+                  availableSheets.push(sName)
+                }
+              }
+            })
+          }
+        } catch (sheetErr) {
+          console.warn('SheetJS read failed or fallback to text parser needed:', sheetErr)
+        }
       }
+
+      // 2. Fallback: If no sheets parsed yet (e.g. XML SpreadsheetML, CSV, TSV, or HTML .xls)
+      if (availableSheets.length === 0) {
+        const text = await file.text()
+        handleProcessWorkbookText(text, file.name)
+        return
+      }
+
+      // 3. Complete processing of the extracted sheets
+      finishWorkbookProcessing(parsedSheetsData, availableSheets, file.name)
+    } catch (err) {
+      console.error('File select error:', err)
+      showToast('មានបញ្ហាក្នុងការអានឯកសារ Excel សូមពិនិត្យឯកសារឡើងវិញ')
+      setImportModal(prev => ({ ...prev, isParsing: false }))
+    } finally {
+      if (e.target) e.target.value = ''
     }
-    reader.readAsText(file, 'utf-8')
-    if (e.target) e.target.value = ''
   }
 
-  // Confirm Import
-  const handleConfirmImport = () => {
+  // Confirm Import Single Sheet
+  const handleConfirmImport = async () => {
     if (importModal.parsedData.length === 0) return
 
-    const targetClass = importModal.selectedSheet || selectedClass
+    const sheetName = importModal.selectedSheet || selectedClass
+    const targetClass = findMatchingClass(sheetName, classesList, classOptions) || selectedClass
 
     const newSlots = importModal.parsedData.map((slot, idx) => ({
       id: slot.autoCode || `import_${Date.now()}_${idx}`,
@@ -1625,7 +1817,12 @@ export default function AdminTimetable() {
       ...prev,
       [targetClass]: merged
     }))
-    api('timetable.save', { classId: targetClass, slots: merged })
+
+    try {
+      await api('timetable.save', { classId: targetClass, slots: merged })
+    } catch (err) {
+      console.error('Timetable save error:', err)
+    }
 
     showToast(`បាននាំចូលកាលវិភាគចំនួន ${newSlots.length} ម៉ោងសម្រាប់ថ្នាក់ ${targetClass} ដោយជោគជ័យ!`)
     if (targetClass !== selectedClass) {
@@ -1639,8 +1836,68 @@ export default function AdminTimetable() {
       availableSheets: [],
       selectedSheet: '',
       rawWorkbookData: null,
+      sheetsSummary: {},
+      validSheetsCount: 0,
+      totalSlotsAllSheets: 0,
       pasteMode: false,
-      pasteText: ''
+      pasteText: '',
+      isParsing: false
+    })
+  }
+
+  // Confirm Import All Sheets (Multi-Class Bulk Import)
+  const handleConfirmImportAll = async () => {
+    if (!importModal.availableSheets || importModal.availableSheets.length === 0) return
+
+    let totalClassesSaved = 0
+    let totalSlotsSaved = 0
+    const updatedData = { ...timetableData }
+
+    for (const sheetName of importModal.availableSheets) {
+      const matrix = importModal.rawWorkbookData?.[sheetName] || []
+      const targetClass = findMatchingClass(sheetName, classesList, classOptions)
+      const parsed = convertMatrixToSlots(matrix, targetClass)
+
+      if (parsed && parsed.length > 0) {
+        const newSlots = parsed.map((slot, idx) => ({
+          id: slot.autoCode || `import_${Date.now()}_${idx}`,
+          day: slot.day,
+          period: slot.period,
+          duration: slot.duration,
+          isLibre: slot.isLibre,
+          subject: slot.subject,
+          teacher: slot.teacher
+        }))
+
+        updatedData[targetClass] = newSlots
+        totalClassesSaved++
+        totalSlotsSaved += newSlots.length
+
+        try {
+          await api('timetable.save', { classId: targetClass, slots: newSlots })
+        } catch (err) {
+          console.error(`Failed to save timetable for class ${targetClass}:`, err)
+        }
+      }
+    }
+
+    setTimetableData(updatedData)
+    showToast(`✨ បាននាំចូលកាលវិភាគជោគជ័យសម្រាប់ ${totalClassesSaved} ថ្នាក់ (សរុប ${totalSlotsSaved} ម៉ោងសិក្សា)!`)
+
+    setImportModal({
+      open: false,
+      parsedData: [],
+      isUploaded: false,
+      fileName: '',
+      availableSheets: [],
+      selectedSheet: '',
+      rawWorkbookData: null,
+      sheetsSummary: {},
+      validSheetsCount: 0,
+      totalSlotsAllSheets: 0,
+      pasteMode: false,
+      pasteText: '',
+      isParsing: false
     })
   }
 
@@ -3039,7 +3296,7 @@ export default function AdminTimetable() {
                   }`}
                 >
                   <Upload size={14} />
-                  <span>ជ្រើសរើសឯកសារ (.xls, .csv)</span>
+                  <span>ជ្រើសរើសឯកសារ (.xlsx, .xls, .csv)</span>
                 </button>
                 <button
                   type="button"
@@ -3062,22 +3319,34 @@ export default function AdminTimetable() {
                     type="file"
                     ref={fileInputRef}
                     onChange={handleSelectFile}
-                    accept=".xls, .xlsx, .csv, .xml, application/vnd.ms-excel"
+                    accept=".xls, .xlsx, .csv, .xml, application/vnd.ms-excel, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     className="hidden"
                   />
 
                   <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-slate-200 hover:border-emerald-400 bg-slate-50/50 hover:bg-emerald-50/20 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
+                    onClick={() => !importModal.isParsing && fileInputRef.current?.click()}
+                    className={`border-2 border-dashed ${
+                      importModal.isParsing
+                        ? 'border-emerald-300 bg-emerald-50/40 cursor-wait'
+                        : 'border-slate-200 hover:border-emerald-400 bg-slate-50/50 hover:bg-emerald-50/20 cursor-pointer'
+                    } rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all group`}
                   >
                     <div className="w-12 h-12 rounded-2xl bg-emerald-50 group-hover:bg-emerald-100 text-emerald-600 flex items-center justify-center mb-2.5 transition-colors">
-                      <Upload size={22} />
+                      {importModal.isParsing ? (
+                        <Loader2 size={24} className="animate-spin text-emerald-600" />
+                      ) : (
+                        <Upload size={22} />
+                      )}
                     </div>
                     <p className="text-[14px] font-bold text-slate-700 group-hover:text-emerald-700 transition-colors">
-                      {importModal.fileName ? importModal.fileName : 'ចុចដើម្បីជ្រើសរើសឯកសារ ឬអូសទម្លាក់ទីនេះ'}
+                      {importModal.isParsing
+                        ? 'កំពុងអានទិន្នន័យពី Excel Sheets... សូមរង់ចាំ'
+                        : importModal.fileName
+                        ? importModal.fileName
+                        : 'ចុចដើម្បីជ្រើសរើសឯកសារ Excel (.xlsx / .xls) ឬអូសទម្លាក់ទីនេះ'}
                     </p>
                     <p className="text-[12px] text-slate-400 mt-1">
-                      គាំទ្រឯកសារ Excel (.xls, .xlsx) ឬ CSV
+                      គាំទ្រឯកសារ Excel (.xlsx, .xls) ដែលមាន Sheets តាមថ្នាក់ (10A, 10B, 11A, 12A...) ឬ CSV
                     </p>
                   </div>
                 </div>
@@ -3098,30 +3367,46 @@ export default function AdminTimetable() {
 
               {/* Multi-Sheet Selector Pills (if file contains multiple sheets) */}
               {importModal.availableSheets && importModal.availableSheets.length > 1 && (
-                <div className="p-3 bg-emerald-50/70 border border-emerald-200/70 rounded-2xl flex flex-col gap-2">
-                  <div className="flex items-center justify-between">
+                <div className="p-3.5 bg-gradient-to-r from-emerald-50/90 to-teal-50/90 border border-emerald-200 rounded-2xl flex flex-col gap-2.5 shadow-xs">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <span className="text-[12.5px] font-bold text-emerald-950 flex items-center gap-1.5">
-                      <Layers size={14} className="text-emerald-600" />
-                      សន្លឹក Sheets ក្នុងឯកសារ ({importModal.availableSheets.length} ថ្នាក់)៖
+                      <Layers size={15} className="text-emerald-600" />
+                      សន្លឹក Sheets ក្នុងឯកសារ ({importModal.availableSheets.length} Sheets)៖
                     </span>
-                    <span className="text-[11px] text-emerald-700 font-medium">ចុចលើ Sheet ដើម្បីប្តូរថ្នាក់ដែលត្រូវនាំចូល</span>
+                    <span className="text-[11px] text-emerald-700 font-medium bg-emerald-100/60 px-2 py-0.5 rounded-full">
+                      ចុចលើ Sheet ថ្នាក់នីមួយៗដើម្បីមើលទិន្នន័យ
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto custom-scrollbar p-0.5">
                     {importModal.availableSheets.map(sheetName => {
                       const isSelected = importModal.selectedSheet === sheetName
+                      const summary = importModal.sheetsSummary?.[sheetName]
+                      const count = summary?.slotsCount ?? 0
+                      const mappedClass = summary?.targetClass || sheetName
                       return (
                         <button
                           key={sheetName}
                           type="button"
                           onClick={() => handleSwitchSheet(sheetName)}
-                          className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all flex items-center gap-1 ${
+                          className={`px-3 py-1.5 rounded-xl text-[12px] font-bold transition-all flex items-center gap-1.5 ${
                             isSelected
-                              ? 'bg-emerald-600 text-white shadow-xs scale-105'
-                              : 'bg-white border border-emerald-200 text-slate-700 hover:bg-emerald-100/60'
+                              ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/30'
+                              : count > 0
+                              ? 'bg-white border border-emerald-200 text-slate-700 hover:bg-emerald-100/70 hover:border-emerald-300'
+                              : 'bg-slate-100/80 border border-slate-200 text-slate-400 hover:bg-slate-200/80'
                           }`}
                         >
                           {isSelected && <Check size={12} strokeWidth={2.5} />}
                           <span>{sheetName}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono ${
+                            isSelected
+                              ? 'bg-emerald-700 text-white'
+                              : count > 0
+                              ? 'bg-emerald-100 text-emerald-700 font-semibold'
+                              : 'bg-slate-200 text-slate-500'
+                          }`}>
+                            {count > 0 ? `${count} ម៉ោង (${mappedClass})` : '0 ម៉ោង'}
+                          </span>
                         </button>
                       )
                     })}
@@ -3222,11 +3507,16 @@ export default function AdminTimetable() {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between gap-3">
-              <p className="text-[11.5px] text-slate-400 hidden sm:block">
-                នាំចូលទៅកាន់៖ <span className="font-bold text-slate-700">ថ្នាក់ {importModal.selectedSheet || selectedClass}</span>
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p className="text-[11.5px] text-slate-500">
+                សន្លឹកដែលបានជ្រើស៖ <span className="font-bold text-slate-800">ថ្នាក់ {findMatchingClass(importModal.selectedSheet, classesList, classOptions) || selectedClass}</span>
+                {importModal.validSheetsCount > 1 && (
+                  <span className="text-emerald-600 font-medium ml-2">
+                    (រកឃើញ {importModal.validSheetsCount} ថ្នាក់មានកាលវិភាគ)
+                  </span>
+                )}
               </p>
-              <div className="flex items-center gap-2.5 ml-auto">
+              <div className="flex items-center flex-wrap gap-2.5 w-full sm:w-auto justify-end">
                 <button
                   type="button"
                   onClick={() => setImportModal({
@@ -3237,21 +3527,48 @@ export default function AdminTimetable() {
                     availableSheets: [],
                     selectedSheet: '',
                     rawWorkbookData: null,
+                    sheetsSummary: {},
+                    validSheetsCount: 0,
+                    totalSlotsAllSheets: 0,
                     pasteMode: false,
-                    pasteText: ''
+                    pasteText: '',
+                    isParsing: false
                   })}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-[13px] font-bold transition-all"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[12.5px] font-bold transition-all"
                 >
                   បោះបង់
                 </button>
+
+                {/* Bulk Import Button (when multiple sheets have valid timetable data) */}
+                {importModal.availableSheets && importModal.availableSheets.length > 1 && (importModal.validSheetsCount > 1 || importModal.totalSlotsAllSheets > 0) && (
+                  <button
+                    type="button"
+                    onClick={handleConfirmImportAll}
+                    disabled={!importModal.isUploaded || importModal.totalSlotsAllSheets === 0}
+                    className="px-4.5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white text-[12.5px] font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Sparkles size={15} strokeWidth={2.5} />
+                    <span>✨ នាំចូលគ្រប់ថ្នាក់ ({importModal.validSheetsCount || importModal.availableSheets.length} ថ្នាក់ - សរុប {importModal.totalSlotsAllSheets} ម៉ោង)</span>
+                  </button>
+                )}
+
+                {/* Single Sheet Import Button */}
                 <button
                   type="button"
                   onClick={handleConfirmImport}
                   disabled={!importModal.isUploaded || importModal.parsedData.length === 0}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-[13px] font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`px-4.5 py-2.5 rounded-xl ${
+                    importModal.availableSheets && importModal.availableSheets.length > 1 && importModal.validSheetsCount > 1
+                      ? 'bg-slate-800 hover:bg-slate-900 text-white'
+                      : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white'
+                  } text-[12.5px] font-bold shadow-sm hover:shadow transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  <Check size={16} strokeWidth={2.5} />
-                  <span>បញ្ជាក់ការនាំចូល ({importModal.parsedData.length} ម៉ោង ទៅថ្នាក់ {importModal.selectedSheet || selectedClass})</span>
+                  <Check size={15} strokeWidth={2.5} />
+                  <span>
+                    {importModal.availableSheets && importModal.availableSheets.length > 1 && importModal.validSheetsCount > 1
+                      ? `នាំចូលតែថ្នាក់ ${findMatchingClass(importModal.selectedSheet, classesList, classOptions) || selectedClass} (${importModal.parsedData.length} ម៉ោង)`
+                      : `បញ្ជាក់ការនាំចូល (${importModal.parsedData.length} ម៉ោង ទៅថ្នាក់ ${findMatchingClass(importModal.selectedSheet, classesList, classOptions) || selectedClass})`}
+                  </span>
                 </button>
               </div>
             </div>

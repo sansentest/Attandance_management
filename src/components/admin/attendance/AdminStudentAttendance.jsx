@@ -1064,7 +1064,7 @@ export default function AdminStudentAttendance() {
     if (showLoading) setLoading(true)
     try {
       const [res, resResolutions] = await Promise.all([
-        api('attendance.getAll'),
+        api('attendance.getAll', { force: true }),
         api('discipline.getResolutions')
       ]);
 
@@ -1100,10 +1100,17 @@ export default function AdminStudentAttendance() {
         });
       }
 
-      setSummaries(buildStudentSummaries(combinedRecords))
+      const builtSummaries = buildStudentSummaries(combinedRecords)
+      setSummaries(builtSummaries)
+      try {
+        localStorage.setItem('school_attendance_cache', JSON.stringify(builtSummaries))
+      } catch (e) {}
     } catch (e) {
       console.error('Error reading attendance records:', e)
       setSummaries([])
+      try {
+        localStorage.setItem('school_attendance_cache', '[]')
+      } catch (err) {}
     } finally {
       setLoading(false)
     }
@@ -1304,7 +1311,7 @@ export default function AdminStudentAttendance() {
             <div className="flex items-center gap-2.5 w-full lg:w-auto">
               <button
                 type="button"
-                onClick={fetchRecords}
+                onClick={() => fetchRecords(true)}
                 disabled={loading}
                 className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:border-indigo-200 cursor-pointer disabled:opacity-50"
                 title="ទាញយកទិន្នន័យវត្តមានថ្មីពី Firebase"

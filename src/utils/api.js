@@ -1242,46 +1242,61 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'attendance.getAll': {
+      const forceFetch = Boolean(body?.force);
       let cloudRecords = [];
+      let cloudSuccess = false;
       if (isFirebaseConfigured()) {
         try {
-          cloudRecords = await getAllAttendanceRecordsFromFirestore();
+          cloudRecords = await getAllAttendanceRecordsFromFirestore(forceFetch);
+          cloudSuccess = true;
+          // Synchronize local cache with Cloud Source of Truth
+          // This immediately purges deleted records across all devices (phone & computer)
+          try {
+            localStorage.setItem('school_attendance_records', JSON.stringify(cloudRecords));
+          } catch (e) {}
         } catch (e) {
           console.warn('[Firebase] getAllAttendanceRecords error, fallback:', e);
         }
       }
 
-      // Merge with localStorage
+      if (cloudSuccess) {
+        // When connected to Firebase, Cloud is the single source of truth!
+        // We only append genuinely un-synced offline submissions that are waiting in the offline queue.
+        let pendingRecords = [];
+        try {
+          const pendingQueue = getOfflineQueue();
+          const idMap = new Set(cloudRecords.map(r => r.id || `${r.studentId}-${r.date}-p${r.period || ''}`));
+          pendingQueue.forEach(item => {
+            if (item?.payload?.records && Array.isArray(item.payload.records)) {
+              item.payload.records.forEach(r => {
+                if (r.status === 'ABSENT' || r.status === 'LEAVE' || r.status === 'DROPOUT') {
+                  const key = r.id || `${r.studentId}-${r.date}-p${r.period || ''}`;
+                  if (!idMap.has(key)) {
+                    idMap.add(key);
+                    pendingRecords.push(r);
+                  }
+                }
+              });
+            }
+          });
+        } catch (e) {}
+
+        return {
+          success: true,
+          data: [...cloudRecords, ...pendingRecords]
+        };
+      }
+
+      // Offline Fallback: If Firebase failed or not configured, load from localStorage
       let localRecords = [];
       try {
         const raw = localStorage.getItem('school_attendance_records');
         if (raw) localRecords = JSON.parse(raw);
       } catch (e) {}
 
-      // Deduplicate by record ID / unique composite key
-      const idMap = new Set();
-      const combined = [];
-
-      // Cloud records take precedence
-      cloudRecords.forEach(r => {
-        const key = r.id || `${r.studentId}-${r.date}-p${r.period || ''}`;
-        if (!idMap.has(key)) {
-          idMap.add(key);
-          combined.push(r);
-        }
-      });
-
-      localRecords.forEach(r => {
-        const key = r.id || `${r.studentId}-${r.date}-p${r.period || ''}`;
-        if (!idMap.has(key)) {
-          idMap.add(key);
-          combined.push(r);
-        }
-      });
-
       return {
         success: true,
-        data: combined
+        data: localRecords
       };
     }
 

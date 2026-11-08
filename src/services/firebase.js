@@ -1642,14 +1642,14 @@ export async function deleteSubjectFromFirestore(subjectId) {
 export const DEFAULT_USERS = [
   {
     id: 'USR-ADMIN',
-    username: 'admin',
+    username: 'ark_admin',
     name: 'អ្នកគ្រប់គ្រងប្រព័ន្ធ',
     role: 'admin',
     class: 'ALL',
     status: 'active',
     email: 'admin@angroka.edu.kh',
     phone: '012 345 678',
-    password: 'admin123',
+    password: 'attendace_ark_56789$',
     lastLogin: 'មិនទាន់ចូលប្រើ'
   }
 ];

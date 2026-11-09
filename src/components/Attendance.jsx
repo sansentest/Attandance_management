@@ -1289,7 +1289,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                 <div>
                   <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
                     <h3 className="text-[14px] sm:text-[17px] font-extrabold text-rose-700">
-                      ផុតម៉ោងស្រង់វត្តមានហើយ (បិទប្រព័ន្ធម៉ោង ៦ យប់)
+                      ផុតម៉ោងស្រង់វត្តមានហើយ 
                     </h3>
                    
                   </div>

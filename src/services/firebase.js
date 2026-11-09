@@ -2018,6 +2018,32 @@ export async function saveGlobalTelegramTokensToFirestore(tokens) {
   }
 }
 
+export async function getDailySummaryLogFromFirestore() {
+  if (!db) return null;
+  try {
+    const docRef = doc(db, COL_SETTINGS, 'daily_summary_log');
+    const snap = await getDoc(docRef);
+    return snap.exists() ? snap.data() : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function saveDailySummaryLogToFirestore(date, log) {
+  if (!db) return { success: false };
+  try {
+    const docRef = doc(db, COL_SETTINGS, 'daily_summary_log');
+    await setDoc(docRef, {
+      lastSentDate: date,
+      [`sent_${date}`]: log,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 // ─────────────────────────────────────────────
 // School Settings & System Backup/Restore Engine
 // ─────────────────────────────────────────────

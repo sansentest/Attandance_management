@@ -1,0 +1,49 @@
+name: Daily Attendance Telegram Summary
+
+on:
+  schedule:
+    # 5:00 PM Cambodia Time (UTC+7) = 10:00 AM UTC
+    # Runs every day at 10:00 UTC
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force dispatch even if already sent today'
+        required: false
+        default: false
+        type: boolean
+      target_date:
+        description: 'Target Date (YYYY-MM-DD), leave empty for today'
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  dispatch-summary:
+    name: Dispatch Daily Attendance Summary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Daily Attendance Summary Dispatcher
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || 'AIzaSyBJa26ZGvjLrZB3W1mydi_8hNkKSDFv_Cg' }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || 'attendace-ark.firebaseapp.com' }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || 'attendace-ark' }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET || 'attendace-ark.firebasestorage.app' }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID || '99404890604' }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID || '1:99404890604:web:a0f6e4615ba74ac8c540c9' }}
+          FORCE: ${{ github.event.inputs.force || 'false' }}
+          TARGET_DATE: ${{ github.event.inputs.target_date || '' }}
+        run: node scripts/dispatchDailySummaryCloud.js

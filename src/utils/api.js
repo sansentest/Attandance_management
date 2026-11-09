@@ -52,6 +52,8 @@ import {
   deleteTelegramBotFromFirestore,
   getGlobalTelegramTokensFromFirestore,
   saveGlobalTelegramTokensToFirestore,
+  getDailySummaryLogFromFirestore,
+  saveDailySummaryLogToFirestore,
   isDummyTelegramToken,
   isDummyTelegramBot,
   getSchoolSettingsFromFirestore,
@@ -2488,6 +2490,26 @@ export async function api(action, body = {}, token = null) {
       } catch (e) {}
 
       return { success: true, data: tokens, message: 'បានរក្សាទុក Global Tokens ដោយជោគជ័យ' };
+    }
+
+    case 'telegram.getDailySummaryLog': {
+      if (isFirebaseConfigured()) {
+        try {
+          const log = await getDailySummaryLogFromFirestore();
+          return { success: true, data: log };
+        } catch (e) {}
+      }
+      return { success: true, data: null };
+    }
+
+    case 'telegram.saveDailySummaryLog': {
+      const { date, log } = body;
+      if (isFirebaseConfigured()) {
+        try {
+          await saveDailySummaryLogToFirestore(date, log);
+        } catch (e) {}
+      }
+      return { success: true };
     }
 
     case 'telegram.testBot': {

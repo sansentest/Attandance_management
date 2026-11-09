@@ -42,47 +42,70 @@ export async function triggerDailySummary(customDate, manual = false) {
     })
 
     if (result && result.success) {
-      localStorage.setItem(`school_daily_summary_sent_${today}`, JSON.stringify({
+      const summaryLog = {
         timestamp: new Date().toISOString(),
         count: result.count,
         overallRate: result.overallRate
-      }))
-      
+      };
+
       try {
-        window.dispatchEvent(new CustomEvent('school_daily_summary_sent', { detail: { date: today, result } }))
+        localStorage.setItem(`school_daily_summary_sent_${today}`, JSON.stringify(summaryLog));
+      } catch (e) {}
+
+      // Sync sent record with Firestore so Cloud runner and other devices know today is done
+      try {
+        await api('telegram.saveDailySummaryLog', { date: today, log: summaryLog });
+      } catch (e) {}
+
+      try {
+        window.dispatchEvent(new CustomEvent('school_daily_summary_sent', { detail: { date: today, result } }));
       } catch (e) {}
     }
 
-    return result
+    return result;
   } catch (err) {
-    console.error('[DailySummaryScheduler] Error triggering daily summary:', err)
-    return { success: false, error: err.message || 'បរាជ័យក្នុងការផ្ញើរបាយការណ៍សង្ខេបប្រចាំថ្ងៃ' }
+    console.error('[DailySummaryScheduler] Error triggering daily summary:', err);
+    return { success: false, error: err.message || 'បរាជ័យក្នុងការផ្ញើរបាយការណ៍សង្ខេបប្រចាំថ្ងៃ' };
   }
 }
 
 /**
  * Check if today's 5:00 PM summary has already been sent
  */
-export function isDailySummarySentToday(date) {
-  const targetDate = date || new Date().toISOString().split('T')[0]
+export async function isDailySummarySentToday(date) {
+  const targetDate = date || new Date().toISOString().split('T')[0];
   try {
-    const raw = localStorage.getItem(`school_daily_summary_sent_${targetDate}`)
-    return Boolean(raw)
-  } catch {
-    return false
-  }
+    const raw = localStorage.getItem(`school_daily_summary_sent_${targetDate}`);
+    if (raw) return true;
+  } catch {}
+
+  // Check Firestore (e.g. sent by GitHub Actions Cloud Cron or another administrator)
+  try {
+    const res = await api('telegram.getDailySummaryLog');
+    if (res && res.success && res.data) {
+      if (res.data.lastSentDate === targetDate || res.data[`sent_${targetDate}`]) {
+        try {
+          const logData = res.data[`sent_${targetDate}`] || { timestamp: new Date().toISOString() };
+          localStorage.setItem(`school_daily_summary_sent_${targetDate}`, JSON.stringify(logData));
+        } catch {}
+        return true;
+      }
+    }
+  } catch {}
+
+  return false;
 }
 
 /**
  * Get daily summary sent log for today
  */
 export function getDailySummarySentLog(date) {
-  const targetDate = date || new Date().toISOString().split('T')[0]
+  const targetDate = date || new Date().toISOString().split('T')[0];
   try {
-    const raw = localStorage.getItem(`school_daily_summary_sent_${targetDate}`)
-    return raw ? JSON.parse(raw) : null
+    const raw = localStorage.getItem(`school_daily_summary_sent_${targetDate}`);
+    return raw ? JSON.parse(raw) : null;
   } catch {
-    return null
+    return null;
   }
 }
 
@@ -90,23 +113,24 @@ export function getDailySummarySentLog(date) {
  * Check time and automatically dispatch at 5:00 PM (17:00+)
  */
 export async function checkAndSendDailySummaryScheduled() {
-  const now = new Date()
-  const hour = now.getHours()
-  const today = now.toISOString().split('T')[0]
+  const now = new Date();
+  const hour = now.getHours();
+  const today = now.toISOString().split('T')[0];
 
   // Only trigger at or after 17:00 (5:00 PM)
   if (hour < 17) {
-    return { triggered: false, reason: 'មិនទាន់ដល់ម៉ោង ៥:០០ ល្ងាច' }
+    return { triggered: false, reason: 'មិនទាន់ដល់ម៉ោង ៥:០០ ល្ងាច' };
   }
 
-  // Check if already sent today
-  if (isDailySummarySentToday(today)) {
-    return { triggered: false, reason: 'បានផ្ញើរួចរាល់ហើយសម្រាប់ថ្ងៃនេះ' }
+  // Check if already sent today (locally or on Cloud)
+  const alreadySent = await isDailySummarySentToday(today);
+  if (alreadySent) {
+    return { triggered: false, reason: 'បានផ្ញើរួចរាល់ហើយសម្រាប់ថ្ងៃនេះ' };
   }
 
-  console.log('[DailySummaryScheduler] 5:00 PM reached! Auto-dispatching daily attendance summary to Telegram...')
-  const result = await triggerDailySummary(today, false)
-  return { triggered: true, result }
+  console.log('[DailySummaryScheduler] 5:00 PM reached! Auto-dispatching daily attendance summary to Telegram...');
+  const result = await triggerDailySummary(today, false);
+  return { triggered: true, result };
 }
 
 /**

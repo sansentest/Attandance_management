@@ -3,7 +3,7 @@ import {
   Search, Plus, User, Edit, Trash2, GraduationCap, ChevronLeft, ChevronRight,
   ChevronsLeft, ChevronsRight, CheckCircle2, FileSpreadsheet, Upload, Download, X, Save,
   AlertTriangle, Phone, Calendar, Users, Eye, CheckCircle, ArrowRight, Sparkles, Lock, Check,
-  RefreshCw, ChevronDown, FileText, FileCode, FileImage
+  RefreshCw, ChevronDown, FileText, FileCode, FileImage, Loader2
 } from 'lucide-react'
 import SearchableDropdown from '../../common/SearchableDropdown'
 import { api, getCachedSchoolName } from '../../../utils/api'
@@ -304,6 +304,8 @@ export default function AdminStudents({ onNavigate }) {
   const [deleteModal, setDeleteModal]   = useState({ open: false, student: null })
   const [profileModal, setProfileModal] = useState({ open: false, student: null })
   const [importModal, setImportModal]   = useState({ open: false, parsedData: [], isUploaded: false, fileName: '' })
+  const [isImportSaving, setIsImportSaving] = useState(false)
+  const [isImportReading, setIsImportReading] = useState(false)
 
   // Form State
   const [formData, setFormData] = useState({
@@ -525,6 +527,9 @@ export default function AdminStudents({ onNavigate }) {
     const file = e.target.files?.[0]
     if (!file) return
 
+    setIsImportReading(true)
+    setImportModal(prev => ({ ...prev, fileName: file.name, isUploaded: false }))
+
     try {
       let rows = []
       const fileNameLower = file.name.toLowerCase()
@@ -594,7 +599,8 @@ export default function AdminStudents({ onNavigate }) {
       console.error('File parsing error:', err)
       showToast('មានបញ្ហាក្នុងការអានឯកសារ Excel!')
     } finally {
-      e.target.value = ''
+      setIsImportReading(false)
+      if (e.target) e.target.value = ''
     }
   }
 
@@ -621,32 +627,36 @@ export default function AdminStudents({ onNavigate }) {
   }
 
   const handleConfirmImport = async () => {
-    if (importModal.parsedData.length === 0) return
+    if (importModal.parsedData.length === 0 || isImportSaving) return
 
-    // Always Auto-Generate sequential unique IDs based on current state to guarantee no duplicates
-    const generatedIds = generateBatchStudentIds(students, importModal.parsedData.length)
-    const newImported = importModal.parsedData.map((item, idx) => {
-      const finalId = generatedIds[idx]
-      const cls = item.class || item.className || '12A'
-      return {
-        ...item,
-        id: finalId,
-        studentId: finalId,
-        class: cls,
-        className: cls
-      }
-    })
-
-    const currentList = [...students, ...newImported]
-    setStudents(currentList)
-    showToast(`បាននាំចូលសិស្សចំនួន ${newImported.length} នាក់ដោយជោគជ័យ (បង្កើតកូដ ${newImported[0].id} ដល់ ${newImported[newImported.length - 1].id})!`)
-    setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })
-
-    // Sync to Cloud Firebase & cache
+    setIsImportSaving(true)
     try {
+      // Always Auto-Generate sequential unique IDs based on current state to guarantee no duplicates
+      const generatedIds = generateBatchStudentIds(students, importModal.parsedData.length)
+      const newImported = importModal.parsedData.map((item, idx) => {
+        const finalId = generatedIds[idx]
+        const cls = item.class || item.className || '12A'
+        return {
+          ...item,
+          id: finalId,
+          studentId: finalId,
+          class: cls,
+          className: cls
+        }
+      })
+
+      // Sync to Cloud Firebase & cache
       await api('students.import', { students: newImported })
+
+      const currentList = [...students, ...newImported]
+      setStudents(currentList)
+      showToast(`បាននាំចូលសិស្សចំនួន ${newImported.length} នាក់ដោយជោគជ័យ (បង្កើតកូដ ${newImported[0].id} ដល់ ${newImported[newImported.length - 1].id})!`)
+      setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })
     } catch (err) {
       console.error('Firebase import error:', err)
+      showToast('មានបញ្ហាក្នុងការរក្សាទុកទិន្នន័យសិស្ស')
+    } finally {
+      setIsImportSaving(false)
     }
   }
 
@@ -1536,8 +1546,9 @@ export default function AdminStudents({ onNavigate }) {
               </div>
               <button
                 type="button"
-                onClick={() => setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                disabled={isImportSaving}
+                onClick={() => !isImportSaving && setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -1577,14 +1588,26 @@ export default function AdminStudents({ onNavigate }) {
                 />
 
                 <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/30 rounded-2xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-all group"
+                  onClick={() => !isImportReading && !isImportSaving && fileInputRef.current?.click()}
+                  className={`border-2 border-dashed ${
+                    isImportReading
+                      ? 'border-indigo-300 bg-indigo-50/40 cursor-wait'
+                      : 'border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-indigo-50/30 cursor-pointer'
+                  } rounded-2xl p-6 flex flex-col items-center justify-center text-center transition-all group`}
                 >
                   <div className="w-12 h-12 rounded-2xl bg-indigo-50 group-hover:bg-indigo-100 text-indigo-600 flex items-center justify-center mb-3 transition-colors">
-                    <Upload size={22} />
+                    {isImportReading ? (
+                      <Loader2 size={24} className="animate-spin text-indigo-600" />
+                    ) : (
+                      <Upload size={22} />
+                    )}
                   </div>
                   <p className="text-[14px] font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">
-                    {importModal.fileName ? importModal.fileName : 'ចុចដើម្បីជ្រើសរើសឯកសារ ឬអូសទម្លាក់ទីនេះ'}
+                    {isImportReading
+                      ? 'កំពុងដំណើរការអានទិន្នន័យពី Excel... សូមរង់ចាំ'
+                      : importModal.fileName
+                      ? importModal.fileName
+                      : 'ចុចដើម្បីជ្រើសរើសឯកសារ ឬអូសទម្លាក់ទីនេះ'}
                   </p>
                   <p className="text-[12px] text-slate-400 mt-1">
                     ឯកសារ CSV ឬ Excel (.csv, .xlsx, .xls)
@@ -1666,23 +1689,33 @@ export default function AdminStudents({ onNavigate }) {
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-[13px] font-bold transition-all"
+                disabled={isImportSaving}
+                onClick={() => !isImportSaving && setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 text-[13px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
                 បោះបង់
               </button>
               <button
                 type="button"
-                disabled={!importModal.isUploaded || importModal.parsedData.length === 0}
+                disabled={!importModal.isUploaded || importModal.parsedData.length === 0 || isImportSaving}
                 onClick={handleConfirmImport}
                 className={`px-5 py-2.5 rounded-xl text-[13px] font-bold shadow-md transition-all flex items-center gap-2 ${
-                  !importModal.isUploaded || importModal.parsedData.length === 0
+                  !importModal.isUploaded || importModal.parsedData.length === 0 || isImportSaving
                     ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-lg'
+                    : 'bg-emerald-600 hover:bg-emerald-700 text-white hover:shadow-lg cursor-pointer'
                 }`}
               >
-                <CheckCircle2 size={16} />
-                <span>បញ្ជាក់ការនាំចូល ({importModal.parsedData.length})</span>
+                {isImportSaving ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>កំពុងនាំចូល...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={16} />
+                    <span>បញ្ជាក់ការនាំចូល ({importModal.parsedData.length})</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

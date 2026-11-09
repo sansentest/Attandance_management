@@ -980,6 +980,8 @@ export default function AdminTimetable() {
     pasteText: '',
     isParsing: false
   })
+  const [isTimetableSaving, setIsTimetableSaving] = useState(false)
+  const [savingProgress, setSavingProgress] = useState(null)
   const fileInputRef = useRef(null)
 
   const printRef = useRef(null)
@@ -1793,10 +1795,13 @@ export default function AdminTimetable() {
 
   // Confirm Import Single Sheet
   const handleConfirmImport = async () => {
-    if (importModal.parsedData.length === 0) return
+    if (importModal.parsedData.length === 0 || isTimetableSaving) return
 
     const sheetName = importModal.selectedSheet || selectedClass
     const targetClass = findMatchingClass(sheetName, classesList, classOptions) || selectedClass
+
+    setIsTimetableSaving(true)
+    setSavingProgress({ current: 1, total: 1, className: targetClass, isBulk: false })
 
     const newSlots = importModal.parsedData.map((slot, idx) => ({
       id: slot.autoCode || `import_${Date.now()}_${idx}`,
@@ -1820,85 +1825,113 @@ export default function AdminTimetable() {
 
     try {
       await api('timetable.save', { classId: targetClass, slots: merged })
+      showToast(`បាននាំចូលកាលវិភាគចំនួន ${newSlots.length} ម៉ោងសម្រាប់ថ្នាក់ ${targetClass} ដោយជោគជ័យ!`)
+      if (targetClass !== selectedClass) {
+        setSelectedClass(targetClass)
+      }
+      setImportModal({
+        open: false,
+        parsedData: [],
+        isUploaded: false,
+        fileName: '',
+        availableSheets: [],
+        selectedSheet: '',
+        rawWorkbookData: null,
+        sheetsSummary: {},
+        validSheetsCount: 0,
+        totalSlotsAllSheets: 0,
+        pasteMode: false,
+        pasteText: '',
+        isParsing: false
+      })
     } catch (err) {
       console.error('Timetable save error:', err)
+      showToast('មានបញ្ហាក្នុងការរក្សាទុកកាលវិភាគ')
+    } finally {
+      setIsTimetableSaving(false)
+      setSavingProgress(null)
     }
-
-    showToast(`បាននាំចូលកាលវិភាគចំនួន ${newSlots.length} ម៉ោងសម្រាប់ថ្នាក់ ${targetClass} ដោយជោគជ័យ!`)
-    if (targetClass !== selectedClass) {
-      setSelectedClass(targetClass)
-    }
-    setImportModal({
-      open: false,
-      parsedData: [],
-      isUploaded: false,
-      fileName: '',
-      availableSheets: [],
-      selectedSheet: '',
-      rawWorkbookData: null,
-      sheetsSummary: {},
-      validSheetsCount: 0,
-      totalSlotsAllSheets: 0,
-      pasteMode: false,
-      pasteText: '',
-      isParsing: false
-    })
   }
 
   // Confirm Import All Sheets (Multi-Class Bulk Import)
   const handleConfirmImportAll = async () => {
-    if (!importModal.availableSheets || importModal.availableSheets.length === 0) return
+    if (!importModal.availableSheets || importModal.availableSheets.length === 0 || isTimetableSaving) return
 
+    setIsTimetableSaving(true)
     let totalClassesSaved = 0
     let totalSlotsSaved = 0
     const updatedData = { ...timetableData }
 
-    for (const sheetName of importModal.availableSheets) {
-      const matrix = importModal.rawWorkbookData?.[sheetName] || []
-      const targetClass = findMatchingClass(sheetName, classesList, classOptions)
-      const parsed = convertMatrixToSlots(matrix, targetClass)
+    const validSheets = importModal.availableSheets.filter(s => {
+      const matrix = importModal.rawWorkbookData?.[s] || []
+      const targetCls = findMatchingClass(s, classesList, classOptions)
+      const parsed = convertMatrixToSlots(matrix, targetCls)
+      return parsed && parsed.length > 0
+    })
 
-      if (parsed && parsed.length > 0) {
-        const newSlots = parsed.map((slot, idx) => ({
-          id: slot.autoCode || `import_${Date.now()}_${idx}`,
-          day: slot.day,
-          period: slot.period,
-          duration: slot.duration,
-          isLibre: slot.isLibre,
-          subject: slot.subject,
-          teacher: slot.teacher
-        }))
+    const totalToSave = validSheets.length || importModal.availableSheets.length
 
-        updatedData[targetClass] = newSlots
-        totalClassesSaved++
-        totalSlotsSaved += newSlots.length
+    try {
+      for (const sheetName of importModal.availableSheets) {
+        const matrix = importModal.rawWorkbookData?.[sheetName] || []
+        const targetClass = findMatchingClass(sheetName, classesList, classOptions)
+        const parsed = convertMatrixToSlots(matrix, targetClass)
 
-        try {
-          await api('timetable.save', { classId: targetClass, slots: newSlots })
-        } catch (err) {
-          console.error(`Failed to save timetable for class ${targetClass}:`, err)
+        if (parsed && parsed.length > 0) {
+          setSavingProgress({
+            current: totalClassesSaved + 1,
+            total: totalToSave,
+            className: targetClass,
+            isBulk: true
+          })
+
+          const newSlots = parsed.map((slot, idx) => ({
+            id: slot.autoCode || `import_${Date.now()}_${idx}`,
+            day: slot.day,
+            period: slot.period,
+            duration: slot.duration,
+            isLibre: slot.isLibre,
+            subject: slot.subject,
+            teacher: slot.teacher
+          }))
+
+          updatedData[targetClass] = newSlots
+          totalClassesSaved++
+          totalSlotsSaved += newSlots.length
+
+          try {
+            await api('timetable.save', { classId: targetClass, slots: newSlots })
+          } catch (err) {
+            console.error(`Failed to save timetable for class ${targetClass}:`, err)
+          }
         }
       }
+
+      setTimetableData(updatedData)
+      showToast(`✨ បាននាំចូលកាលវិភាគជោគជ័យសម្រាប់ ${totalClassesSaved} ថ្នាក់ (សរុប ${totalSlotsSaved} ម៉ោងសិក្សា)!`)
+
+      setImportModal({
+        open: false,
+        parsedData: [],
+        isUploaded: false,
+        fileName: '',
+        availableSheets: [],
+        selectedSheet: '',
+        rawWorkbookData: null,
+        sheetsSummary: {},
+        validSheetsCount: 0,
+        totalSlotsAllSheets: 0,
+        pasteMode: false,
+        pasteText: '',
+        isParsing: false
+      })
+    } catch (err) {
+      console.error('Bulk timetable save error:', err)
+      showToast('មានបញ្ហាក្នុងការនាំចូលកាលវិភាគ')
+    } finally {
+      setIsTimetableSaving(false)
+      setSavingProgress(null)
     }
-
-    setTimetableData(updatedData)
-    showToast(`✨ បាននាំចូលកាលវិភាគជោគជ័យសម្រាប់ ${totalClassesSaved} ថ្នាក់ (សរុប ${totalSlotsSaved} ម៉ោងសិក្សា)!`)
-
-    setImportModal({
-      open: false,
-      parsedData: [],
-      isUploaded: false,
-      fileName: '',
-      availableSheets: [],
-      selectedSheet: '',
-      rawWorkbookData: null,
-      sheetsSummary: {},
-      validSheetsCount: 0,
-      totalSlotsAllSheets: 0,
-      pasteMode: false,
-      pasteText: '',
-      isParsing: false
-    })
   }
 
   // Track covered slots for rowSpan (merging cells vertically)
@@ -3241,8 +3274,9 @@ export default function AdminTimetable() {
               </div>
               <button
                 type="button"
-                onClick={() => setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })}
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                disabled={isTimetableSaving}
+                onClick={() => !isTimetableSaving && setImportModal({ open: false, parsedData: [], isUploaded: false, fileName: '' })}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -3519,7 +3553,8 @@ export default function AdminTimetable() {
               <div className="flex items-center flex-wrap gap-2.5 w-full sm:w-auto justify-end">
                 <button
                   type="button"
-                  onClick={() => setImportModal({
+                  disabled={isTimetableSaving}
+                  onClick={() => !isTimetableSaving && setImportModal({
                     open: false,
                     parsedData: [],
                     isUploaded: false,
@@ -3534,7 +3569,7 @@ export default function AdminTimetable() {
                     pasteText: '',
                     isParsing: false
                   })}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[12.5px] font-bold transition-all"
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[12.5px] font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   បោះបង់
                 </button>
@@ -3544,11 +3579,20 @@ export default function AdminTimetable() {
                   <button
                     type="button"
                     onClick={handleConfirmImportAll}
-                    disabled={!importModal.isUploaded || importModal.totalSlotsAllSheets === 0}
-                    className="px-4.5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white text-[12.5px] font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={!importModal.isUploaded || importModal.totalSlotsAllSheets === 0 || isTimetableSaving}
+                    className="px-4.5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 hover:from-indigo-700 hover:to-emerald-700 text-white text-[12.5px] font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                   >
-                    <Sparkles size={15} strokeWidth={2.5} />
-                    <span>✨ នាំចូលគ្រប់ថ្នាក់ ({importModal.validSheetsCount || importModal.availableSheets.length} ថ្នាក់ - សរុប {importModal.totalSlotsAllSheets} ម៉ោង)</span>
+                    {isTimetableSaving && savingProgress?.isBulk ? (
+                      <>
+                        <Loader2 size={15} className="animate-spin" />
+                        <span>កំពុងនាំចូលថ្នាក់ {savingProgress.className} ({savingProgress.current}/{savingProgress.total})...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={15} strokeWidth={2.5} />
+                        <span>✨ នាំចូលគ្រប់ថ្នាក់ ({importModal.validSheetsCount || importModal.availableSheets.length} ថ្នាក់ - សរុប {importModal.totalSlotsAllSheets} ម៉ោង)</span>
+                      </>
+                    )}
                   </button>
                 )}
 
@@ -3556,19 +3600,28 @@ export default function AdminTimetable() {
                 <button
                   type="button"
                   onClick={handleConfirmImport}
-                  disabled={!importModal.isUploaded || importModal.parsedData.length === 0}
+                  disabled={!importModal.isUploaded || importModal.parsedData.length === 0 || isTimetableSaving}
                   className={`px-4.5 py-2.5 rounded-xl ${
                     importModal.availableSheets && importModal.availableSheets.length > 1 && importModal.validSheetsCount > 1
                       ? 'bg-slate-800 hover:bg-slate-900 text-white'
                       : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white'
-                  } text-[12.5px] font-bold shadow-sm hover:shadow transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed`}
+                  } text-[12.5px] font-bold shadow-sm hover:shadow transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer`}
                 >
-                  <Check size={15} strokeWidth={2.5} />
-                  <span>
-                    {importModal.availableSheets && importModal.availableSheets.length > 1 && importModal.validSheetsCount > 1
-                      ? `នាំចូលតែថ្នាក់ ${findMatchingClass(importModal.selectedSheet, classesList, classOptions) || selectedClass} (${importModal.parsedData.length} ម៉ោង)`
-                      : `បញ្ជាក់ការនាំចូល (${importModal.parsedData.length} ម៉ោង ទៅថ្នាក់ ${findMatchingClass(importModal.selectedSheet, classesList, classOptions) || selectedClass})`}
-                  </span>
+                  {isTimetableSaving && !savingProgress?.isBulk ? (
+                    <>
+                      <Loader2 size={15} className="animate-spin" />
+                      <span>កំពុងរក្សាទុកកាលវិភាគ...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check size={15} strokeWidth={2.5} />
+                      <span>
+                        {importModal.availableSheets && importModal.availableSheets.length > 1 && importModal.validSheetsCount > 1
+                          ? `នាំចូលតែថ្នាក់ ${findMatchingClass(importModal.selectedSheet, classesList, classOptions) || selectedClass} (${importModal.parsedData.length} ម៉ោង)`
+                          : `បញ្ជាក់ការនាំចូល (${importModal.parsedData.length} ម៉ោង ទៅថ្នាក់ ${findMatchingClass(importModal.selectedSheet, classesList, classOptions) || selectedClass})`}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

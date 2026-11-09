@@ -528,7 +528,7 @@ export default function AdminTelegramBot() {
                 <th className="py-3 px-6 text-left">លេខកូដ Bot</th>
                 <th className="py-3 px-6 text-left">ថ្នាក់បន្ទុក</th>
                 <th className="py-3 px-6 text-left">Bot Token</th>
-                <th className="py-3 px-6 text-left">Chat ID / Group ID</th>
+                <th className="py-3 px-6 text-left">Chat / Group / Channel ID</th>
                 <th className="py-3 px-6 text-center">ស្ថានភាព</th>
                 <th className="py-3 px-6 text-right">សកម្មភាព</th>
               </tr>

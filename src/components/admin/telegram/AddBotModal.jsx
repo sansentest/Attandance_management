@@ -172,10 +172,13 @@ export default function AddBotModal({ isOpen, onClose, onSave, classOptions, glo
                   )}
                 </div>
 
-                {/* Chat ID */}
+                {/* Chat ID / Group ID / Channel ID */}
                 <div className="flex flex-col gap-2">
-                  <label className="text-[13px] font-bold text-slate-500 flex items-center gap-1.5">
-                    Chat ID / Group ID <span className="text-rose-500">*</span>
+                  <label className="text-[13px] font-bold text-slate-500 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      Chat ID / Group ID / Channel ID <span className="text-rose-500">*</span>
+                    </span>
+                    <span className="text-[11px] text-indigo-600 font-medium">គាំទ្រទាំង Group & Channel</span>
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -185,10 +188,13 @@ export default function AddBotModal({ isOpen, onClose, onSave, classOptions, glo
                       type="text"
                       value={newBot.chatId}
                       onChange={(e) => setNewBot({...newBot, chatId: e.target.value})}
-                      placeholder="ឧ. -100123456789"
+                      placeholder="ឧ. -100123456789 ឬ @channel_name"
                       className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300 font-mono"
                     />
                   </div>
+                  <p className="text-[11px] text-slate-400">
+                    * សម្រាប់ Telegram Channel៖ សូម Add Bot ចូល Channel ជា Admin រួចបញ្ចូល Channel ID (ផ្ដើមដោយ <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">-100...</code>) ឬ Public Username (ឧ. <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">@school_channel</code>)
+                  </p>
                 </div>
               </div>
 

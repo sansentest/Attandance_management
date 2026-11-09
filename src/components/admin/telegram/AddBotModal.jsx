@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Bot, X, Save, Loader2, CheckCircle, MessageCircle, BookOpen, Activity, Hash, Globe } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
+import { normalizeTelegramChatId } from '../../../services/telegram';
 
 export default function AddBotModal({ isOpen, onClose, onSave, classOptions, globalTokens = [] }) {
   const statusOptions = [
@@ -47,14 +48,15 @@ export default function AddBotModal({ isOpen, onClose, onSave, classOptions, glo
   if (!isOpen && !showSuccessAlert) return null;
 
   const handleSave = () => {
-    if (!newBot.chatId.trim()) return;
+    const cleanChatId = normalizeTelegramChatId(newBot.chatId);
+    if (!cleanChatId) return;
     if (tokenType === 'custom' && !newBot.token.trim()) return;
 
     const botToSave = {
       ...newBot,
       name: newBot.name.trim() || `Bot ថ្នាក់ ${newBot.class}`,
       token: tokenType === 'global' ? 'GLOBAL_TOKEN' : newBot.token.trim(),
-      chatId: newBot.chatId.trim()
+      chatId: cleanChatId
     };
     
     if (onSave) onSave(botToSave);
@@ -188,12 +190,18 @@ export default function AddBotModal({ isOpen, onClose, onSave, classOptions, glo
                       type="text"
                       value={newBot.chatId}
                       onChange={(e) => setNewBot({...newBot, chatId: e.target.value})}
-                      placeholder="ឧ. -100123456789 ឬ @channel_name"
+                      onBlur={(e) => {
+                        const norm = normalizeTelegramChatId(e.target.value);
+                        if (norm && norm !== e.target.value) {
+                          setNewBot(prev => ({ ...prev, chatId: norm }));
+                        }
+                      }}
+                      placeholder="ឧ. @channel_name ឬ -100123456789"
                       className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-10 pr-3.5 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm hover:border-slate-300 font-mono"
                     />
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    * សម្រាប់ Telegram Channel៖ សូម Add Bot ចូល Channel ជា Admin រួចបញ្ចូល Channel ID (ផ្ដើមដោយ <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">-100...</code>) ឬ Public Username (ឧ. <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">@school_channel</code>)
+                    * សម្រាប់ Telegram Channel៖ សូម Add Bot ចូល Channel ជា Admin រួចបញ្ចូល Channel Username (ឧ. <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">@school_channel</code>), តំណភ្ជាប់ Channel (ឧ. <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">https://t.me/...</code>), ឬ Channel ID (<code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700 font-mono">-100...</code>)។ ប្រព័ន្ធនឹងបំលែងជាទម្រង់ត្រឹមត្រូវដោយស្វ័យប្រវត្តិ។
                   </p>
                 </div>
               </div>

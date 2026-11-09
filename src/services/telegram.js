@@ -54,6 +54,58 @@ export function getKhmerCurrentDateString(d = new Date()) {
 }
 
 /**
+ * Normalize raw Telegram chat ID, URL, or username into a valid Telegram chat_id
+ * Accepts:
+ * - Public Channel/Group/User URLs: https://t.me/username, t.me/username, https://telegram.me/username
+ * - Public Channel/Group Message URLs: https://t.me/username/123
+ * - Private Channel URLs: https://t.me/c/1234567890/12 -> -1001234567890
+ * - Channel handle with @: @username
+ * - Channel handle without @: username -> @username (if valid identifier)
+ * - Numeric IDs: -100123456789, 123456789, -123456789
+ */
+export function normalizeTelegramChatId(rawChatId) {
+  if (!rawChatId && rawChatId !== 0) return '';
+  let str = String(rawChatId).trim();
+  if (!str) return '';
+
+  // 1. Private channel message URL: t.me/c/1234567890/...
+  const privateMatch = str.match(/(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\/c\/(\d+)/i);
+  if (privateMatch && privateMatch[1]) {
+    return `-100${privateMatch[1]}`;
+  }
+
+  // 2. Public channel/group/user URL: t.me/username or t.me/username/123
+  const publicMatch = str.match(/(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\/([a-zA-Z0-9_]{4,})/i);
+  if (publicMatch && publicMatch[1]) {
+    const handle = publicMatch[1];
+    if (!['joinchat', 'share', 'addstickers', 'addtheme'].includes(handle.toLowerCase())) {
+      return `@${handle}`;
+    }
+  }
+
+  // 3. Remove queries and trailing slashes
+  str = str.replace(/[?#].*$/, '').replace(/\/+$/, '').trim();
+
+  // 4. Pure integer ID (e.g. -1001234567890 or 123456789)
+  if (/^-?\d+$/.test(str)) {
+    return str;
+  }
+
+  // 5. Already starts with @
+  if (str.startsWith('@')) {
+    const handle = str.slice(1).split('/')[0].trim();
+    return `@${handle}`;
+  }
+
+  // 6. Alphanumeric handle without @ (at least 4 chars)
+  if (/^[a-zA-Z][a-zA-Z0-9_]{3,}$/.test(str)) {
+    return `@${str}`;
+  }
+
+  return str;
+}
+
+/**
  * Send a raw Telegram message via Telegram Bot API
  * @param {Object} options
  * @param {string} options.token - Telegram Bot Token
@@ -70,7 +122,20 @@ export async function sendTelegramMessage({ token, chatId, text, parseMode = 'HT
   }
 
   const cleanToken = token.trim();
-  const cleanChatId = String(chatId).trim();
+  const cleanChatId = normalizeTelegramChatId(chatId);
+
+  if (!cleanChatId) {
+    return { success: false, error: 'Telegram Chat ID មិនត្រឹមត្រូវ ឬទទេ' };
+  }
+
+  // Detect invite links that cannot be used as chat_id
+  if (cleanChatId.includes('/+') || cleanChatId.startsWith('+') || cleanChatId.includes('/joinchat/')) {
+    return {
+      success: false,
+      error: 'កំហុស៖ Link អញ្ជើញ (Invite Link ដូចជា https://t.me/+...) មិនអាចប្រើជា Chat ID ក្នុង Bot API បានទេ! ប្រសិនបើជា Channel សាធារណៈ សូមប្រើ Channel Username (ឧ. @my_channel) ឬប្រសិនបើជា Channel ឯកជន សូមប្រើ Channel ID (ឧ. -100...)'
+    };
+  }
+
   const url = `https://api.telegram.org/bot${cleanToken}/sendMessage`;
 
   try {
@@ -142,12 +207,12 @@ export function formatTelegramApiError(desc = '', status = 0) {
     return "កំហុស៖ លោកគ្រូ/អ្នកគ្រូបានដាក់ Username/ID របស់ Bot ក្នុងប្រអប់ Chat ID! សូមដាក់ Username របស់ Channel (ឧ. @my_channel) ឬ Channel/Group ID (ឧ. -100...) ជំនួសវិញ (Bot មិនអាចផ្ញើសារទៅកាន់ Bot ខ្លួនឯងបានទេ)។";
   }
   if (d.includes('chat not found')) {
-    return "រកមិនឃើញ Chat/Channel នេះទេ! សូមពិនិត្យ Chat ID ឬ Channel Username ឡើងវិញ និងប្រាកដថាបាន Add Bot ចូលរួចហើយ។";
+    return "រកមិនឃើញ Chat/Channel នេះទេ! សូមពិនិត្យ៖\n១. ប្រសិនបើជា Channel៖ សូមប្រាកដថាបានដាក់ Username ត្រឹមត្រូវ (ឧ. @channel_name) ឬ Channel ID (-100...)\n២. ត្រូវតែ Add Bot ចូលក្នុង Channel នោះជា Administrator (បើកសិទ្ធិ Post Messages) ជាមុនសិន។";
   }
   if (d.includes('not a member') || d.includes('kicked') || d.includes('bot was removed')) {
     return "Bot មិនទាន់បានចូលក្នុង Group ឬ Channel នេះទេ! សូម Add Bot ចូលជា Administrator ជាមុនសិន។";
   }
-  if (d.includes('not enough rights') || d.includes('need administrator rights')) {
+  if (d.includes('not enough rights') || d.includes('need administrator rights') || d.includes('have no rights to send a message')) {
     return "Bot មិនទាន់មានសិទ្ធិផ្ញើសារក្នុង Channel ទេ! សូមចូលទៅកាន់ Channel > Administrators > បើកសិទ្ធិ Post Messages ឱ្យ Bot។";
   }
   if (d.includes('blocked by the user')) {
@@ -166,6 +231,7 @@ export async function testTelegramBotConnection({ token, chatId, botName = '', c
   const dateStr = getKhmerCurrentDateString();
   const now = new Date();
   const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const targetRecipient = normalizeTelegramChatId(chatId);
 
   const message = [
     '🔔 <b>ការតភ្ជាប់ប្រព័ន្ធ Telegram Bot ជោគជ័យ!</b>',
@@ -174,6 +240,7 @@ export async function testTelegramBotConnection({ token, chatId, botName = '', c
     `✅ <b>ស្ថានភាព:</b> បានតភ្ជាប់ដោយជោគជ័យ`,
     botName ? `🤖 <b>Bot:</b> ${escapeTelegramHtml(botName)}` : null,
     className ? `📚 <b>ថ្នាក់បន្ទុក:</b> ${escapeTelegramHtml(className)}` : null,
+    targetRecipient ? `🎯 <b>គោលដៅ:</b> <code>${escapeTelegramHtml(targetRecipient)}</code>` : null,
     `📅 <b>កាលបរិច្ឆេទ:</b> ${dateStr}`,
     `⏰ <b>ពេលវេលា:</b> ${timeStr}`,
     '━━━━━━━━━━━━━━━━━━━━',

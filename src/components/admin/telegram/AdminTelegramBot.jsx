@@ -14,6 +14,7 @@ import { triggerDailySummary, isDailySummarySentToday, getDailySummarySentLog } 
 import { exportTelegramPdf } from './exports/exportTelegramPdf.js'
 import { exportTelegramWord } from './exports/exportTelegramWord.js'
 import { exportTelegramExcel } from './exports/exportTelegramExcel.js'
+import { normalizeTelegramChatId } from '../../../services/telegram'
 
 const isDummyToken = (t) => {
   if (!t) return false;
@@ -179,10 +180,12 @@ export default function AdminTelegramBot() {
   }
 
   const handleAddBotSave = async (newBot) => {
+    const normalizedChatId = normalizeTelegramChatId(newBot.chatId) || newBot.chatId;
     const botWithId = {
       id: `BOT-${String(Date.now()).slice(-3)}`,
       lastUpdated: new Date().toISOString().split('T')[0],
-      ...newBot
+      ...newBot,
+      chatId: normalizedChatId
     }
     setBots([botWithId, ...bots])
     showToast('បានបន្ថែម Telegram Bot ទៅកាន់ Firebase ដោយជោគជ័យ', 'success')
@@ -190,10 +193,12 @@ export default function AdminTelegramBot() {
   }
 
   const handleEditBotSave = async (updatedBot) => {
-    const next = bots.map(b => b.id === updatedBot.id ? { ...b, ...updatedBot, lastUpdated: new Date().toISOString().split('T')[0] } : b)
+    const normalizedChatId = normalizeTelegramChatId(updatedBot.chatId) || updatedBot.chatId;
+    const cleanBot = { ...updatedBot, chatId: normalizedChatId };
+    const next = bots.map(b => b.id === cleanBot.id ? { ...b, ...cleanBot, lastUpdated: new Date().toISOString().split('T')[0] } : b)
     setBots(next)
     showToast('បានកែប្រែព័ត៌មាន Bot ទៅកាន់ Firebase ដោយជោគជ័យ', 'success')
-    await api('telegram.updateBot', { botId: updatedBot.id, bot: updatedBot })
+    await api('telegram.updateBot', { botId: cleanBot.id, bot: cleanBot })
   }
 
   const handleConfirmDelete = async () => {
@@ -221,15 +226,16 @@ export default function AdminTelegramBot() {
         return
       }
 
+      const normalizedTarget = normalizeTelegramChatId(bot.chatId) || bot.chatId
       const res = await api('telegram.testBot', {
         token: testToken,
-        chatId: bot.chatId,
+        chatId: normalizedTarget,
         botName: bot.name || `Bot ថ្នាក់ ${bot.class}`,
         className: bot.class
       })
 
       if (res && res.success) {
-        showToast(`បានផ្ញើសារសាកល្បងទៅកាន់ Telegram (Chat ID: ${bot.chatId}) ជោគជ័យ!`, 'success')
+        showToast(`បានផ្ញើសារសាកល្បងទៅកាន់ Telegram (${normalizedTarget}) ជោគជ័យ!`, 'success')
       } else {
         showToast(res.error || 'បរាជ័យក្នុងការតភ្ជាប់ Telegram Bot', 'error')
       }
@@ -583,11 +589,11 @@ export default function AdminTelegramBot() {
                   <td className="py-3 px-6 font-mono text-[12px]">
                     <div className="flex items-center gap-2">
                       <span className="text-slate-600 bg-slate-50 px-2 py-1 rounded border border-slate-200/50">
-                        {bot.chatId}
+                        {normalizeTelegramChatId(bot.chatId) || bot.chatId}
                       </span>
                       <button
                         type="button"
-                        onClick={() => handleCopy(bot.chatId, bot.id, 'chatId')}
+                        onClick={() => handleCopy(normalizeTelegramChatId(bot.chatId) || bot.chatId, bot.id, 'chatId')}
                         className="text-slate-400 hover:text-indigo-600 transition-colors p-1"
                         title="ចម្លង Chat ID"
                       >

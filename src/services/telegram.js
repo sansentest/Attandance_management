@@ -115,9 +115,11 @@ export async function sendTelegramMessage({ token, chatId, text, parseMode = 'HT
         }
       }
 
+      const friendlyError = formatTelegramApiError(data.description, response.status);
       return {
         success: false,
-        error: data.description || `HTTP ${response.status}: បរាជ័យក្នុងការផ្ញើសារ`
+        error: friendlyError,
+        rawDescription: data.description
       };
     }
 
@@ -129,6 +131,32 @@ export async function sendTelegramMessage({ token, chatId, text, parseMode = 'HT
       error: err.message || 'មិនអាចតភ្ជាប់ទៅកាន់ម៉ាស៊ីនបម្រើ Telegram បានទេ'
     };
   }
+}
+
+/**
+ * Format raw Telegram Bot API error message to clear Khmer instructions
+ */
+export function formatTelegramApiError(desc = '', status = 0) {
+  const d = String(desc || '').toLowerCase();
+  if (d.includes("can't send messages to the bot") || d.includes("can't send messages to bots") || d.includes("message to the bot")) {
+    return "កំហុស៖ លោកគ្រូ/អ្នកគ្រូបានដាក់ Username/ID របស់ Bot ក្នុងប្រអប់ Chat ID! សូមដាក់ Username របស់ Channel (ឧ. @my_channel) ឬ Channel/Group ID (ឧ. -100...) ជំនួសវិញ (Bot មិនអាចផ្ញើសារទៅកាន់ Bot ខ្លួនឯងបានទេ)។";
+  }
+  if (d.includes('chat not found')) {
+    return "រកមិនឃើញ Chat/Channel នេះទេ! សូមពិនិត្យ Chat ID ឬ Channel Username ឡើងវិញ និងប្រាកដថាបាន Add Bot ចូលរួចហើយ។";
+  }
+  if (d.includes('not a member') || d.includes('kicked') || d.includes('bot was removed')) {
+    return "Bot មិនទាន់បានចូលក្នុង Group ឬ Channel នេះទេ! សូម Add Bot ចូលជា Administrator ជាមុនសិន។";
+  }
+  if (d.includes('not enough rights') || d.includes('need administrator rights')) {
+    return "Bot មិនទាន់មានសិទ្ធិផ្ញើសារក្នុង Channel ទេ! សូមចូលទៅកាន់ Channel > Administrators > បើកសិទ្ធិ Post Messages ឱ្យ Bot។";
+  }
+  if (d.includes('blocked by the user')) {
+    return "អ្នកប្រើប្រាស់បាន Block bot នេះ! សូមចូលទៅកាន់ Bot នោះក្នុង Telegram រួចចុច /start ម្តងទៀត។";
+  }
+  if (d.includes('unauthorized')) {
+    return "Bot Token មិនត្រឹមត្រូវ! សូមពិនិត្យមើល Token ដែលបានចម្លងពី @BotFather ឡើងវិញ។";
+  }
+  return desc || `HTTP ${status}: បរាជ័យក្នុងការផ្ញើសារ`;
 }
 
 /**

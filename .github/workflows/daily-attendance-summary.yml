@@ -47,3 +47,4 @@ jobs:
           FORCE: ${{ github.event.inputs.force || 'false' }}
           TARGET_DATE: ${{ github.event.inputs.target_date || '' }}
         run: node scripts/dispatchDailySummaryCloud.js
+

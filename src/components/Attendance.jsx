@@ -10,7 +10,7 @@ import {
   User, Check, X, FileText, AlertCircle, CheckCircle2,
   Loader2, Send, LogOut, Search, BookOpen, ChevronDown,
   ArrowLeftRight, Calendar, WifiOff, CloudUpload, RefreshCw, Wifi, Lock,
-  UserX, Info, Edit3
+  UserX, Info, Edit3, Sparkles
 } from 'lucide-react'
 
 // Helper to format today's date in polite, complete Khmer text
@@ -298,6 +298,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     subject: '',
     teacher: ''
   })
+  const [inheritedFromPeriod, setInheritedFromPeriod] = useState(null)
 
   // Holiday / Vacation / Weekend support (Persist override in sessionStorage so reload preserves testing mode)
   const [allowHolidayOverride, setAllowHolidayOverrideState] = useState(() => {
@@ -466,6 +467,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
   }
 
   const applySavedState = (savedState, targetPeriod) => {
+    setInheritedFromPeriod(null)
     const fullDayMap = getSavedFullDayLeaves()
     const currentDropouts = getSavedDropoutMap()
     const mergedState = { ...savedState.attendanceState }
@@ -506,21 +508,100 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     })
   }
 
+  // Helper to find the most recent submitted period earlier today for this class
+  const getMostRecentSavedPeriodState = (targetPeriod) => {
+    try {
+      const todaySched = getTodaySchedule(currentClass)
+      const allPeriods = [...(todaySched.morning || []), ...(todaySched.afternoon || [])]
+
+      // 1. Search backwards from targetPeriod if timetable periods exist
+      const targetIdx = allPeriods.findIndex(p => String(p.period) === String(targetPeriod.period))
+      if (targetIdx > 0) {
+        for (let i = targetIdx - 1; i >= 0; i--) {
+          const candidate = allPeriods[i]
+          const saved = getSavedPeriodState(candidate.period)
+          if (saved && saved.attendanceState && Object.keys(saved.attendanceState).length > 0) {
+            return {
+              period: candidate,
+              state: saved
+            }
+          }
+        }
+      }
+
+      // 2. Also check any other period in allPeriods in reverse
+      for (let i = allPeriods.length - 1; i >= 0; i--) {
+        const candidate = allPeriods[i]
+        if (String(candidate.period) !== String(targetPeriod.period)) {
+          const saved = getSavedPeriodState(candidate.period)
+          if (saved && saved.attendanceState && Object.keys(saved.attendanceState).length > 0) {
+            return {
+              period: candidate,
+              state: saved
+            }
+          }
+        }
+      }
+
+      // 3. Fallback: Check raw records from school_attendance_records
+      const recRaw = localStorage.getItem('school_attendance_records')
+      if (recRaw) {
+        const list = JSON.parse(recRaw)
+        const classTodayRecs = list.filter(r => r.class === currentClass && r.date === today && String(r.period) !== String(targetPeriod.period))
+        if (classTodayRecs.length > 0) {
+          const uniquePeriods = [...new Set(classTodayRecs.map(r => String(r.period)))]
+          for (let p of uniquePeriods) {
+            const saved = getSavedPeriodState(p)
+            if (saved && saved.attendanceState && Object.keys(saved.attendanceState).length > 0) {
+              return {
+                period: { period: p, periodLabel: `ម៉ោងទី ${p}` },
+                state: saved
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[Attendance] getMostRecentSavedPeriodState error:', e)
+    }
+    return null
+  }
+
   const applyDefaultPresent = (targetPeriod, studentList) => {
     const fullDayMap = getSavedFullDayLeaves()
     const currentDropouts = getSavedDropoutMap()
+    const previousPeriodData = getMostRecentSavedPeriodState(targetPeriod)
+
+    const prevAttendance = previousPeriodData?.state?.attendanceState || {}
+    const prevReasons = previousPeriodData?.state?.leaveReasons || {}
+
     const freshState = {}
+    const freshReasons = {}
+    let inheritedCount = 0
+
     studentList.forEach(s => {
       if (currentDropouts[s.id] || s.status === 'dropped') {
         freshState[s.id] = 'DROPOUT'
       } else if (fullDayMap[s.id]) {
         freshState[s.id] = 'LEAVE'
+      } else if (prevAttendance[s.id] === 'ABSENT') {
+        // Pre-fill ABSENT from previous period
+        freshState[s.id] = 'ABSENT'
+        inheritedCount++
+      } else if (prevAttendance[s.id] === 'LEAVE') {
+        // Pre-fill LEAVE from previous period
+        freshState[s.id] = 'LEAVE'
+        if (prevReasons[s.id]) {
+          freshReasons[s.id] = prevReasons[s.id]
+        }
+        inheritedCount++
       } else {
         freshState[s.id] = 'PRESENT'
       }
     })
+
     setAttendanceState(freshState)
-    setLeaveReasons({})
+    setLeaveReasons(freshReasons)
     setIsSubstituted(false)
     setPeriodInfo({
       className: currentClass,
@@ -536,6 +617,15 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       isLibre: Boolean(targetPeriod.isLibre),
       hasTimetable: targetPeriod.hasTimetable !== false
     })
+
+    if (previousPeriodData && inheritedCount > 0) {
+      setInheritedFromPeriod({
+        periodLabel: previousPeriodData.period.periodLabel || `ម៉ោងទី ${previousPeriodData.period.period}`,
+        count: inheritedCount
+      })
+    } else {
+      setInheritedFromPeriod(null)
+    }
   }
 
   // Load attendance data for a specific period (Checks local storage instantly, then synchronizes from Firebase API)
@@ -1544,6 +1634,24 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       )}
 
       {/* ── Status Banner for Submitted Period: Locked vs Edit Mode ── */}
+      {inheritedFromPeriod && !isAlreadySubmitted && (
+        <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-indigo-50/90 border border-indigo-200/80 rounded-xl flex items-center justify-between gap-2.5 text-[12px] sm:text-[13px] text-indigo-900 shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles size={16} className="text-indigo-600 shrink-0" />
+            <span className="leading-snug">
+              បានស្រង់ឈ្មោះអវត្តមាន <strong>{inheritedFromPeriod.count} នាក់</strong> ពី <strong>{inheritedFromPeriod.periodLabel}</strong> មកម៉ោងនេះស្វ័យប្រវត្តិ។ (លោកគ្រូ/ប្រធានថ្នាក់អាចចុចកែប្រែបានតាមជាក់ស្ដែង)
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setInheritedFromPeriod(null)}
+            className="text-indigo-400 hover:text-indigo-700 p-1 rounded-lg hover:bg-indigo-100/60 transition-colors shrink-0 cursor-pointer"
+            title="បិទការជូនដំណឹង"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
     
 
       {/* ── Search Bar ── */}

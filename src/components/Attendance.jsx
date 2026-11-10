@@ -695,6 +695,37 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     }
   }, [])
 
+  const [isRefreshingTimetable, setIsRefreshingTimetable] = useState(false)
+
+  const handleRefreshTimetable = async () => {
+    if (isRefreshingTimetable) return
+    setIsRefreshingTimetable(true)
+    try {
+      const cls = currentClass
+      const res = await api('timetable.get', { classId: cls, force: true })
+      if (res && res.success) {
+        const fresh = detectCurrentPeriod(cls)
+        setPeriodInfo(fresh)
+        setAlertMessage({
+          show: true,
+          message: `បានទាញយកកាលវិភាគថ្មីពី Server រួចរាល់!`,
+          type: 'success'
+        })
+        setLastUpdatedTime(Date.now())
+      } else {
+        setAlertMessage({
+          show: true,
+          message: `មិនអាចទាញកាលវិភាគបានទេ សូមពិនិត្យមើល Internet!`,
+          type: 'danger'
+        })
+      }
+    } catch (e) {
+      console.warn('Refresh timetable error:', e)
+    } finally {
+      setIsRefreshingTimetable(false)
+    }
+  }
+
   const handleSyncOffline = async () => {
     if (!networkOnline) return
     setIsSyncing(true)
@@ -1247,13 +1278,26 @@ export default function Attendance({ session, onNavigate, onLogout }) {
             </div>
           </div>
 
-          <button
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-500/20 backdrop-blur-md border border-red-400/30 flex items-center justify-center text-red-50 hover:bg-red-500/40 transition-colors shadow-xs cursor-pointer"
-            onClick={onLogout}
-            title="ចាកចេញ"
-          >
-            <LogOut size={13} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
-          </button>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              onClick={handleRefreshTimetable}
+              disabled={isRefreshingTimetable}
+              className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 transition-all backdrop-blur-md border border-white/25 flex items-center gap-1.5 text-white shadow-xs cursor-pointer text-[10px] sm:text-xs font-bold"
+              title="ចុចដើម្បីទាញកាលវិភាគថ្មីពី Cloud"
+            >
+              <RefreshCw size={12} className={`sm:w-3.5 sm:h-3.5 ${isRefreshingTimetable ? 'animate-spin' : ''}`} />
+              <span>Sync កាលវិភាគ</span>
+            </button>
+
+            <button
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-500/20 backdrop-blur-md border border-red-400/30 flex items-center justify-center text-red-50 hover:bg-red-500/40 transition-colors shadow-xs cursor-pointer"
+              onClick={onLogout}
+              title="ចាកចេញ"
+            >
+              <LogOut size={13} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       </div>
 

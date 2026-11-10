@@ -681,26 +681,34 @@ export async function api(action, body = {}, token = null) {
       const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
+      const force = Boolean(body.force);
       let classSlots = null;
-      if (isFirebaseConfigured()) {
+
+      // 1. Check local cache first unless force refresh is requested (0 Firestore reads!)
+      if (!force) {
         try {
-          let fbSlots = await getTimetablesFromFirestore(cls);
-          if ((!fbSlots || fbSlots.length === 0) && cleanCls !== cls) {
-            fbSlots = await getTimetablesFromFirestore(cleanCls);
+          const raw = localStorage.getItem('school_timetable_cache');
+          if (raw) {
+            const cache = JSON.parse(raw);
+            if (cache && (cache[cls] || cache[cleanCls] || (khmerCls && cache[khmerCls]))) {
+              classSlots = cache[cls] || cache[cleanCls] || (khmerCls ? cache[khmerCls] : null);
+            }
           }
-          if (!fbSlots || fbSlots.length === 0) {
-            fbSlots = await getTimetablesFromFirestore(khmerCls);
+        } catch (e) {}
+      }
+
+      // 2. If force refresh or not found in local cache, fetch from Firestore
+      if ((force || !classSlots || classSlots.length === 0) && isFirebaseConfigured()) {
+        try {
+          let fbSlots = await getTimetablesFromFirestore(cls, force);
+          if ((!fbSlots || fbSlots.length === 0) && cleanCls !== cls) {
+            fbSlots = await getTimetablesFromFirestore(cleanCls, force);
+          }
+          if ((!fbSlots || fbSlots.length === 0) && khmerCls !== cls) {
+            fbSlots = await getTimetablesFromFirestore(khmerCls, force);
           }
           if (Array.isArray(fbSlots) && fbSlots.length > 0) {
             classSlots = fbSlots;
-            try {
-              const raw = localStorage.getItem('school_timetable_cache');
-              const cache = raw ? JSON.parse(raw) : {};
-              cache[cls] = fbSlots;
-              cache[cleanCls] = fbSlots;
-              cache[khmerCls] = fbSlots;
-              localStorage.setItem('school_timetable_cache', JSON.stringify(cache));
-            } catch (e) {}
           }
         } catch (e) {
           console.warn('[Firebase] schedule.current getTimetables fallback:', e);

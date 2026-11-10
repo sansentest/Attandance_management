@@ -1664,7 +1664,7 @@ export async function deleteTimetableFromFirestore(classKey) {
     return { success: false, error: err.message };
   }
 }
-
+  
 
 export async function getSubjectsFromFirestore(force = false) {
   if (!force && _memoryCache.subjects.data && (Date.now() - _memoryCache.subjects.time < MEMORY_CACHE_TTL_MS)) {
@@ -1821,21 +1821,21 @@ const DEFAULT_TIMETABLES = {};
 
 export async function getTimetablesFromFirestore(classId = null, force = false) {
   const now = Date.now();
-  if (!force && _memoryCache.timetables.data && (now - _memoryCache.timetables.time) < TIMETABLE_CACHE_TTL_MS) {
-    if (classId) {
-      const clean = String(classId).replace(/^ថ្នាក់\s*/i, '').trim();
-      const khmer = `ថ្នាក់ ${clean}`;
-      return _memoryCache.timetables.data[classId] || _memoryCache.timetables.data[clean] || _memoryCache.timetables.data[khmer] || [];
+
+  // If not manual force refresh, ALWAYS return from RAM cache or localStorage cache first (0 Firebase reads!)
+  if (!force) {
+    if (_memoryCache.timetables.data) {
+      if (classId) {
+        const clean = String(classId).replace(/^ថ្នាក់\s*/i, '').trim();
+        const khmer = `ថ្នាក់ ${clean}`;
+        if (_memoryCache.timetables.data[classId] || _memoryCache.timetables.data[clean] || _memoryCache.timetables.data[khmer]) {
+          return _memoryCache.timetables.data[classId] || _memoryCache.timetables.data[clean] || _memoryCache.timetables.data[khmer];
+        }
+      } else if (Object.keys(_memoryCache.timetables.data).length > 0) {
+        return _memoryCache.timetables.data;
+      }
     }
-    return _memoryCache.timetables.data;
-  }
 
-  // Check localStorage cache with 5-minute freshness check
-  const cacheKey = classId ? `school_timetable_time_${classId}` : 'school_timetable_cache_time';
-  const cachedTime = Number(localStorage.getItem(cacheKey) || localStorage.getItem('school_timetable_cache_time') || 0);
-  const isCacheFresh = (now - cachedTime) < TIMETABLE_CACHE_TTL_MS;
-
-  if (!force && isCacheFresh) {
     try {
       const cached = localStorage.getItem('school_timetable_cache');
       if (cached) {
@@ -1843,13 +1843,15 @@ export async function getTimetablesFromFirestore(classId = null, force = false) 
         if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
           if (!_memoryCache.timetables.data) _memoryCache.timetables.data = {};
           Object.assign(_memoryCache.timetables.data, parsed);
-          _memoryCache.timetables.time = cachedTime;
           if (classId) {
             const clean = String(classId).replace(/^ថ្នាក់\s*/i, '').trim();
             const khmer = `ថ្នាក់ ${clean}`;
-            return parsed[classId] || parsed[clean] || parsed[khmer] || [];
+            if (parsed[classId] || parsed[clean] || parsed[khmer]) {
+              return parsed[classId] || parsed[clean] || parsed[khmer];
+            }
+          } else {
+            return parsed;
           }
-          return parsed;
         }
       }
     } catch (e) {}
@@ -1861,7 +1863,7 @@ export async function getTimetablesFromFirestore(classId = null, force = false) 
   }
 
   try {
-    // If specific classId is requested, fetch ONLY that 1 document (only 1 read!)
+    // If specific classId is requested (e.g. manual refresh by Class Monitor), fetch ONLY that 1 document (1 read to save quota!)
     if (classId) {
       const clean = String(classId).replace(/^ថ្នាក់\s*/i, '').trim();
       const khmer = `ថ្នាក់ ${clean}`;
@@ -1885,8 +1887,6 @@ export async function getTimetablesFromFirestore(classId = null, force = false) 
         if (clean !== classId) cache[clean] = slots;
         if (khmer !== classId) cache[khmer] = slots;
         localStorage.setItem('school_timetable_cache', JSON.stringify(cache));
-        localStorage.setItem(`school_timetable_time_${classId}`, String(now));
-        localStorage.setItem(`school_timetable_time_${clean}`, String(now));
       } catch (e) {}
 
       if (!_memoryCache.timetables.data) _memoryCache.timetables.data = {};
@@ -1902,7 +1902,6 @@ export async function getTimetablesFromFirestore(classId = null, force = false) 
 
     if (snap.empty) {
       _memoryCache.timetables.data = {};
-      _memoryCache.timetables.time = now;
       return {};
     }
 
@@ -1913,11 +1912,9 @@ export async function getTimetablesFromFirestore(classId = null, force = false) 
     });
 
     _memoryCache.timetables.data = timetableMap;
-    _memoryCache.timetables.time = now;
 
     try {
       localStorage.setItem('school_timetable_cache', JSON.stringify(timetableMap));
-      localStorage.setItem('school_timetable_cache_time', String(now));
     } catch (e) {}
 
     return timetableMap;

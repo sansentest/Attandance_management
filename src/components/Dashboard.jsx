@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
 import { getSchoolStatus } from '../utils/academicCalendar'
-import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, AlertCircle, Edit3 } from 'lucide-react'
+import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, AlertCircle, Edit3, RefreshCw } from 'lucide-react'
 import MonitorProfileModal from './MonitorProfileModal'
 
 export default function Dashboard({ session, onLogout, onNavigate, onUpdateSession }) {
   const [currentPeriod, setCurrentPeriod] = useState(null)
   const [loadingStats, setLoadingStats] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [stats, setStats] = useState({
     present: '—',
@@ -24,7 +25,7 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
     loadStats()
   }, [])
 
-  const loadCurrentPeriod = async () => {
+  const loadCurrentPeriod = async (force = false) => {
     setLoadingPeriod(true)
     // Sync active classes to detect deleted classes immediately
     api('academic.getClasses').catch(() => {})
@@ -45,7 +46,7 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
       return
     }
 
-    const result = await api('schedule.current', { className })
+    const result = await api('schedule.current', { className, force })
     
     if (!result.success) {
       setCurrentPeriod({ noClassMsg: 'មិនអាចទាញយកកាលវិភាគបានទេ។' })
@@ -151,6 +152,14 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
     }
   }
 
+  const handleManualRefresh = async () => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
+    await loadCurrentPeriod(true)
+    loadStats()
+    setIsRefreshing(false)
+  }
+
   return (
     <div className="page active font-[family-name:var(--font-primary)] bg-slate-50 min-h-screen pb-10 lg:pb-20">
       
@@ -173,21 +182,32 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
               </span>
             </div>
           </div>
-          <button 
-            type="button"
-            onClick={() => setIsProfileModalOpen(true)}
-            className="lg:hidden w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-xs cursor-pointer transition-all relative group shrink-0"
-            title="ចុចដើម្បីកែប្រែ Username និង Password"
-          >
-            {session.avatar ? (
-              <img src={session.avatar} alt="Avatar" className="w-full h-full object-cover rounded-full" />
-            ) : (
-              <User size={20} className="text-white" />
-            )}
-            <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-amber-400 border border-white rounded-full flex items-center justify-center text-[9px] text-slate-900 shadow-xs">
-              <Edit3 size={9} strokeWidth={2.5} />
-            </span>
-          </button>
+          <div className="lg:hidden flex items-center gap-2">
+            <button 
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-xs cursor-pointer transition-all text-white shrink-0"
+              title="ចុចដើម្បីទាញកាលវិភាគថ្មីពី Cloud"
+            >
+              <RefreshCw size={17} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
+            <button 
+              type="button"
+              onClick={() => setIsProfileModalOpen(true)}
+              className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-xs cursor-pointer transition-all relative group shrink-0"
+              title="ចុចដើម្បីកែប្រែ Username និង Password"
+            >
+              {session.avatar ? (
+                <img src={session.avatar} alt="Avatar" className="w-full h-full object-cover rounded-full" />
+              ) : (
+                <User size={20} className="text-white" />
+              )}
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-amber-400 border border-white rounded-full flex items-center justify-center text-[9px] text-slate-900 shadow-xs">
+                <Edit3 size={9} strokeWidth={2.5} />
+              </span>
+            </button>
+          </div>
 
           {/* Desktop Header Text */}
           <div className="hidden lg:flex gap-5 items-center w-full">
@@ -210,6 +230,16 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
               <div className="text-[15px] text-indigo-100 font-medium tracking-wide mb-1 opacity-90">{greeting}</div>
               <div className="text-[34px] font-black leading-tight mb-3 drop-shadow-md flex items-center gap-3">
                 <span>{session.fullName || session.username}</span>
+                <button
+                  type="button"
+                  onClick={handleManualRefresh}
+                  disabled={isRefreshing}
+                  className="text-[12px] bg-white/20 hover:bg-white/30 text-white px-3 py-1 rounded-full font-bold transition-all border border-white/25 cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                  title="ចុចដើម្បីទាញកាលវិភាគថ្មីពី Cloud"
+                >
+                  <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
+                  <span>Sync កាលវិភាគ</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsProfileModalOpen(true)}

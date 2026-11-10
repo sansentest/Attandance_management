@@ -1079,6 +1079,14 @@ export async function api(action, body = {}, token = null) {
       const today = body.date || new Date().toISOString().split('T')[0];
       const periodVal = String(body.period || '1');
 
+      // Check localStorage cached period state first to protect Firestore reads
+      try {
+        const raw = localStorage.getItem(`school_period_state_${today}_${cls}_p${periodVal}`);
+        if (raw) {
+          return { success: true, data: JSON.parse(raw) };
+        }
+      } catch (e) {}
+
       if (isFirebaseConfigured()) {
         try {
           const fbState = await getPeriodStateFromFirestore(today, cls, periodVal);
@@ -1090,14 +1098,8 @@ export async function api(action, body = {}, token = null) {
         }
       }
 
-      // Check localStorage cached period state
+      // Reconstruct from school_attendance_records if period_state was lost
       try {
-        const raw = localStorage.getItem(`school_period_state_${today}_${cls}_p${periodVal}`);
-        if (raw) {
-          return { success: true, data: JSON.parse(raw) };
-        }
-
-        // Reconstruct from school_attendance_records if period_state was lost
         const recRaw = localStorage.getItem('school_attendance_records');
         if (recRaw) {
           const list = JSON.parse(recRaw);

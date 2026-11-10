@@ -119,6 +119,9 @@ const _memoryCache = {
 };
 
 export function invalidateFirebaseCache(key = null) {
+  if (!key || key === 'students') {
+    Object.keys(_classStudentsCache).forEach(k => delete _classStudentsCache[k]);
+  }
   if (key && _memoryCache[key]) {
     _memoryCache[key].time = 0;
     _memoryCache[key].data = null;
@@ -144,7 +147,28 @@ export async function seedStudentsIfEmpty() {
 // ─────────────────────────────────────────────
 // 3. Students API (Firestore)
 // ─────────────────────────────────────────────
-export async function getStudentsFromFirestore(className = '12A') {
+const _classStudentsCache = {};
+
+export async function getStudentsFromFirestore(className = '12A', force = false) {
+  const now = Date.now();
+  if (!force && _classStudentsCache[className] && (now - _classStudentsCache[className].time < STUDENTS_CACHE_TTL_MS)) {
+    return _classStudentsCache[className].data;
+  }
+
+  // Check localStorage roster cache to avoid unnecessary Firestore reads
+  if (!force) {
+    try {
+      const cached = localStorage.getItem(`school_roster_cache_${className}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          _classStudentsCache[className] = { data: parsed, time: now };
+          return parsed;
+        }
+      }
+    } catch (e) {}
+  }
+
   if (!db) return [];
 
   try {
@@ -152,15 +176,20 @@ export async function getStudentsFromFirestore(className = '12A') {
     const snap = await getDocs(q);
 
     if (snap.empty) {
+      _classStudentsCache[className] = { data: [], time: now };
       return [];
     }
 
     const students = [];
     snap.forEach(d => students.push({ id: d.id, ...d.data() }));
+    _classStudentsCache[className] = { data: students, time: now };
+    try {
+      localStorage.setItem(`school_roster_cache_${className}`, JSON.stringify(students));
+    } catch (e) {}
     return students;
   } catch (err) {
     console.error('[Firebase] Failed to fetch students from Firestore:', err);
-    return [];
+    return _classStudentsCache[className]?.data || [];
   }
 }
 

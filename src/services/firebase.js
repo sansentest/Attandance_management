@@ -99,9 +99,11 @@ const COL_SETTINGS = 'school_settings';
 const COL_MONTHLY_BACKUPS = 'monthly_backups';
 
 // ─────────────────────────────────────────────
-// High-Speed In-Memory Cache (RAM Acceleration)
+// High-Speed In-Memory Cache (RAM Acceleration & Quota Shield)
 // ─────────────────────────────────────────────
-const MEMORY_CACHE_TTL_MS = 25000; // 25s hot cache for instant navigation
+const MEMORY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache to strictly protect Firebase Free Quota (50,000 reads/day)
+const STUDENTS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes cache for 1,300 students (saves ~1,300 reads per call!)
+const TIMETABLE_CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutes cache for timetables & classes
 const _memoryCache = {
   attendance: { data: null, time: 0 },
   students: { data: null, time: 0 },
@@ -634,8 +636,23 @@ export async function getYearlyReportFromFirestore(className = '12A', refDate = 
 // 7. Admin Student Attendance API (Firestore)
 // ─────────────────────────────────────────────
 export async function getAllAttendanceRecordsFromFirestore(force = false) {
-  if (!force && _memoryCache.attendance.data && (Date.now() - _memoryCache.attendance.time < MEMORY_CACHE_TTL_MS)) {
+  const now = Date.now();
+  if (!force && _memoryCache.attendance.data && (now - _memoryCache.attendance.time < MEMORY_CACHE_TTL_MS)) {
     return _memoryCache.attendance.data;
+  }
+  // Check localStorage cache to save daily Firestore read quota
+  if (!force) {
+    try {
+      const cached = localStorage.getItem('school_attendance_records');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          _memoryCache.attendance.data = parsed;
+          _memoryCache.attendance.time = now;
+          return parsed;
+        }
+      }
+    } catch (e) {}
   }
   if (!db) return [];
   try {
@@ -746,8 +763,22 @@ export async function saveRawAttendanceRecordsToFirestore(records = []) {
 // 8. Admin Dashboard Live Stats (Firestore)
 // ─────────────────────────────────────────────
 export async function getAdminDashboardStatsFromFirestore(force = false) {
-  if (!force && _memoryCache.dashboard.data && (Date.now() - _memoryCache.dashboard.time < MEMORY_CACHE_TTL_MS)) {
+  const now = Date.now();
+  if (!force && _memoryCache.dashboard.data && (now - _memoryCache.dashboard.time < MEMORY_CACHE_TTL_MS)) {
     return _memoryCache.dashboard.data;
+  }
+  if (!force) {
+    try {
+      const cached = localStorage.getItem('school_dashboard_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object') {
+          _memoryCache.dashboard.data = parsed;
+          _memoryCache.dashboard.time = now;
+          return parsed;
+        }
+      }
+    } catch (e) {}
   }
   if (!db) return null;
   try {
@@ -863,8 +894,23 @@ export async function getAdminDashboardStatsFromFirestore(force = false) {
 // 9. Student Management CRUD (Firestore)
 // ─────────────────────────────────────────────
 export async function getAllStudentsFromFirestore(force = false) {
-  if (!force && _memoryCache.students.data && (Date.now() - _memoryCache.students.time < MEMORY_CACHE_TTL_MS)) {
+  const now = Date.now();
+  if (!force && _memoryCache.students.data && (now - _memoryCache.students.time < STUDENTS_CACHE_TTL_MS)) {
     return _memoryCache.students.data;
+  }
+  // Check localStorage cache to avoid burning 1,297 Firestore document reads
+  if (!force) {
+    try {
+      const cached = localStorage.getItem('school_students_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          _memoryCache.students.data = parsed;
+          _memoryCache.students.time = now;
+          return parsed;
+        }
+      }
+    } catch (e) {}
   }
   if (!db) return [];
   try {
@@ -1469,8 +1515,23 @@ const DEFAULT_ACADEMIC_CLASSES = [];
 const DEFAULT_ACADEMIC_SUBJECTS = [];
 
 export async function getClassesFromFirestore(force = false) {
-  if (!force && _memoryCache.classes.data && (Date.now() - _memoryCache.classes.time < MEMORY_CACHE_TTL_MS)) {
+  const now = Date.now();
+  if (!force && _memoryCache.classes.data && (now - _memoryCache.classes.time < TIMETABLE_CACHE_TTL_MS)) {
     return _memoryCache.classes.data;
+  }
+  // Check localStorage cache first to protect quota
+  if (!force) {
+    try {
+      const cached = localStorage.getItem('school_classes_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          _memoryCache.classes.data = parsed;
+          _memoryCache.classes.time = now;
+          return parsed;
+        }
+      }
+    } catch (e) {}
   }
   if (!db) return [];
   try {
@@ -1484,8 +1545,8 @@ export async function getClassesFromFirestore(force = false) {
       return [];
     }
 
-    // Reuse fast cached students list instead of separate un-cached query
-    const studentsList = await getAllStudentsFromFirestore(force);
+    // Reuse fast cached students list without burning reads
+    const studentsList = await getAllStudentsFromFirestore(false);
     const classCountMap = {};
     studentsList.forEach(s => {
       const cls = s.class || s.className;
@@ -1731,10 +1792,24 @@ const DEFAULT_TIMETABLES = {};
 
 export async function getTimetablesFromFirestore(classId = null) {
   const now = Date.now();
-  if (_memoryCache.timetables.data && (now - _memoryCache.timetables.time) < MEMORY_CACHE_TTL_MS) {
+  if (_memoryCache.timetables.data && (now - _memoryCache.timetables.time) < TIMETABLE_CACHE_TTL_MS) {
     if (classId) return _memoryCache.timetables.data[classId] || [];
     return _memoryCache.timetables.data;
   }
+
+  // Check localStorage cache first to protect quota
+  try {
+    const cached = localStorage.getItem('school_timetable_cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+        _memoryCache.timetables.data = parsed;
+        _memoryCache.timetables.time = now;
+        if (classId) return parsed[classId] || [];
+        return parsed;
+      }
+    }
+  } catch (e) {}
 
   if (!db) {
     if (classId) return [];

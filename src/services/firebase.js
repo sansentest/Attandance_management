@@ -103,7 +103,7 @@ const COL_MONTHLY_BACKUPS = 'monthly_backups';
 // ─────────────────────────────────────────────
 const MEMORY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes cache to strictly protect Firebase Free Quota (50,000 reads/day)
 const STUDENTS_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes cache for 1,300 students (saves ~1,300 reads per call!)
-const TIMETABLE_CACHE_TTL_MS = 60 * 60 * 1000; // 60 minutes cache for timetables & classes
+const TIMETABLE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache for timetables (saves quota while ensuring monitors see updates quickly)
 const _memoryCache = {
   attendance: { data: null, time: 0 },
   students: { data: null, time: 0 },
@@ -1819,26 +1819,41 @@ export async function deleteUserFromFirestore(userId) {
 // ─────────────────────────────────────────────
 const DEFAULT_TIMETABLES = {};
 
-export async function getTimetablesFromFirestore(classId = null) {
+export async function getTimetablesFromFirestore(classId = null, force = false) {
   const now = Date.now();
-  if (_memoryCache.timetables.data && (now - _memoryCache.timetables.time) < TIMETABLE_CACHE_TTL_MS) {
-    if (classId) return _memoryCache.timetables.data[classId] || [];
+  if (!force && _memoryCache.timetables.data && (now - _memoryCache.timetables.time) < TIMETABLE_CACHE_TTL_MS) {
+    if (classId) {
+      const clean = String(classId).replace(/^ថ្នាក់\s*/i, '').trim();
+      const khmer = `ថ្នាក់ ${clean}`;
+      return _memoryCache.timetables.data[classId] || _memoryCache.timetables.data[clean] || _memoryCache.timetables.data[khmer] || [];
+    }
     return _memoryCache.timetables.data;
   }
 
-  // Check localStorage cache first to protect quota
-  try {
-    const cached = localStorage.getItem('school_timetable_cache');
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-        _memoryCache.timetables.data = parsed;
-        _memoryCache.timetables.time = now;
-        if (classId) return parsed[classId] || [];
-        return parsed;
+  // Check localStorage cache with 5-minute freshness check
+  const cacheKey = classId ? `school_timetable_time_${classId}` : 'school_timetable_cache_time';
+  const cachedTime = Number(localStorage.getItem(cacheKey) || localStorage.getItem('school_timetable_cache_time') || 0);
+  const isCacheFresh = (now - cachedTime) < TIMETABLE_CACHE_TTL_MS;
+
+  if (!force && isCacheFresh) {
+    try {
+      const cached = localStorage.getItem('school_timetable_cache');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+          if (!_memoryCache.timetables.data) _memoryCache.timetables.data = {};
+          Object.assign(_memoryCache.timetables.data, parsed);
+          _memoryCache.timetables.time = cachedTime;
+          if (classId) {
+            const clean = String(classId).replace(/^ថ្នាក់\s*/i, '').trim();
+            const khmer = `ថ្នាក់ ${clean}`;
+            return parsed[classId] || parsed[clean] || parsed[khmer] || [];
+          }
+          return parsed;
+        }
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
 
   if (!db) {
     if (classId) return [];
@@ -1846,13 +1861,48 @@ export async function getTimetablesFromFirestore(classId = null) {
   }
 
   try {
+    // If specific classId is requested, fetch ONLY that 1 document (only 1 read!)
+    if (classId) {
+      const clean = String(classId).replace(/^ថ្នាក់\s*/i, '').trim();
+      const khmer = `ថ្នាក់ ${clean}`;
+      let docRef = doc(db, COL_TIMETABLES, classId);
+      let docSnap = await getDoc(docRef);
+      if (!docSnap.exists() && clean !== classId) {
+        docRef = doc(db, COL_TIMETABLES, clean);
+        docSnap = await getDoc(docRef);
+      }
+      if (!docSnap.exists() && khmer !== classId) {
+        docRef = doc(db, COL_TIMETABLES, khmer);
+        docSnap = await getDoc(docRef);
+      }
+
+      const slots = docSnap.exists() ? (docSnap.data().slots || []) : [];
+
+      try {
+        const raw = localStorage.getItem('school_timetable_cache');
+        const cache = raw ? JSON.parse(raw) : {};
+        cache[classId] = slots;
+        if (clean !== classId) cache[clean] = slots;
+        if (khmer !== classId) cache[khmer] = slots;
+        localStorage.setItem('school_timetable_cache', JSON.stringify(cache));
+        localStorage.setItem(`school_timetable_time_${classId}`, String(now));
+        localStorage.setItem(`school_timetable_time_${clean}`, String(now));
+      } catch (e) {}
+
+      if (!_memoryCache.timetables.data) _memoryCache.timetables.data = {};
+      _memoryCache.timetables.data[classId] = slots;
+      if (clean !== classId) _memoryCache.timetables.data[clean] = slots;
+      if (khmer !== classId) _memoryCache.timetables.data[khmer] = slots;
+      return slots;
+    }
+
+    // If all timetables requested (e.g. Admin Timetable view)
     const colRef = collection(db, COL_TIMETABLES);
     const snap = await getDocs(colRef);
 
     if (snap.empty) {
       _memoryCache.timetables.data = {};
-      _memoryCache.timetables.time = Date.now();
-      if (classId) return [];
+      _memoryCache.timetables.time = now;
       return {};
     }
 
@@ -1863,9 +1913,13 @@ export async function getTimetablesFromFirestore(classId = null) {
     });
 
     _memoryCache.timetables.data = timetableMap;
-    _memoryCache.timetables.time = Date.now();
+    _memoryCache.timetables.time = now;
 
-    if (classId) return timetableMap[classId] || [];
+    try {
+      localStorage.setItem('school_timetable_cache', JSON.stringify(timetableMap));
+      localStorage.setItem('school_timetable_cache_time', String(now));
+    } catch (e) {}
+
     return timetableMap;
   } catch (err) {
     console.error('[Firebase] getTimetables error:', err);
@@ -1885,6 +1939,23 @@ export async function saveTimetableToFirestore(classId, slots) {
     }, { merge: true });
 
     invalidateFirebaseCache('timetables');
+
+    // Also update local storage and mark timestamp so local device sees it immediately
+    try {
+      const clean = String(classId).replace(/^ថ្នាក់\s*/i, '').trim();
+      const khmer = `ថ្នាក់ ${clean}`;
+      const raw = localStorage.getItem('school_timetable_cache');
+      const cache = raw ? JSON.parse(raw) : {};
+      cache[classId] = slots;
+      cache[clean] = slots;
+      cache[khmer] = slots;
+      const now = Date.now();
+      localStorage.setItem('school_timetable_cache', JSON.stringify(cache));
+      localStorage.setItem(`school_timetable_time_${classId}`, String(now));
+      localStorage.setItem(`school_timetable_time_${clean}`, String(now));
+      localStorage.setItem('school_timetable_cache_time', String(now));
+    } catch (e) {}
+
     return { success: true };
   } catch (err) {
     console.error('[Firebase] saveTimetable error:', err);

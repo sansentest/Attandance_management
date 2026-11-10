@@ -2183,14 +2183,8 @@ export async function api(action, body = {}, token = null) {
 
       if (isFirebaseConfigured() && classId) {
         try {
-          const slots = await getTimetablesFromFirestore(classId);
+          const slots = await getTimetablesFromFirestore(classId, Boolean(body.force));
           if (slots) {
-            try {
-              const raw = localStorage.getItem('school_timetable_cache');
-              const cache = raw ? JSON.parse(raw) : {};
-              cache[classId] = slots;
-              localStorage.setItem('school_timetable_cache', JSON.stringify(cache));
-            } catch (e) {}
             return { success: true, data: slots };
           }
         } catch (e) {
@@ -2225,7 +2219,7 @@ export async function api(action, body = {}, token = null) {
       let allTimetables = {};
       if (isFirebaseConfigured()) {
         try {
-          const all = await getTimetablesFromFirestore();
+          const all = await getTimetablesFromFirestore(null, Boolean(body.force));
           if (all) {
             allTimetables = all;
           }

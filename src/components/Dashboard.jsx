@@ -1,22 +1,18 @@
 import { useState, useEffect } from 'react'
 import { api } from '../utils/api'
 import { getSchoolStatus } from '../utils/academicCalendar'
-import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, BarChart3, ChevronRight, AlertCircle, Edit3 } from 'lucide-react'
+import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, AlertCircle, Edit3 } from 'lucide-react'
 import MonitorProfileModal from './MonitorProfileModal'
 
 export default function Dashboard({ session, onLogout, onNavigate, onUpdateSession }) {
   const [currentPeriod, setCurrentPeriod] = useState(null)
-  const [selectedPeriod, setSelectedPeriod] = useState('day') // day, week, month, year
   const [loadingStats, setLoadingStats] = useState(false)
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [stats, setStats] = useState({
     present: '—',
     absent: '—',
-    leave: 0,
-    rate: 'កំពុងទាញយក...',
-    pct: 0,
-    absentStudents: [],
-    periodLabel: 'ថ្ងៃនេះ'
+    rate: '...',
+    pct: 0
   })
   const [loadingPeriod, setLoadingPeriod] = useState(true)
 
@@ -25,11 +21,8 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
 
   useEffect(() => {
     loadCurrentPeriod()
+    loadStats()
   }, [])
-
-  useEffect(() => {
-    loadStats(selectedPeriod)
-  }, [selectedPeriod])
 
   const loadCurrentPeriod = async () => {
     setLoadingPeriod(true)
@@ -69,7 +62,7 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
     setLoadingPeriod(false)
   }
 
-  const loadStats = async (period = selectedPeriod) => {
+  const loadStats = async () => {
     let cls = session.className
     if (!cls || cls === 'ALL') cls = null
     
@@ -77,64 +70,85 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
       setStats({
         present: '—',
         absent: '—',
-        leave: 0,
         rate: 'សូមជ្រើសរើសថ្នាក់',
-        pct: 0,
-        absentStudents: [],
-        periodLabel: ''
+        pct: 0
       })
       return
     }
 
     setLoadingStats(true)
-    let endpoint = 'reports.daily'
-    let payload = { className: cls }
-
-    if (period === 'day') {
-      endpoint = 'reports.daily'
-      payload.date = new Date().toISOString().split('T')[0]
-    } else if (period === 'week') {
-      endpoint = 'reports.weekly'
-    } else if (period === 'month') {
-      endpoint = 'reports.monthly'
-    } else if (period === 'year') {
-      endpoint = 'reports.yearly'
-    }
-
-    const result = await api(endpoint, payload)
-    
-    if (result.success && result.data) {
-      const d = result.data
-      if (period === 'day') {
-        const pct = d.totalStudents > 0 ? Math.round(((d.totalStudents - d.absent) / d.totalStudents) * 100) : 0
-        setStats({
-          present: Math.max(0, d.totalStudents - d.absent),
-          absent: d.absent,
-          leave: d.leave || 0,
-          rate: `អត្រាវត្តមាន៖ ${d.attendanceRate || `${pct}%`}`,
-          pct,
-          periodLabel: 'ថ្ងៃនេះ',
-          absentStudents: (d.absentStudents || []).map(s => typeof s === 'string' ? { name: s, absences: 1, leaves: 0 } : s)
-        })
-      } else {
-        let pct = 0
-        if (d.attendanceRate) {
-          pct = parseInt(String(d.attendanceRate).replace('%', ''))
-        }
-        if (isNaN(pct)) pct = 0
-
-        setStats({
-          present: d.totalPresent ?? (d.totalStudents ? Math.max(0, d.totalStudents - (d.totalAbsences || 0)) : '—'),
-          absent: d.totalAbsences || 0,
-          leave: d.totalLeaves || 0,
-          rate: `អត្រាវត្តមាន៖ ${d.attendanceRate || `${pct}%`}`,
-          pct,
-          periodLabel: d.periodLabel || (period === 'week' ? 'សប្តាហ៍នេះ' : period === 'month' ? 'ខែនេះ' : 'ឆ្នាំនេះ'),
-          absentStudents: d.topAbsentStudents || []
-        })
+    try {
+      // 1. Get total students in class from local cache first
+      let totalStudents = 0
+      const rosterRaw = localStorage.getItem(`school_roster_cache_${cls}`)
+      if (rosterRaw) {
+        try {
+          const parsed = JSON.parse(rosterRaw)
+          if (Array.isArray(parsed) && parsed.length > 0) totalStudents = parsed.length
+        } catch (e) {}
       }
+      if (totalStudents === 0) {
+        const allStudentsRaw = localStorage.getItem('school_students_cache')
+        if (allStudentsRaw) {
+          try {
+            const parsed = JSON.parse(allStudentsRaw)
+            if (Array.isArray(parsed)) {
+              totalStudents = parsed.filter(s => (s.className || s.class) === cls).length
+            }
+          } catch (e) {}
+        }
+      }
+
+      // If still 0 and not cached yet, fetch from cached getByClass
+      if (totalStudents === 0) {
+        const res = await api('students.getByClass', { className: cls })
+        if (res.success && Array.isArray(res.data)) {
+          totalStudents = res.data.length
+        }
+      }
+
+      // 2. Count today's absences directly from local attendance records (0 Firestore reads)
+      const today = new Date().toISOString().split('T')[0]
+      let absentCount = 0
+      let leaveCount = 0
+
+      const recRaw = localStorage.getItem('school_attendance_records')
+      if (recRaw) {
+        try {
+          const records = JSON.parse(recRaw)
+          if (Array.isArray(records)) {
+            const todayRecords = records.filter(r => r.date === today && (!r.class || r.class === cls))
+            const studentRecordsMap = {}
+            todayRecords.forEach(r => {
+              if (!studentRecordsMap[r.name]) studentRecordsMap[r.name] = []
+              studentRecordsMap[r.name].push(r)
+            })
+            Object.keys(studentRecordsMap).forEach(name => {
+              const recs = studentRecordsMap[name]
+              const hasUnexcused = recs.some(r => r.status === 'ABSENT')
+              const hasLeave = recs.some(r => r.status === 'LEAVE')
+              if (hasUnexcused) absentCount++
+              else if (hasLeave) leaveCount++
+            })
+          }
+        } catch (e) {}
+      }
+
+      const totalAbsent = absentCount + leaveCount
+      const presentCount = totalStudents > 0 ? Math.max(0, totalStudents - totalAbsent) : 0
+      const pct = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 100
+
+      setStats({
+        present: totalStudents > 0 ? presentCount : '—',
+        absent: totalAbsent,
+        rate: `អត្រាវត្តមាន៖ ${pct}%`,
+        pct
+      })
+    } catch (e) {
+      console.warn('Dashboard loadStats local error:', e)
+    } finally {
+      setLoadingStats(false)
     }
-    setLoadingStats(false)
   }
 
   return (
@@ -257,19 +271,12 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
                     <span>{currentPeriod.schoolStatus.reopenDate}</span>
                   </div>
                 </div>
-                <div className="flex gap-2 sm:gap-2.5 mt-3 sm:mt-5">
+                <div className="mt-3 sm:mt-5">
                   <button 
-                    className="flex-1 bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white font-bold py-2.5 sm:py-3.5 px-3 sm:px-4 rounded-lg sm:rounded-xl shadow-[0_4px_14px_0_rgb(99,102,241,0.39)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-[13px] sm:text-[14px]"
+                    className="w-full bg-gradient-to-r from-indigo-500 to-blue-600 hover:from-indigo-600 hover:to-blue-700 text-white font-bold py-2.5 sm:py-3.5 px-3 sm:px-4 rounded-lg sm:rounded-xl shadow-[0_4px_14px_0_rgb(99,102,241,0.39)] hover:-translate-y-0.5 transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-[13px] sm:text-[14px]"
                     onClick={() => onNavigate('attendance')}
                   >
                     <CheckSquare size={16} className="sm:w-[18px] sm:h-[18px]" /> ស្រង់វត្តមាន
-                  </button>
-                  <button 
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 sm:py-3.5 px-3 sm:px-4 rounded-lg sm:rounded-xl transition-all flex items-center justify-center text-[13px] sm:text-[14px]"
-                    onClick={() => onNavigate('report')}
-                    title="ពិនិត្យមើលរបាយការណ៍"
-                  >
-                    <BarChart3 size={16} className="sm:w-[18px] sm:h-[18px]" />
                   </button>
                 </div>
               </div>
@@ -414,124 +421,50 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
             <div className="flex items-center justify-between mb-2 px-0.5">
               <h3 className="text-[13px] font-bold text-slate-800">សកម្មភាពរហ័ស</h3>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2.5">
               {/* 1. ស្រង់វត្តមាន */}
               <button 
                 onClick={() => onNavigate('attendance')}
-                className="bg-white rounded-xl p-2.5 flex flex-col items-center justify-center gap-1.5 border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer group hover:bg-slate-50"
+                className="bg-white rounded-xl p-3 flex flex-col items-center justify-center gap-1.5 border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer group hover:bg-slate-50"
               >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 text-indigo-600 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
-                  <CheckSquare size={20} />
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 text-indigo-600 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
+                  <CheckSquare size={22} />
                 </div>
-                <span className="text-[12px] font-bold text-slate-700">ស្រង់វត្តមាន</span>
+                <span className="text-[13px] font-bold text-slate-700">ស្រង់វត្តមាន</span>
               </button>
 
-              {/* 2. របាយការណ៍ */}
-              <button 
-                onClick={() => onNavigate('report')}
-                className="bg-white rounded-xl p-2.5 flex flex-col items-center justify-center gap-1.5 border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer group hover:bg-slate-50"
-              >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-sky-50 text-sky-600 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
-                  <BarChart3 size={20} />
-                </div>
-                <span className="text-[12px] font-bold text-slate-700">របាយការណ៍</span>
-              </button>
-
-              {/* 3. ចាកចេញ */}
+              {/* 2. ចាកចេញ */}
               <button 
                 onClick={onLogout}
-                className="bg-white rounded-xl p-2.5 flex flex-col items-center justify-center gap-1.5 border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer group hover:bg-slate-50"
+                className="bg-white rounded-xl p-3 flex flex-col items-center justify-center gap-1.5 border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] active:scale-95 transition-all cursor-pointer group hover:bg-slate-50"
               >
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-50 to-rose-50 text-rose-600 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
-                  <LogOut size={20} />
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-red-50 to-rose-50 text-rose-600 flex items-center justify-center shadow-inner group-hover:scale-105 transition-transform">
+                  <LogOut size={22} />
                 </div>
-                <span className="text-[12px] font-bold text-slate-700">ចាកចេញ</span>
+                <span className="text-[13px] font-bold text-slate-700">ចាកចេញ</span>
               </button>
             </div>
           </div>
 
           {/* =======================
-              ROW 2: Desktop Buttons (Hidden on Mobile, spans 2 cols, contains 3 btns)
+              ROW 2: Desktop Buttons (Hidden on Mobile, spans 2 cols, contains 2 btns)
               ======================= */}
-          <div className="hidden lg:grid grid-cols-3 gap-6 lg:col-span-2">
+          <div className="hidden lg:grid grid-cols-2 gap-6 lg:col-span-2">
             
-            <button className="bg-white rounded-2xl p-5 flex flex-col items-center justify-center gap-3 hover:bg-slate-50 transition-all cursor-pointer border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-md group" onClick={() => onNavigate('attendance')}>
+            <button className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:bg-slate-50 transition-all cursor-pointer border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-md group" onClick={() => onNavigate('attendance')}>
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-indigo-100 to-blue-50 text-accent flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-300">
                 <CheckSquare size={28} />
               </div>
-              <span className="text-[15px] font-bold text-slate-700">ស្រង់វត្តមាន</span>
-            </button>
-
-            <button className="bg-white rounded-2xl p-5 flex flex-col items-center justify-center gap-3 hover:bg-slate-50 transition-all cursor-pointer border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-md group" onClick={() => onNavigate('report')}>
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-cyan-50 text-blue-600 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-300">
-                <BarChart3 size={28} />
-              </div>
-              <span className="text-[15px] font-bold text-slate-700">របាយការណ៍</span>
+              <span className="text-[16px] font-bold text-slate-700">ស្រង់វត្តមាន</span>
             </button>
             
-            <button className="bg-white rounded-2xl p-5 flex flex-col items-center justify-center gap-3 hover:bg-slate-50 transition-all cursor-pointer border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-md group" onClick={onLogout}>
+            <button className="bg-white rounded-2xl p-6 flex flex-col items-center justify-center gap-3 hover:bg-slate-50 transition-all cursor-pointer border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-md group" onClick={onLogout}>
               <div className="w-16 h-16 rounded-full bg-gradient-to-br from-red-100 to-rose-50 text-danger flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform duration-300">
                 <LogOut size={28} />
               </div>
-              <span className="text-[15px] font-bold text-slate-700">ចាកចេញ</span>
+              <span className="text-[16px] font-bold text-slate-700">ចាកចេញ</span>
             </button>
 
-          </div>
-
-          {/* =======================
-              ROW 3: Absent Students (Full width on both Mobile and Desktop)
-              ======================= */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-5 lg:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 w-full">
-              <div className="flex items-center justify-between mb-2.5 sm:mb-4">
-                <h3 className="text-[13px] sm:text-[15px] lg:text-[16px] font-bold text-slate-800 flex items-center gap-1.5 sm:gap-2">
-                  <span className="w-2 h-2 lg:w-3 lg:h-3 rounded-full bg-danger animate-pulse shrink-0"></span>
-                  <span className="truncate">
-                    សិស្សដែលអវត្តមានថ្ងៃនេះ
-                  </span>
-                </h3>
-                {stats.absentStudents && stats.absentStudents.length > 0 && (
-                  <span className="text-[11px] sm:text-xs font-bold text-slate-500 bg-slate-100 px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full border border-slate-200/50 shrink-0">
-                    សរុប {stats.absentStudents.length} នាក់
-                  </span>
-                )}
-              </div>
-              
-              {stats.absentStudents && stats.absentStudents.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3 lg:gap-5 w-full">
-                  {stats.absentStudents.map((item, i) => {
-                    const name = typeof item === 'string' ? item : (item.name || 'សិស្ស');
-                    const isLeave = typeof item === 'object' && item.status === 'LEAVE';
-                    return (
-                      <div key={i} className="flex items-center justify-between p-2 sm:p-3 lg:p-4 bg-slate-50/50 hover:bg-white hover:shadow-md transition-all rounded-lg sm:rounded-xl border border-slate-100/50">
-                        <div className="flex items-center gap-2.5 sm:gap-3 lg:gap-4 min-w-0">
-                          <div className={`w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-full flex items-center justify-center shrink-0 border font-bold text-[12px] sm:text-sm ${
-                            isLeave ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-red-50 text-danger border-red-100'
-                          }`}>
-                            <User size={14} className="sm:w-4 sm:h-4 lg:w-5 lg:h-5" />
-                          </div>
-                          <span className="text-[13px] sm:text-[15px] lg:text-[16px] font-bold text-slate-700 truncate">{name}</span>
-                        </div>
-                        <span className={`text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md shrink-0 border ${
-                          isLeave ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-danger bg-red-50 border-red-100'
-                        }`}>
-                          {isLeave ? 'ច្បាប់' : 'អវត្តមាន'}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="py-4 sm:py-6 lg:py-12 text-center flex flex-col items-center justify-center w-full bg-slate-50/50 rounded-lg sm:rounded-xl border border-slate-100/50">
-                  <div className="w-10 h-10 sm:w-14 sm:h-14 lg:w-20 lg:h-20 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center mb-2 sm:mb-3 lg:mb-4">
-                    <CheckCircle2 size={20} className="sm:w-7 sm:h-7 lg:w-10 lg:h-10" />
-                  </div>
-                  <span className="text-[13px] sm:text-[15px] lg:text-[18px] font-bold text-slate-500 px-2">
-                    គ្មានសិស្សអវត្តមានទេថ្ងៃនេះ!
-                  </span>
-                </div>
-              )}
-            </div>
           </div>
 
         </div>

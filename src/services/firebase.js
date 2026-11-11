@@ -177,6 +177,9 @@ export async function getStudentsFromFirestore(className = '12A', force = false)
 
     if (snap.empty) {
       _classStudentsCache[className] = { data: [], time: now };
+      try {
+        localStorage.setItem(`school_roster_cache_${className}`, JSON.stringify([]));
+      } catch (e) {}
       return [];
     }
 

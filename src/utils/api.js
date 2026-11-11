@@ -1041,9 +1041,23 @@ export async function api(action, body = {}, token = null) {
 
     case 'students.getByClass': {
       const cls = body.className || '12A'
+      const forceFetch = Boolean(body?.force);
+
+      if (!forceFetch) {
+        try {
+          const cachedRoster = localStorage.getItem(`school_roster_cache_${cls}`);
+          if (cachedRoster !== null) {
+            const parsed = JSON.parse(cachedRoster);
+            if (Array.isArray(parsed)) {
+              return { success: true, data: parsed };
+            }
+          }
+        } catch (e) {}
+      }
+
       if (isFirebaseConfigured()) {
         try {
-          const fbStudents = await getStudentsFromFirestore(cls);
+          const fbStudents = await getStudentsFromFirestore(cls, forceFetch);
           if (Array.isArray(fbStudents)) {
             return { success: true, data: fbStudents };
           }

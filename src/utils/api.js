@@ -1515,9 +1515,22 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'students.getAll': {
+      const forceFetch = Boolean(body?.force);
+      if (!forceFetch) {
+        try {
+          const raw = localStorage.getItem('school_students_cache');
+          if (raw !== null) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              return { success: true, data: parsed };
+            }
+          }
+        } catch (e) {}
+      }
+
       if (isFirebaseConfigured()) {
         try {
-          const fbStudents = await getAllStudentsFromFirestore();
+          const fbStudents = await getAllStudentsFromFirestore(forceFetch);
           if (fbStudents) {
             try {
               localStorage.setItem('school_students_cache', JSON.stringify(fbStudents));
@@ -1822,10 +1835,23 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'academic.getClasses': {
+      const forceFetch = Boolean(body?.force);
+      if (!forceFetch) {
+        try {
+          const raw = localStorage.getItem('school_classes_cache');
+          if (raw !== null) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              return { success: true, data: parsed };
+            }
+          }
+        } catch (e) {}
+      }
+
       let activeClasses = [];
       if (isFirebaseConfigured()) {
         try {
-          const fbClasses = await getClassesFromFirestore();
+          const fbClasses = await getClassesFromFirestore(forceFetch);
           if (fbClasses && Array.isArray(fbClasses)) {
             activeClasses = fbClasses;
             try {
@@ -1995,9 +2021,20 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'academic.getSubjects': {
+      const forceFetch = Boolean(body?.force);
+      if (!forceFetch) {
+        try {
+          const raw = localStorage.getItem('school_subjects_cache');
+          if (raw !== null) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) return { success: true, data: parsed };
+          }
+        } catch (e) {}
+      }
+
       if (isFirebaseConfigured()) {
         try {
-          const fbSubjects = await getSubjectsFromFirestore();
+          const fbSubjects = await getSubjectsFromFirestore(forceFetch);
           if (fbSubjects) {
             try {
               localStorage.setItem('school_subjects_cache', JSON.stringify(fbSubjects));
@@ -2229,6 +2266,7 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'timetable.getAll': {
+      const forceFetch = Boolean(body?.force);
       let activeClassNames = null;
       try {
         const rawCls = localStorage.getItem('school_classes_cache');
@@ -2241,10 +2279,29 @@ export async function api(action, body = {}, token = null) {
         }
       } catch (e) {}
 
+      if (!forceFetch) {
+        try {
+          const raw = localStorage.getItem('school_timetable_cache');
+          if (raw !== null) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+              if (activeClassNames && activeClassNames.size > 0) {
+                const cleaned = {};
+                Object.keys(parsed).forEach(k => {
+                  if (activeClassNames.has(k)) cleaned[k] = parsed[k];
+                });
+                return { success: true, data: cleaned };
+              }
+              return { success: true, data: parsed };
+            }
+          }
+        } catch (e) {}
+      }
+
       let allTimetables = {};
       if (isFirebaseConfigured()) {
         try {
-          const all = await getTimetablesFromFirestore(null, Boolean(body.force));
+          const all = await getTimetablesFromFirestore(null, forceFetch);
           if (all) {
             allTimetables = all;
           }

@@ -219,13 +219,13 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
   const [toast, setToast] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, type: '', item: null });
 
-  const fetchAcademicData = async (initial = false) => {
+  const fetchAcademicData = async (initial = false, force = false) => {
     if (initial) setIsLoading(true);
-    setIsRefreshing(true);
+    if (force) setIsRefreshing(true);
     try {
       const [resClasses, resSubjects] = await Promise.all([
-        api('academic.getClasses'),
-        api('academic.getSubjects')
+        api('academic.getClasses', { force }),
+        api('academic.getSubjects', { force })
       ]);
       if (resClasses?.success && Array.isArray(resClasses.data)) {
         setClasses(resClasses.data);
@@ -233,22 +233,22 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
       if (resSubjects?.success && Array.isArray(resSubjects.data)) {
         setSubjects(resSubjects.data);
       }
-      if (!initial) {
+      if (force) {
         showToast('បានធ្វើបច្ចុប្បន្នភាពទិន្នន័យពី Firebase');
       }
     } catch (err) {
       console.error('Fetch academic error:', err);
-      if (!initial) {
+      if (force) {
         showToast('មិនអាចទាញទិន្នន័យថ្មីបានទេ');
       }
     } finally {
-      setIsRefreshing(false);
+      if (force) setIsRefreshing(false);
       if (initial) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAcademicData(false);
+    fetchAcademicData(false, false);
   }, []);
 
   useEffect(() => {
@@ -953,13 +953,13 @@ export default function AdminAcademic({ initialTab = 'classes' }) {
           {/* Refresh Button */}
           <button
             type="button"
-            onClick={() => fetchAcademicData(false)}
+            onClick={() => fetchAcademicData(false, true)}
             disabled={isRefreshing}
-            className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 shrink-0 disabled:opacity-50"
+            className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 shrink-0 disabled:opacity-50 cursor-pointer"
             title="ទាញទិន្នន័យថ្មីពី Cloud Firestore"
           >
             <RefreshCw size={15} strokeWidth={2.5} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">ទាញទិន្នន័យថ្មី</span>
+            <span className="hidden sm:inline">{isRefreshing ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
           </button>
 
           {/* Import Excel Button */}

@@ -176,25 +176,32 @@ export default function AdminStudents({ onNavigate }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
-  // Fetch students from Firebase & cache on mount
-  const fetchStudents = async (showLoading = false) => {
+  // Load students from localStorage cache first, only fetch Cloud Firebase on manual refresh or missing cache
+  const fetchStudents = async (showLoading = false, force = false) => {
     if (showLoading) setLoading(true)
-    setIsRefreshing(true)
+    const shouldSpin = force || !localStorage.getItem('school_students_cache')
+    if (shouldSpin) setIsRefreshing(true)
     try {
-      const res = await api('students.getAll')
+      const res = await api('students.getAll', { force })
       if (res && res.success && Array.isArray(res.data)) {
         setStudents(res.data)
       }
+      if (force) {
+        showToast('បានទាញយកទិន្នន័យបញ្ជីសិស្សថ្មីពី Cloud រួចរាល់!')
+      }
     } catch (err) {
       console.error('Failed to load students:', err)
+      if (force) {
+        showToast('មិនអាចទាញយកទិន្នន័យថ្មីបានទេ')
+      }
     } finally {
       setLoading(false)
-      setIsRefreshing(false)
+      if (shouldSpin) setIsRefreshing(false)
     }
   }
 
   useEffect(() => {
-    fetchStudents(false)
+    fetchStudents(false, false)
   }, [])
 
   // Live attendance records for dynamic student stats
@@ -210,6 +217,17 @@ export default function AdminStudents({ onNavigate }) {
   })
 
   useEffect(() => {
+    try {
+      const cachedAtt = localStorage.getItem('school_attendance_records')
+      if (cachedAtt !== null) {
+        const parsed = JSON.parse(cachedAtt)
+        if (Array.isArray(parsed)) {
+          setAttendanceRecords(parsed)
+          return
+        }
+      }
+    } catch (e) {}
+
     api('attendance.getAll').then(res => {
       if (res && res.success && Array.isArray(res.data)) {
         setAttendanceRecords(res.data)
@@ -869,9 +887,9 @@ export default function AdminStudents({ onNavigate }) {
               {/* Live Sync / Refresh from Firebase */}
               <button
                 type="button"
-                onClick={() => fetchStudents(false)}
+                onClick={() => fetchStudents(false, true)}
                 disabled={isRefreshing}
-                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 w-full sm:w-auto disabled:opacity-60"
+                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 w-full sm:w-auto disabled:opacity-60 cursor-pointer"
                 title="ទាញយកទិន្នន័យផ្ទាល់ពី Cloud Firebase"
               >
                 <RefreshCw size={15} strokeWidth={2.2} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />

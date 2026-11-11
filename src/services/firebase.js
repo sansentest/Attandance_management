@@ -1565,9 +1565,9 @@ export async function getClassesFromFirestore(force = false) {
   if (!force) {
     try {
       const cached = localStorage.getItem('school_classes_cache');
-      if (cached) {
+      if (cached !== null) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           _memoryCache.classes.data = parsed;
           _memoryCache.classes.time = now;
           return parsed;
@@ -1584,6 +1584,7 @@ export async function getClassesFromFirestore(force = false) {
     if (snap.empty) {
       _memoryCache.classes.data = [];
       _memoryCache.classes.time = Date.now();
+      try { localStorage.setItem('school_classes_cache', JSON.stringify([])); } catch (e) {}
       return [];
     }
 
@@ -1611,6 +1612,7 @@ export async function getClassesFromFirestore(force = false) {
     });
     _memoryCache.classes.data = classes;
     _memoryCache.classes.time = Date.now();
+    try { localStorage.setItem('school_classes_cache', JSON.stringify(classes)); } catch (e) {}
     return classes;
   } catch (err) {
     console.error('[Firebase] getClasses error:', err);
@@ -1680,8 +1682,23 @@ export async function deleteTimetableFromFirestore(classKey) {
   
 
 export async function getSubjectsFromFirestore(force = false) {
-  if (!force && _memoryCache.subjects.data && (Date.now() - _memoryCache.subjects.time < MEMORY_CACHE_TTL_MS)) {
+  const now = Date.now();
+  if (!force && _memoryCache.subjects.data && (now - _memoryCache.subjects.time < MEMORY_CACHE_TTL_MS)) {
     return _memoryCache.subjects.data;
+  }
+  // Check localStorage cache first to protect quota
+  if (!force) {
+    try {
+      const cached = localStorage.getItem('school_subjects_cache');
+      if (cached !== null) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          _memoryCache.subjects.data = parsed;
+          _memoryCache.subjects.time = now;
+          return parsed;
+        }
+      }
+    } catch (e) {}
   }
   if (!db) return [];
   try {
@@ -1691,6 +1708,7 @@ export async function getSubjectsFromFirestore(force = false) {
     if (snap.empty) {
       _memoryCache.subjects.data = [];
       _memoryCache.subjects.time = Date.now();
+      try { localStorage.setItem('school_subjects_cache', JSON.stringify([])); } catch (e) {}
       return [];
     }
 
@@ -1700,6 +1718,7 @@ export async function getSubjectsFromFirestore(force = false) {
     });
     _memoryCache.subjects.data = subjects;
     _memoryCache.subjects.time = Date.now();
+    try { localStorage.setItem('school_subjects_cache', JSON.stringify(subjects)); } catch (e) {}
     return subjects;
   } catch (err) {
     console.error('[Firebase] getSubjects error:', err);

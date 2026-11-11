@@ -7,7 +7,7 @@ import {
   Calendar, Coffee, Sparkles, Check, ArrowRight,
   Sun, Sunset, Upload, FileSpreadsheet,
   ChevronDown, FileText, FileCode, FileImage,
-  Layers, Clipboard, Loader2
+  Layers, Clipboard, Loader2, RefreshCw
 } from 'lucide-react'
 import SearchableDropdown from '../../common/SearchableDropdown'
 
@@ -898,49 +898,58 @@ export default function AdminTimetable() {
 
   const dynamicSubjects = subjectsList.map(s => typeof s === 'string' ? s : s.name).filter(Boolean)
 
-  // Background SWR sync from Firestore
-  useEffect(() => {
-    let isMounted = true
-    const fetchData = async () => {
-      try {
-        const [ttRes, clRes, sbRes] = await Promise.all([
-          api('timetable.getAll'),
-          api('academic.getClasses'),
-          api('academic.getSubjects')
-        ])
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-        if (isMounted) {
-          if (ttRes && ttRes.success && ttRes.data) {
-            setTimetableData(ttRes.data)
-          }
-          if (clRes && clRes.success && Array.isArray(clRes.data)) {
-            setClassesList(clRes.data)
-            const opts = clRes.data.map(c => ({ id: c.name, label: c.name.startsWith('ថ្នាក់') ? c.name : `ថ្នាក់ ${c.name}` }))
-            setClassOptions(opts)
-            if (clRes.data.length > 0) {
-              setSelectedClass(prev => prev && clRes.data.some(c => c.name === prev) ? prev : clRes.data[0].name)
-            } else {
-              setSelectedClass('')
-            }
-          } else {
-            setClassesList([])
-            setClassOptions([])
-            setSelectedClass('')
-          }
+  // Cache-first load on mount; force = true fetches fresh from Cloud Firestore on manual Refresh
+  const fetchTimetableData = async (force = false) => {
+    if (force) setIsRefreshing(true)
+    try {
+      const [ttRes, clRes, sbRes] = await Promise.all([
+        api('timetable.getAll', { force }),
+        api('academic.getClasses', { force }),
+        api('academic.getSubjects', { force })
+      ])
 
-          if (sbRes && sbRes.success && Array.isArray(sbRes.data)) {
-            setSubjectsList(sbRes.data)
-            try {
-              localStorage.setItem('school_subjects_cache', JSON.stringify(sbRes.data))
-            } catch (e) {}
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to background sync timetable:', err)
+      if (ttRes && ttRes.success && ttRes.data) {
+        setTimetableData(ttRes.data)
       }
+      if (clRes && clRes.success && Array.isArray(clRes.data)) {
+        setClassesList(clRes.data)
+        const opts = clRes.data.map(c => ({ id: c.name, label: c.name.startsWith('ថ្នាក់') ? c.name : `ថ្នាក់ ${c.name}` }))
+        setClassOptions(opts)
+        if (clRes.data.length > 0) {
+          setSelectedClass(prev => prev && clRes.data.some(c => c.name === prev) ? prev : clRes.data[0].name)
+        } else {
+          setSelectedClass('')
+        }
+      } else {
+        setClassesList([])
+        setClassOptions([])
+        setSelectedClass('')
+      }
+
+      if (sbRes && sbRes.success && Array.isArray(sbRes.data)) {
+        setSubjectsList(sbRes.data)
+        try {
+          localStorage.setItem('school_subjects_cache', JSON.stringify(sbRes.data))
+        } catch (e) {}
+      }
+
+      if (force) {
+        showToast('បានទាញយកកាលវិភាគ និងទិន្នន័យថ្មីពី Cloud រួចរាល់!')
+      }
+    } catch (err) {
+      console.warn('Failed to sync timetable:', err)
+      if (force) {
+        showToast('មិនអាចទាញយកទិន្នន័យថ្មីបានទេ')
+      }
+    } finally {
+      if (force) setIsRefreshing(false)
     }
-    fetchData()
-    return () => { isMounted = false }
+  }
+
+  useEffect(() => {
+    fetchTimetableData(false)
   }, [])
 
   // Modals & Form
@@ -2043,6 +2052,18 @@ export default function AdminTimetable() {
 
             {/* Right: Action Buttons */}
             <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 w-full sm:w-auto">
+              {/* Manual Refresh from Cloud */}
+              <button
+                type="button"
+                onClick={() => fetchTimetableData(true)}
+                disabled={isRefreshing}
+                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 w-full sm:w-auto whitespace-nowrap disabled:opacity-60 cursor-pointer"
+                title="ទាញយកកាលវិភាគ និងថ្នាក់រៀនថ្មីពី Cloud Firestore"
+              >
+                <RefreshCw size={15} strokeWidth={2.2} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
+              </button>
+
               {/* Copy Schedule */}
               <button
                 type="button"

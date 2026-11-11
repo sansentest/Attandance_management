@@ -1287,7 +1287,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
               title="ចុចដើម្បីទាញកាលវិភាគថ្មីពី Cloud"
             >
               <RefreshCw size={12} className={`sm:w-3.5 sm:h-3.5 ${isRefreshingTimetable ? 'animate-spin' : ''}`} />
-              <span>Sync កាលវិភាគ</span>
+              <span>ទាញកាលវិភាគ</span>
             </button>
 
             <button

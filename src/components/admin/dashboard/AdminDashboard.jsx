@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api } from '../../../utils/api'
-import { Users, AlertCircle, FileText, TrendingUp, CalendarDays, BarChart3, PieChart as PieChartIcon, BarChart2 } from 'lucide-react'
+import { Users, AlertCircle, FileText, TrendingUp, CalendarDays, BarChart3, PieChart as PieChartIcon, BarChart2, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 export default function AdminDashboard() {
@@ -19,22 +19,65 @@ export default function AdminDashboard() {
       return true
     }
   })
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [lastSynced, setLastSynced] = useState(() => {
+    try {
+      const t = localStorage.getItem('school_dashboard_cache_time')
+      return t ? Number(t) : null
+    } catch (e) {
+      return null
+    }
+  })
+  const [toast, setToast] = useState(null)
+
+  const loadData = async (force = false) => {
+    if (force) setIsRefreshing(true)
+    try {
+      const res = await api('admin.dashboardStats', { force })
+      if (res && res.success && res.data) {
+        setData(res.data)
+        const syncedAt = localStorage.getItem('school_dashboard_cache_time')
+        if (syncedAt) setLastSynced(Number(syncedAt))
+        if (force) {
+          setToast({ type: 'success', message: 'បានទាញយកទិន្នន័យថ្មីពី Cloud រួចរាល់!' })
+          setTimeout(() => setToast(null), 3000)
+        }
+      } else if (force) {
+        setToast({ type: 'error', message: 'មិនអាចទាញទិន្នន័យបានទេ សូមពិនិត្យ Internet!' })
+        setTimeout(() => setToast(null), 3000)
+      }
+    } catch (err) {
+      console.error('Failed to load admin dashboard stats:', err)
+      if (force) {
+        setToast({ type: 'error', message: 'មានបញ្ហាក្នុងការទាញទិន្នន័យ!' })
+        setTimeout(() => setToast(null), 3000)
+      }
+    } finally {
+      setLoading(false)
+      setIsRefreshing(false)
+    }
+  }
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const res = await api('admin.dashboardStats')
-        if (res && res.success && res.data) {
-          setData(res.data)
-        }
-      } catch (err) {
-        console.error('Failed to load admin dashboard stats:', err)
-      } finally {
-        setLoading(false)
-      }
+    // Only fetch automatically when local cache does not exist yet; otherwise strictly wait for manual refresh click (0 Firestore reads)
+    if (!data) {
+      loadData(false)
+    } else {
+      setLoading(false)
     }
-    loadData()
   }, [])
+
+  const formatLastSynced = (ts) => {
+    if (!ts) return 'ទិន្នន័យពី Cache ក្នុងម៉ាស៊ីន (សន្សំ Quota)'
+    try {
+      const d = new Date(ts)
+      const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+      const date = d.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      return `ទាញទិន្នន័យចុងក្រោយ៖ ${time} (${date})`
+    } catch (e) {
+      return 'ទិន្នន័យពី Cache ក្នុងម៉ាស៊ីន'
+    }
+  }
 
   if (loading) {
     return (
@@ -46,6 +89,37 @@ export default function AdminDashboard() {
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full pb-10">
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`flex items-center gap-2.5 px-4 py-3 rounded-2xl text-[13px] font-bold shadow-sm border animate-in fade-in ${
+          toast.type === 'success'
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            : 'bg-rose-50 text-rose-700 border-rose-200'
+        }`}>
+          {toast.type === 'success' ? <CheckCircle2 size={17} className="shrink-0" /> : <AlertCircle size={17} className="shrink-0" />}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      {/* Top Sync / Refresh Bar (Manual Firebase Fetch to save Quota) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-[20px] px-5 py-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-100">
+        <div className="flex items-center gap-2.5 text-[12px] sm:text-[13px] font-bold text-slate-500">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+          <span>{formatLastSynced(lastSynced)}</span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => loadData(true)}
+          disabled={isRefreshing}
+          className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-indigo-200 py-2 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 disabled:opacity-60 cursor-pointer shrink-0"
+          title="ចុចដើម្បីទាញយកទិន្នន័យស្ថិតិថ្មីបំផុតពី Cloud Firebase"
+        >
+          <RefreshCw size={15} strokeWidth={2.3} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+          <span>{isRefreshing ? 'កំពុងទាញទិន្នន័យ...' : 'ទាញទិន្នន័យថ្មី'}</span>
+        </button>
+      </div>
       
       {/* Top Stats - Focused on Absences and Leaves */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -57,7 +131,7 @@ export default function AdminDashboard() {
             </div>
             <div className="text-[14px] font-bold text-slate-500">សិស្សសរុប</div>
           </div>
-          <div className="text-4xl font-black text-slate-800 relative z-10">{data?.totalStudents}</div>
+          <div className="text-4xl font-black text-slate-800 relative z-10">{data?.totalStudents ?? 0}</div>
         </div>
         
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-rose-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
@@ -68,7 +142,7 @@ export default function AdminDashboard() {
             </div>
             <div className="text-[14px] font-bold text-slate-500">អវត្តមានសរុប</div>
           </div>
-          <div className="text-4xl font-black text-rose-500 relative z-10">{data?.totalAbsent}</div>
+          <div className="text-4xl font-black text-rose-500 relative z-10">{data?.totalAbsent ?? 0}</div>
         </div>
 
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
@@ -79,7 +153,7 @@ export default function AdminDashboard() {
             </div>
             <div className="text-[14px] font-bold text-slate-500">ច្បាប់សរុប</div>
           </div>
-          <div className="text-4xl font-black text-amber-500 relative z-10">{data?.totalLeave}</div>
+          <div className="text-4xl font-black text-amber-500 relative z-10">{data?.totalLeave ?? 0}</div>
         </div>
 
         <div className="bg-indigo-600 rounded-[24px] p-6 shadow-[0_8px_30px_rgba(99,102,241,0.2)] flex flex-col justify-center relative overflow-hidden group text-white hover:-translate-y-1 transition-transform">
@@ -91,7 +165,7 @@ export default function AdminDashboard() {
             </div>
             <div className="text-[14px] font-bold text-indigo-100">អត្រាវត្តមានរួម</div>
           </div>
-          <div className="text-4xl font-black text-white relative z-10">{data?.globalRate}%</div>
+          <div className="text-4xl font-black text-white relative z-10">{data?.globalRate ?? 100}%</div>
         </div>
       </div>
 
@@ -164,7 +238,7 @@ export default function AdminDashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={data?.gradeTrend}
+                  data={data?.gradeTrend || []}
                   cx="50%"
                   cy="50%"
                   innerRadius={70}
@@ -173,7 +247,7 @@ export default function AdminDashboard() {
                   dataKey="absent"
                   stroke="none"
                 >
-                  {data?.gradeTrend.map((entry, index) => (
+                  {(data?.gradeTrend || []).map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
                 </Pie>
@@ -194,7 +268,7 @@ export default function AdminDashboard() {
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none pb-8">
               <span className="text-[12px] font-bold text-slate-400">សរុប</span>
               <span className="text-2xl font-black text-slate-800">
-                {data?.gradeTrend.reduce((acc, curr) => acc + curr.absent, 0)}
+                {(data?.gradeTrend || []).reduce((acc, curr) => acc + curr.absent, 0)}
               </span>
             </div>
           </div>

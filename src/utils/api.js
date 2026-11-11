@@ -1422,12 +1422,29 @@ export async function api(action, body = {}, token = null) {
     }
 
     case 'admin.dashboardStats': {
+      const forceFetch = Boolean(body?.force);
+
+      if (!forceFetch) {
+        try {
+          const raw = localStorage.getItem('school_dashboard_cache');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && parsed.totalStudents !== undefined) {
+              return { success: true, data: parsed };
+            }
+          }
+        } catch (e) {}
+      }
+
       if (isFirebaseConfigured()) {
         try {
-          const fbStats = await getAdminDashboardStatsFromFirestore();
+          const fbStats = await getAdminDashboardStatsFromFirestore(forceFetch);
           if (fbStats) {
             try {
               localStorage.setItem('school_dashboard_cache', JSON.stringify(fbStats));
+              if (forceFetch || !localStorage.getItem('school_dashboard_cache_time')) {
+                localStorage.setItem('school_dashboard_cache_time', String(Date.now()));
+              }
             } catch (e) {}
             return { success: true, data: fbStats };
           }

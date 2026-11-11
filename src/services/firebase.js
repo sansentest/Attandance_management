@@ -709,6 +709,9 @@ export async function getAllAttendanceRecordsFromFirestore(force = false) {
     });
     _memoryCache.attendance.data = records;
     _memoryCache.attendance.time = Date.now();
+    try {
+      localStorage.setItem('school_attendance_records', JSON.stringify(records));
+    } catch (e) {}
     return records;
   } catch (err) {
     console.error('[Firebase] getAllAttendanceRecords error:', err);
@@ -910,8 +913,13 @@ export async function getAdminDashboardStatsFromFirestore(force = false) {
       gradeTrend,
       classTrend
     };
+    const savedAt = Date.now();
     _memoryCache.dashboard.data = result;
-    _memoryCache.dashboard.time = Date.now();
+    _memoryCache.dashboard.time = savedAt;
+    try {
+      localStorage.setItem('school_dashboard_cache', JSON.stringify(result));
+      localStorage.setItem('school_dashboard_cache_time', String(savedAt));
+    } catch (e) {}
     return result;
   } catch (err) {
     console.error('[Firebase] getAdminDashboardStats error:', err);
@@ -972,8 +980,13 @@ export async function getAllStudentsFromFirestore(force = false) {
         status: data.status || 'active'
       });
     });
+    const savedAt = Date.now();
     _memoryCache.students.data = students;
-    _memoryCache.students.time = Date.now();
+    _memoryCache.students.time = savedAt;
+    try {
+      localStorage.setItem('school_students_cache', JSON.stringify(students));
+      localStorage.setItem('school_students_cache_time', String(savedAt));
+    } catch (e) {}
     return students;
   } catch (err) {
     console.error('[Firebase] getAllStudentsFromFirestore error:', err);

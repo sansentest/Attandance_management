@@ -24,8 +24,10 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Let network handle dynamic data; cache static assets where possible
+  // Let network handle dynamic data; never intercept version.json so update checks stay live
   if (event.request.method !== 'GET') return;
+  const reqUrl = new URL(event.request.url);
+  if (reqUrl.pathname.endsWith('/version.json')) return;
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );

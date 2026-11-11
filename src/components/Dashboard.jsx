@@ -3,6 +3,7 @@ import { api } from '../utils/api'
 import { getSchoolStatus } from '../utils/academicCalendar'
 import { Crown, GraduationCap, User, Clock, BookOpen, CheckSquare, CalendarOff, CheckCircle2, XCircle, LogOut, AlertCircle, Edit3, RefreshCw } from 'lucide-react'
 import MonitorProfileModal from './MonitorProfileModal'
+import AppVersionBadge from './common/AppVersionBadge'
 
 export default function Dashboard({ session, onLogout, onNavigate, onUpdateSession }) {
   const [currentPeriod, setCurrentPeriod] = useState(null)
@@ -497,6 +498,10 @@ export default function Dashboard({ session, onLogout, onNavigate, onUpdateSessi
 
           </div>
 
+        </div>
+
+        <div className="mt-4 pb-2 flex justify-center">
+          <AppVersionBadge />
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { api, saveSession, getCachedSchoolSettings } from '../utils/api'
 import { User, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react'
 import InstallAppBanner from './common/InstallAppBanner'
+import AppVersionBadge from './common/AppVersionBadge'
 
 export default function Login({ onLogin }) {
   const [username, setUsername] = useState('')
@@ -185,8 +186,9 @@ export default function Login({ onLogin }) {
           </form>
         </div>
 
-        <div className="mt-8 text-[13px] font-medium text-slate-400 text-center relative z-10 animate-in fade-in duration-700 delay-300 fill-mode-both">
-          &copy; {new Date().getFullYear()} ប្រព័ន្ធគ្រប់គ្រងសាលារៀន. រក្សាសិទ្ធិគ្រប់យ៉ាង.
+        <div className="mt-8 text-[13px] font-medium text-slate-400 text-center relative z-10 animate-in fade-in duration-700 delay-300 fill-mode-both flex flex-col items-center gap-1.5">
+          <span>&copy; {new Date().getFullYear()} ប្រព័ន្ធគ្រប់គ្រងសាលារៀន. រក្សាសិទ្ធិគ្រប់យ៉ាង.</span>
+          <AppVersionBadge className="px-2.5 py-0.5 rounded-full bg-white/60 border border-slate-200/70" />
         </div>
 
       </div>

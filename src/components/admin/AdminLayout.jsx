@@ -12,6 +12,7 @@ import AdminTimetable from './academic/AdminTimetable'
 import AdminProfile from './profile/AdminProfile'
 import AdminInvitationLetters from './invitation/AdminInvitationLetters'
 import AdminStudents from './students/AdminStudents'
+import AppVersionBadge from '../common/AppVersionBadge'
 
 export default function AdminLayout({ session, onLogout, onUpdateSession }) {
   const [activePage, setActivePage] = useState('dashboard')
@@ -230,6 +231,9 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
               <span className="text-[13px] font-bold">ចាកចេញពីប្រព័ន្ធ</span>
             </div>
           </button>
+          <div className="mt-2.5 flex justify-center">
+            <AppVersionBadge />
+          </div>
         </div>
       </aside>
 
@@ -342,6 +346,9 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
                 <LogOut size={16} strokeWidth={2.5} className="relative z-10 group-hover:-translate-x-1 transition-transform duration-300" /> 
                 <span className="relative z-10 font-bold text-[13px]">ចាកចេញពីប្រព័ន្ធ</span>
               </button>
+              <div className="mt-2.5 flex justify-center">
+                <AppVersionBadge />
+              </div>
             </div>
           </aside>
         </div>

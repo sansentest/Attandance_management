@@ -5,6 +5,7 @@ import Attendance from './components/Attendance'
 import Report from './components/Report'
 import AdminLayout from './components/admin/AdminLayout'
 import InstallAppBanner from './components/common/InstallAppBanner'
+import AppUpdateBanner from './components/common/AppUpdateBanner'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import { loadSession, saveSession, clearSession, api } from './utils/api'
 import { startDailySummaryScheduler } from './services/dailySummaryScheduler'
@@ -114,13 +115,19 @@ export default function App() {
   }
 
   if (!session) {
-    return <Login onLogin={handleLogin} />
+    return (
+      <>
+        <AppUpdateBanner />
+        <Login onLogin={handleLogin} />
+      </>
+    )
   }
 
   // Admin Routing
   if (session.role === 'admin') {
     return (
       <>
+        <AppUpdateBanner />
         <AdminLayout session={session} onLogout={handleLogout} onUpdateSession={(updated) => setSession(updated)} />
         {showLogoutConfirm && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -174,6 +181,7 @@ export default function App() {
     <div className="relative min-h-screen pb-[64px] bg-bg-base font-[family-name:var(--font-primary)] overflow-x-hidden max-w-full">
       {/* Top-Right Floating Install Alert Banner for Mobile Users */}
       <InstallAppBanner />
+      <AppUpdateBanner />
       {/* Page Content */}
       <ErrorBoundary onReset={() => setActiveTab('dashboard')}>
         <div className="page-enter">

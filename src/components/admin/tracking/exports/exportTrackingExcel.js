@@ -10,6 +10,8 @@
  * - បើ ExcelJS ទាញមិនបាន (គ្មានអ៊ីនធឺណិត) នឹង export ជា CSV ជំនួស។
  */
 
+import { buildSummarySubtitleParts, getExportMonthSuffix } from '../../../../utils/dateFilters'
+
 // ───────────── Config ─────────────
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ'
 const DEFAULT_ACADEMIC_YEAR = '២០២៥ - ២០២៦'
@@ -166,7 +168,7 @@ function pageSetup(ws, { lastCol, lastRow, headerRowNo }) {
 }
 
 // ───────────── Summary Workbook & CSV ─────────────
-function normalizeTrackingSummary({ filteredData, filterClass, schoolName, totalWarning, totalCritical, getStudentStatus, department, academicYear }) {
+function normalizeTrackingSummary({ filteredData, filterClass = 'ALL', filterMonth = 'ALL', schoolName, totalWarning, totalCritical, getStudentStatus, department, academicYear }) {
   const list = Array.isArray(filteredData) ? filteredData : []
   const records = list.map((d, i) => {
     const st = getStudentStatus ? getStudentStatus(d) : 'NORMAL'
@@ -185,7 +187,7 @@ function normalizeTrackingSummary({ filteredData, filterClass, schoolName, total
     }
   })
   const totalWithAbsence = records.filter((r) => r.absent > 0 || r.leave > 0).length
-  return { records, filterClass, schoolName, totalWarning: toNum(totalWarning), totalCritical: toNum(totalCritical), totalWithAbsence, department, academicYear }
+  return { records, filterClass, filterMonth, schoolName, totalWarning: toNum(totalWarning), totalCritical: toNum(totalCritical), totalWithAbsence, department, academicYear }
 }
 
 function buildTrackingSummaryWorkbook(ExcelJS, c) {
@@ -198,14 +200,14 @@ function buildTrackingSummaryWorkbook(ExcelJS, c) {
   widths.forEach((w, i) => (ws.getColumn(i + 1).width = w))
 
   let r = letterhead(ws, { cols: COLS, orgSpan: 4, department: c.department, schoolName: c.schoolName })
-  const subtitle = [
-    `ឆ្នាំសិក្សា ${c.academicYear}`,
-    c.filterClass !== 'ALL' ? `ថ្នាក់ទី ${c.filterClass}` : null,
-    `សរុបចំនួនសិស្ស៖ ${kh(c.records.length)} នាក់`
-  ]
-    .filter(Boolean)
-    .join('  |  ')
-  r = titleBlock(ws, r, COLS, 'តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស', subtitle)
+  const monthSuffix = getExportMonthSuffix(c.filterMonth)
+  const reportTitle = `តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស${monthSuffix}`
+  const subtitle = buildSummarySubtitleParts({
+    academicYear: c.academicYear,
+    studentCountText: kh(c.records.length),
+    filterClass: c.filterClass
+  }).join('  |  ')
+  r = titleBlock(ws, r, COLS, reportTitle, subtitle)
 
   // ស្ថិតិសង្ខេប (Stats Strip)
   put(ws, r, 1, 2, 'សិស្សសរុប', { font: F(10, { bold: true }), fill: FILL_HEAD, border: true })
@@ -434,6 +436,7 @@ async function exportWorkbook({ fileBase, build, csv }) {
 export async function exportTrackingSummaryExcel({
   filteredData = [],
   filterClass = 'ALL',
+  filterMonth = 'ALL',
   schoolName = '',
   totalWarning = 0,
   totalCritical = 0,
@@ -444,6 +447,7 @@ export async function exportTrackingSummaryExcel({
   const ctx = normalizeTrackingSummary({
     filteredData,
     filterClass,
+    filterMonth,
     schoolName,
     totalWarning,
     totalCritical,
@@ -451,8 +455,9 @@ export async function exportTrackingSummaryExcel({
     department,
     academicYear
   })
+  const monthSuffix = getExportMonthSuffix(filterMonth)
   await exportWorkbook({
-    fileBase: `តារាងតាមដានវិន័យសិស្ស${filterClass !== 'ALL' ? `_ថ្នាក់${filterClass}` : ''}_${localDate()}`,
+    fileBase: `តារាងតាមដានវិន័យសិស្ស_${monthSuffix}${filterClass !== 'ALL' ? `_ថ្នាក់${filterClass}` : ''}_${localDate()}`,
     build: (ExcelJS) => buildTrackingSummaryWorkbook(ExcelJS, ctx),
     csv: () => trackingSummaryCsv(ctx)
   })

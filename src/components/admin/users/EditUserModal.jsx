@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Edit, X, Save, Loader2, ChevronDown, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity } from 'lucide-react';
+import { Edit, X, Save, Loader2, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity, AlertCircle } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
+import { normalizeClassName, requiresAssignedClass } from '../../../utils/accessControl';
 
 export default function EditUserModal({ isOpen, onClose, onSave, classOptions, userData }) {
   const roleOptions = [
     { id: 'monitor', label: 'អ្នកត្រួតពិនិត្យ (Monitor)' },
+    { id: 'teacher', label: 'គ្រូបន្ទុកថ្នាក់ (Teacher)' },
     { id: 'admin', label: 'អ្នកគ្រប់គ្រង (Admin)' }
   ];
   
@@ -24,6 +26,7 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
   });
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     if (userData) {
@@ -31,16 +34,34 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
         ...userData,
         password: ''
       });
+      setFormError('');
     }
   }, [userData]);
 
   if (!isOpen && !showSuccessAlert) return null;
 
   const handleSave = async () => {
+    setFormError('');
+    const trimmedName = (user.name || '').trim();
+    const trimmedUsername = (user.username || '').trim();
+    const cleanClass = user.role === 'admin' ? '-' : normalizeClassName(user.class);
+
+    if (!trimmedName || !trimmedUsername) {
+      setFormError('សូមបំពេញឈ្មោះ និង Username ឱ្យបានត្រឹមត្រូវ។');
+      return;
+    }
+    if (requiresAssignedClass(user.role) && !cleanClass) {
+      setFormError('សូមជ្រើសរើសថ្នាក់បន្ទុកសម្រាប់គណនីនេះ។');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const payload = {
         ...user,
+        name: trimmedName,
+        username: trimmedUsername,
+        class: cleanClass,
         password: user.password && user.password.trim() ? user.password.trim() : (userData?.password || '')
       };
       if (onSave) await onSave(payload);
@@ -51,6 +72,7 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
       }, 700);
     } catch (e) {
       console.error(e);
+      setFormError('មានបញ្ហាក្នុងការកែប្រែគណនី សូមព្យាយាមម្តងទៀត។');
     } finally {
       setIsSaving(false);
     }
@@ -84,7 +106,12 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
             
             {/* Modal Body */}
             <div className="p-6 sm:p-8 flex flex-col gap-6 overflow-y-auto custom-scrollbar bg-slate-50/30">
-
+              {formError && (
+                <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[13px] font-bold">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* Name */}
@@ -153,7 +180,12 @@ export default function EditUserModal({ isOpen, onClose, onSave, classOptions, u
                   </label>
                   <SearchableDropdown
                     value={user.role}
-                    onChange={(val) => setUser({...user, role: val})}
+                    onChange={(val) => {
+                      const nextClass = val === 'admin'
+                        ? '-'
+                        : (normalizeClassName(user.class) || filteredClassOptions[0]?.id || '');
+                      setUser({ ...user, role: val, class: nextClass });
+                    }}
                     options={roleOptions}
                     placeholder="ជ្រើសរើសតួនាទី"
                     icon={Shield}

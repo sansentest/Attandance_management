@@ -21,6 +21,7 @@ import {
   writeBatch,
   serverTimestamp
 } from 'firebase/firestore';
+import { matchesAssignedClass, getScopedDashboardCacheKey } from '../utils/accessControl.js';
 
 const getEnv = () => (typeof import.meta !== 'undefined' && import.meta?.env) ? import.meta.env : (typeof process !== 'undefined' ? process.env : {});
 
@@ -108,7 +109,7 @@ const _memoryCache = {
   attendance: { data: null, time: 0 },
   students: { data: null, time: 0 },
   discipline: { data: null, time: 0 },
-  dashboard: { data: null, time: 0 },
+  dashboard: {},
   classes: { data: null, time: 0 },
   subjects: { data: null, time: 0 },
   users: { data: null, time: 0 },
@@ -795,138 +796,199 @@ export async function saveRawAttendanceRecordsToFirestore(records = []) {
 }
 
 // ─────────────────────────────────────────────
-// 8. Admin Dashboard Live Stats (Firestore)
+// 8. Admin Dashboard Live Stats (Firestore & Scoped Builder)
 // ─────────────────────────────────────────────
-export async function getAdminDashboardStatsFromFirestore(force = false) {
-  const now = Date.now();
-  if (!force && _memoryCache.dashboard.data && (now - _memoryCache.dashboard.time < MEMORY_CACHE_TTL_MS)) {
-    return _memoryCache.dashboard.data;
-  }
-  if (!force) {
-    try {
-      const cached = localStorage.getItem('school_dashboard_cache');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed && typeof parsed === 'object') {
-          _memoryCache.dashboard.data = parsed;
-          _memoryCache.dashboard.time = now;
-          return parsed;
-        }
+const KHMER_GRADE_NUMERALS = {
+  '7': '៧',
+  '8': '៨',
+  '9': '៩',
+  '10': '១០',
+  '11': '១១',
+  '12': '១២',
+};
+
+/**
+ * Computes dashboard KPIs and chart series from student and attendance lists.
+ * When `scopeClass` is set (teacher role), restricts all metrics strictly to that class;
+ * `'__NONE__'` fails closed with zero students and zero records.
+ */
+export function buildDashboardStats(allStudentsList = [], records = [], scopeClass = '') {
+  const isUnassignedTeacher = scopeClass === '__NONE__';
+  const hasClassScope = Boolean(scopeClass) && !isUnassignedTeacher;
+
+  const scopedStudents = isUnassignedTeacher
+    ? []
+    : hasClassScope
+      ? (allStudentsList || []).filter((s) => matchesAssignedClass(s?.class, scopeClass))
+      : (allStudentsList || []);
+
+  const scopedRecords = isUnassignedTeacher
+    ? []
+    : hasClassScope
+      ? (records || []).filter((r) => matchesAssignedClass(r?.class, scopeClass))
+      : (records || []);
+
+  const totalStudents = scopedStudents.length;
+
+  // Today's summary
+  const today = new Date().toISOString().split('T')[0];
+  const todayRecords = scopedRecords.filter((r) => r.date === today);
+  const todayStudentMap = {};
+  todayRecords.forEach((r) => {
+    if (!todayStudentMap[r.name]) todayStudentMap[r.name] = [];
+    todayStudentMap[r.name].push(r);
+  });
+
+  let todayAbsent = 0;
+  let todayLeave = 0;
+  Object.values(todayStudentMap).forEach((recs) => {
+    const hasUnexcused = recs.some((r) => r.status === 'ABSENT');
+    const hasLeave = recs.some((r) => r.status === 'LEAVE');
+    if (hasUnexcused) {
+      todayAbsent++;
+    } else if (hasLeave) {
+      todayLeave++;
+    }
+  });
+
+  const totalAbsentAllTime = scopedRecords.filter((r) => r.status === 'ABSENT').length;
+  const totalLeaveAllTime = scopedRecords.filter((r) => r.status === 'LEAVE').length;
+  const globalRate = totalStudents > 0
+    ? Math.max(0, Math.round(((totalStudents - (todayAbsent + todayLeave)) / totalStudents) * 100))
+    : 100;
+
+  // Weekly trend
+  const dayNamesKhmer = ['អាទិត្យ', 'ច័ន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហ', 'សុក្រ', 'សៅរ៍'];
+  const weeklyMap = { 'ច័ន្ទ': 0, 'អង្គារ': 0, 'ពុធ': 0, 'ព្រហ': 0, 'សុក្រ': 0, 'សៅរ៍': 0 };
+  scopedRecords.forEach((r) => {
+    if (r.date) {
+      const d = new Date(r.date);
+      const dayName = dayNamesKhmer[d.getDay()];
+      if (weeklyMap[dayName] !== undefined && r.status === 'ABSENT') {
+        weeklyMap[dayName] += (r.hours || 1);
       }
-    } catch (e) {}
-  }
-  if (!db) return null;
-  try {
-    const records = await getAllAttendanceRecordsFromFirestore(force);
+    }
+  });
+  const weeklyTrend = Object.entries(weeklyMap).map(([date, absent]) => ({ date, absent }));
 
-    // Real student count from Firestore
-    const allStudentsList = await getAllStudentsFromFirestore(force);
-    const totalStudents = (allStudentsList || []).length;
-
-    // Today's summary
-    const today = new Date().toISOString().split('T')[0];
-    const todayRecords = records.filter(r => r.date === today);
-    const todayStudentMap = {};
-    todayRecords.forEach(r => {
-      if (!todayStudentMap[r.name]) todayStudentMap[r.name] = [];
-      todayStudentMap[r.name].push(r);
-    });
-
-    let todayAbsent = 0;
-    let todayLeave = 0;
-    Object.values(todayStudentMap).forEach(recs => {
-      const hasUnexcused = recs.some(r => r.status === 'ABSENT');
-      const hasLeave = recs.some(r => r.status === 'LEAVE');
-      if (hasUnexcused) {
-        todayAbsent++;
-      } else if (hasLeave) {
-        todayLeave++;
+  // Monthly trend
+  const monthNamesKhmer = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
+  const monthlyMap = {};
+  monthNamesKhmer.forEach((m) => { monthlyMap[m] = 0; });
+  scopedRecords.forEach((r) => {
+    if (r.date) {
+      const d = new Date(r.date);
+      const mName = monthNamesKhmer[d.getMonth()];
+      if (monthlyMap[mName] !== undefined && r.status === 'ABSENT') {
+        monthlyMap[mName] += (r.hours || 1);
       }
-    });
+    }
+  });
+  const monthlyTrend = Object.entries(monthlyMap).map(([month, absent]) => ({ month, absent }));
 
-    const totalAbsentAllTime = records.filter(r => r.status === 'ABSENT').length;
-    const totalLeaveAllTime = records.filter(r => r.status === 'LEAVE').length;
-    const globalRate = totalStudents > 0
-      ? Math.max(0, Math.round(((totalStudents - (todayAbsent + todayLeave)) / totalStudents) * 100))
-      : 100;
+  let gradeTrend = [];
+  let classTrend = [];
 
-    // Weekly trend
-    const dayNamesKhmer = ['អាទិត្យ', 'ច័ន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហ', 'សុក្រ', 'សៅរ៍'];
-    const weeklyMap = { 'ច័ន្ទ': 0, 'អង្គារ': 0, 'ពុធ': 0, 'ព្រហ': 0, 'សុក្រ': 0, 'សៅរ៍': 0 };
-    records.forEach(r => {
-      if (r.date) {
-        const d = new Date(r.date);
-        const dayName = dayNamesKhmer[d.getDay()];
-        if (weeklyMap[dayName] !== undefined && r.status === 'ABSENT') {
-          weeklyMap[dayName] += (r.hours || 1);
-        }
-      }
-    });
-    const weeklyTrend = Object.entries(weeklyMap).map(([date, absent]) => ({ date, absent }));
+  if (isUnassignedTeacher) {
+    gradeTrend = [];
+    classTrend = [];
+  } else if (hasClassScope) {
+    const gradeMatch = String(scopeClass).match(/\d+/);
+    const gradeLabel = gradeMatch && KHMER_GRADE_NUMERALS[gradeMatch[0]]
+      ? `ថ្នាក់ទី${KHMER_GRADE_NUMERALS[gradeMatch[0]]}`
+      : `ថ្នាក់ ${scopeClass}`;
+    const totalScopeHours = scopedRecords.reduce((sum, r) => sum + (r.hours || 1), 0);
+    const absentScopeHours = scopedRecords
+      .filter((r) => r.status === 'ABSENT')
+      .reduce((sum, r) => sum + (r.hours || 1), 0);
 
-    // Monthly trend
-    const monthNamesKhmer = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
-    const monthlyMap = {};
-    monthNamesKhmer.forEach(m => { monthlyMap[m] = 0; });
-    records.forEach(r => {
-      if (r.date) {
-        const d = new Date(r.date);
-        const mName = monthNamesKhmer[d.getMonth()];
-        if (monthlyMap[mName] !== undefined && r.status === 'ABSENT') {
-          monthlyMap[mName] += (r.hours || 1);
-        }
-      }
-    });
-    const monthlyTrend = Object.entries(monthlyMap).map(([month, absent]) => ({ month, absent }));
-
-    // Grade trend
+    gradeTrend = [{ name: gradeLabel, absent: totalScopeHours, fill: '#8b5cf6' }];
+    classTrend = [{ name: scopeClass, absent: absentScopeHours }];
+  } else {
+    // Super Admin full-school view
     const gradeMap = { 'ថ្នាក់ទី១០': 0, 'ថ្នាក់ទី១១': 0, 'ថ្នាក់ទី១២': 0 };
-    records.forEach(r => {
+    scopedRecords.forEach((r) => {
       const cls = String(r.class || '');
       if (cls.startsWith('10')) gradeMap['ថ្នាក់ទី១០'] += (r.hours || 1);
       else if (cls.startsWith('11')) gradeMap['ថ្នាក់ទី១១'] += (r.hours || 1);
       else if (cls.startsWith('12')) gradeMap['ថ្នាក់ទី១២'] += (r.hours || 1);
     });
-    const gradeTrend = [
+    gradeTrend = [
       { name: 'ថ្នាក់ទី១០', absent: gradeMap['ថ្នាក់ទី១០'], fill: '#8b5cf6' },
       { name: 'ថ្នាក់ទី១១', absent: gradeMap['ថ្នាក់ទី១១'], fill: '#3b82f6' },
       { name: 'ថ្នាក់ទី១២', absent: gradeMap['ថ្នាក់ទី១២'], fill: '#f43f5e' }
     ];
 
-    // Class trend
     const classMap = {};
-    ['12A', '12B', '11A', '11B'].forEach(c => { classMap[c] = 0; });
-    records.forEach(r => {
+    ['12A', '12B', '11A', '11B'].forEach((c) => { classMap[c] = 0; });
+    scopedRecords.forEach((r) => {
       const cls = r.class || '12A';
       if (classMap[cls] !== undefined && r.status === 'ABSENT') {
         classMap[cls] += (r.hours || 1);
       }
     });
-    const classTrend = Object.entries(classMap).map(([name, absent]) => ({ name, absent }));
+    classTrend = Object.entries(classMap).map(([name, absent]) => ({ name, absent }));
+  }
 
-    const result = {
-      totalStudents,
-      totalAbsent: totalAbsentAllTime,
-      totalLeave: totalLeaveAllTime,
-      globalRate: globalRate || 0,
-      todayAbsent,
-      todayLeave,
-      weeklyTrend,
-      monthlyTrend,
-      gradeTrend,
-      classTrend
-    };
-    const savedAt = Date.now();
-    _memoryCache.dashboard.data = result;
-    _memoryCache.dashboard.time = savedAt;
+  return {
+    totalStudents,
+    totalAbsent: totalAbsentAllTime,
+    totalLeave: totalLeaveAllTime,
+    globalRate: globalRate || 0,
+    todayAbsent,
+    todayLeave,
+    weeklyTrend,
+    monthlyTrend,
+    gradeTrend,
+    classTrend
+  };
+}
+
+export async function getAdminDashboardStatsFromFirestore(force = false, scopeClass = '') {
+  const now = Date.now();
+  const cacheKey = getScopedDashboardCacheKey(scopeClass);
+  const memEntry = _memoryCache.dashboard[cacheKey];
+
+  if (!force && memEntry?.data && (now - memEntry.time < MEMORY_CACHE_TTL_MS)) {
+    return memEntry.data;
+  }
+  if (!force) {
     try {
-      localStorage.setItem('school_dashboard_cache', JSON.stringify(result));
-      localStorage.setItem('school_dashboard_cache_time', String(savedAt));
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object') {
+          _memoryCache.dashboard[cacheKey] = { data: parsed, time: now };
+          return parsed;
+        }
+      }
+    } catch (e) {}
+  }
+
+  if (scopeClass === '__NONE__') {
+    const emptyStats = buildDashboardStats([], [], '__NONE__');
+    _memoryCache.dashboard[cacheKey] = { data: emptyStats, time: now };
+    return emptyStats;
+  }
+
+  if (!db) return null;
+  try {
+    const records = await getAllAttendanceRecordsFromFirestore(force);
+    const allStudentsList = await getAllStudentsFromFirestore(force);
+    const result = buildDashboardStats(allStudentsList, records, scopeClass);
+
+    const savedAt = Date.now();
+    _memoryCache.dashboard[cacheKey] = { data: result, time: savedAt };
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+      if (!scopeClass) {
+        localStorage.setItem('school_dashboard_cache_time', String(savedAt));
+      }
     } catch (e) {}
     return result;
   } catch (err) {
     console.error('[Firebase] getAdminDashboardStats error:', err);
-    return _memoryCache.dashboard.data || null;
+    return _memoryCache.dashboard[cacheKey]?.data || null;
   }
 }
 

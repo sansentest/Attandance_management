@@ -7,6 +7,8 @@
  *  2. exportStudentDetailWord     – ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស
  */
 
+import { buildSummarySubtitleParts, getExportClassLabel, getExportMonthSuffix } from '../../../../utils/dateFilters'
+
 // ───────────── Config (ប្តូរបានតាមតម្រូវការ) ─────────────
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ'
 const DEFAULT_ACADEMIC_YEAR = '២០២៥ - ២០២៦'
@@ -236,6 +238,7 @@ function triggerWordDownload(htmlContent, filename) {
 export function exportAttendanceSummaryWord({
   filtered = [],
   filterClass = 'ALL',
+  filterMonth = 'ALL',
   schoolName = '',
   getStatusInfo,
   department = DEFAULT_DEPARTMENT,
@@ -244,13 +247,15 @@ export function exportAttendanceSummaryWord({
   const rows = Array.isArray(filtered) ? filtered : []
   const hoursOf = (d) => toNum(d.totalHours !== undefined ? d.totalHours : d.totalSessions)
   const sum = (fn) => round2(rows.reduce((s, d) => s + fn(d), 0))
+  const monthSuffix = getExportMonthSuffix(filterMonth)
+  const reportTitle = `របាយការណ៍បូកសរុបអវត្តមានសិស្ស${monthSuffix}`
 
-  const subtitle = [
-    `ឆ្នាំសិក្សា ${esc(academicYear)}`,
-    filterClass !== 'ALL' ? `ថ្នាក់ទី ${esc(filterClass)}` : null,
-    `សរុបចំនួនសិស្ស៖ ${kh(rows.length)} នាក់`
-  ]
-    .filter(Boolean)
+  const subtitle = buildSummarySubtitleParts({
+    academicYear,
+    studentCountText: kh(rows.length),
+    filterClass
+  })
+    .map(esc)
     .join(' &nbsp;|&nbsp; ')
 
   const bodyRows = rows
@@ -286,7 +291,7 @@ export function exportAttendanceSummaryWord({
   const body = `
   ${letterhead({ department, schoolName })}
 
-  <div class="doc-title muol">របាយការណ៍បូកសរុបអវត្តមានសិស្ស</div>
+  <div class="doc-title muol">${esc(reportTitle)}</div>
   <div class="doc-subtitle">${subtitle}</div>
 
   <table class="data-table" border="1" cellspacing="0" cellpadding="4" style="width: 100%; border-collapse: collapse; border: 0.75pt solid #000000;">
@@ -329,8 +334,9 @@ export function exportAttendanceSummaryWord({
     </tr>
   </table>`
 
-  const docTitle = `របាយការណ៍បូកសរុបអវត្តមានសិស្ស${filterClass !== 'ALL' ? ` ថ្នាក់ទី ${filterClass}` : ''} - ${schoolName}`
-  const filename = `របាយការណ៍បូកសរុបអវត្តមានសិស្ស${filterClass !== 'ALL' ? `_ថ្នាក់ទី_${filterClass}` : ''}_${new Date().toISOString().slice(0, 10)}.doc`
+  const classLabel = filterClass !== 'ALL' ? getExportClassLabel(filterClass) : ''
+  const docTitle = `${reportTitle}${classLabel ? ` ${classLabel}` : ''} - ${schoolName}`
+  const filename = `${reportTitle}${classLabel ? `_${classLabel.replace(/\s+/g, '_')}` : ''}_${new Date().toISOString().slice(0, 10)}.doc`
   const htmlContent = buildWordDocument({ title: docTitle, body })
   triggerWordDownload(htmlContent, filename)
 }

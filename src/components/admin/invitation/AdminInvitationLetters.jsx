@@ -4,6 +4,13 @@ import InvitationLetterPrint from './InvitationLetterPrint';
 import { exportInvitationPdf } from './exports/exportInvitationPdf';
 import { exportInvitationWord } from './exports/exportInvitationWord';
 import { api, getCachedSchoolName } from '../../../utils/api';
+import {
+  isSuperAdmin,
+  isTeacher,
+  getAssignedClass,
+  matchesAssignedClass,
+  filterByTeacherScope
+} from '../../../utils/accessControl';
 
 function normalizeGrade(className) {
   if (!className) return null;
@@ -38,7 +45,12 @@ function getDisciplineThreshold(className) {
   return 20;
 }
 
-export default function AdminInvitationLetters() {
+export default function AdminInvitationLetters({ session }) {
+  const superAdmin = isSuperAdmin(session);
+  const teacherMode = isTeacher(session);
+  const assignedClass = teacherMode ? getAssignedClass(session) : '';
+  const actorLabel = session?.fullName || (teacherMode ? 'គ្រូបន្ទុកថ្នាក់' : 'អ្នកគ្រប់គ្រង');
+
   const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'history'
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -80,6 +92,7 @@ export default function AdminInvitationLetters() {
   };
 
   const handleSaveThresholds = () => {
+    if (!superAdmin) return;
     setThresholds(tempThresholds);
     localStorage.setItem('disciplineThresholds', JSON.stringify(tempThresholds));
     setThresholdModalOpen(false);
@@ -130,13 +143,14 @@ export default function AdminInvitationLetters() {
       ]);
 
       const historyData = invRes && invRes.success && Array.isArray(invRes.data) ? invRes.data : [];
-      const normalizedHistory = historyData.map(h => ({
+      const rawNormalizedHistory = historyData.map(h => ({
         ...h,
         id: h.id || `inv_${h.studentId || Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         studentId: h.studentId || h.id,
         status: h.status || (h.resolvedDate ? 'RESOLVED' : 'UNRESOLVED'),
         cycle: Number(h.cycle) || 1
       }));
+      const normalizedHistory = filterByTeacherScope(rawNormalizedHistory, session, h => h.class || h.className);
       setPrintedHistory(normalizedHistory);
 
       const allStudents = stuRes && stuRes.success && Array.isArray(stuRes.data) ? stuRes.data : [];
@@ -148,13 +162,14 @@ export default function AdminInvitationLetters() {
       });
 
       if (discRes && discRes.success && Array.isArray(discRes.data)) {
+        const scopedDisciplineData = filterByTeacherScope(discRes.data, session, s => s.class || s.className);
         const activeUnresolvedStudentIds = new Set(
           normalizedHistory
             .filter(h => h.status === 'UNRESOLVED')
             .map(h => String(h.studentId || h.id).toLowerCase())
         );
 
-        const criticalStudents = discRes.data
+        const criticalStudents = scopedDisciplineData
           .filter(s => {
             const limit = getDisciplineThreshold(s.class || s.className);
             return (Number(s.absent) || 0) >= limit;
@@ -208,20 +223,23 @@ export default function AdminInvitationLetters() {
               }
             }
 
-            fromNav = {
-              id: parsed.id || parsed.studentId,
-              studentId: parsed.id || parsed.studentId,
-              name: parsed.name,
-              gender: (parsed.gender === 'F' || info.gender === 'F' || parsed.gender === 'ស្រី' || info.gender === 'ស្រី') ? 'ស្រី' : 'ប្រុស',
-              age: age || '',
-              class: parsed.class || info.class || '',
-              parentName: parsed.parentName || info.parentName || '',
-              parentPhone: parsed.parentPhone || info.parentPhone || '',
-              absences: Number(parsed.absent) || 0,
-              cycle: parsed.cycle || 1,
-              dateReached: new Date().toISOString().split('T')[0]
-            };
-            setSelectedIds(prev => [...new Set([...prev, fromNav.id])]);
+            const targetNavClass = parsed.class || info.class || '';
+            if (!teacherMode || matchesAssignedClass(targetNavClass, assignedClass)) {
+              fromNav = {
+                id: parsed.id || parsed.studentId,
+                studentId: parsed.id || parsed.studentId,
+                name: parsed.name,
+                gender: (parsed.gender === 'F' || info.gender === 'F' || parsed.gender === 'ស្រី' || info.gender === 'ស្រី') ? 'ស្រី' : 'ប្រុស',
+                age: age || '',
+                class: targetNavClass,
+                parentName: parsed.parentName || info.parentName || '',
+                parentPhone: parsed.parentPhone || info.parentPhone || '',
+                absences: Number(parsed.absent) || 0,
+                cycle: parsed.cycle || 1,
+                dateReached: new Date().toISOString().split('T')[0]
+              };
+              setSelectedIds(prev => [...new Set([...prev, fromNav.id])]);
+            }
             localStorage.removeItem('printStudent');
           }
         } catch (e) {}
@@ -232,7 +250,7 @@ export default function AdminInvitationLetters() {
             list.unshift(fromNav);
           }
           prev.forEach(p => {
-            if (!list.some(s => s.id === p.id) && !activeUnresolvedStudentIds.has(String(p.id).toLowerCase())) {
+            if ((!teacherMode || matchesAssignedClass(p.class || p.className, assignedClass)) && !list.some(s => s.id === p.id) && !activeUnresolvedStudentIds.has(String(p.id).toLowerCase())) {
               list.push(p);
             }
           });
@@ -248,7 +266,7 @@ export default function AdminInvitationLetters() {
 
   useEffect(() => {
     fetchInvitationData();
-  }, []);
+  }, [assignedClass]);
 
   // Selection handlers
   const handleSelectAllPending = (e) => {
@@ -343,7 +361,7 @@ export default function AdminInvitationLetters() {
         id: letterDocId,
         studentId: s.id || s.studentId,
         datePrinted: todayStr,
-        printedBy: 'អ្នកគ្រប់គ្រង',
+        printedBy: actorLabel,
         status: 'UNRESOLVED',
         cycle: Number(s.cycle) || 1,
         meetingDate: printConfig.meetingDate,
@@ -389,9 +407,11 @@ export default function AdminInvitationLetters() {
       try {
         const attRes = await api('attendance.getAll');
         if (attRes && attRes.success && Array.isArray(attRes.data)) {
-          studentRecords = attRes.data.filter(r => 
+          const scopedAttendance = filterByTeacherScope(attRes.data, session);
+          studentRecords = scopedAttendance.filter(r => 
             String(r.studentId || '').trim().toLowerCase() === String(studentId).trim().toLowerCase() ||
-            String(r.name || '').trim().toLowerCase() === String(student.name || '').trim().toLowerCase()
+            (String(r.name || '').trim().toLowerCase() === String(student.name || '').trim().toLowerCase() &&
+              (!student.class || matchesAssignedClass(r.class, student.class)))
           );
           recordIds = studentRecords.map(r => r.id).filter(Boolean);
         }
@@ -407,7 +427,7 @@ export default function AdminInvitationLetters() {
         cycle: Number(student.cycle) || 1,
         resolvedDate: todayStr,
         parentName: student.parentName || '',
-        handledBy: 'អ្នកគ្រប់គ្រង',
+        handledBy: actorLabel,
         note: 'អាណាព្យាបាលបានមកសាលា និងដោះស្រាយរួចរាល់',
         absentAtResolution: student.absences || student.absent || 0,
         totalAbsentAtResolution: student.totalAbsent || student.absences || student.absent || 0,
@@ -420,7 +440,7 @@ export default function AdminInvitationLetters() {
         id: letterDocId,
         status: 'RESOLVED',
         resolvedDate: todayStr,
-        resolvedBy: 'អ្នកគ្រប់គ្រង'
+        resolvedBy: actorLabel
       };
 
       await Promise.all([
@@ -464,7 +484,7 @@ export default function AdminInvitationLetters() {
       try {
         const attRes = await api('attendance.getAll');
         if (attRes && attRes.success && Array.isArray(attRes.data)) {
-          allRecords = attRes.data;
+          allRecords = filterByTeacherScope(attRes.data, session);
         }
       } catch (attErr) {
         console.warn('Failed to fetch attendance for batch reset:', attErr);
@@ -477,7 +497,8 @@ export default function AdminInvitationLetters() {
         const studentId = student.studentId || student.id;
         const studentRecords = allRecords.filter(r => 
           String(r.studentId || '').trim().toLowerCase() === String(studentId).trim().toLowerCase() ||
-          String(r.name || '').trim().toLowerCase() === String(student.name || '').trim().toLowerCase()
+          (String(r.name || '').trim().toLowerCase() === String(student.name || '').trim().toLowerCase() &&
+            (!student.class || matchesAssignedClass(r.class, student.class)))
         );
         studentRecords.forEach(r => {
           allClearedRecords.push(r);
@@ -492,7 +513,7 @@ export default function AdminInvitationLetters() {
           cycle: Number(student.cycle) || 1,
           resolvedDate: todayStr,
           parentName: student.parentName || '',
-          handledBy: 'អ្នកគ្រប់គ្រង',
+          handledBy: actorLabel,
           note: 'អាណាព្យាបាលបានមកសាលា និងដោះស្រាយរួចរាល់',
           absentAtResolution: student.absences || student.absent || 0,
           totalAbsentAtResolution: student.totalAbsent || student.absences || student.absent || 0,
@@ -508,7 +529,7 @@ export default function AdminInvitationLetters() {
         id: student.letterId || student.id,
         status: 'RESOLVED',
         resolvedDate: todayStr,
-        resolvedBy: 'អ្នកគ្រប់គ្រង'
+        resolvedBy: actorLabel
       }));
 
       await Promise.all([
@@ -523,7 +544,7 @@ export default function AdminInvitationLetters() {
             ...item,
             status: 'RESOLVED',
             resolvedDate: todayStr,
-            resolvedBy: 'អ្នកគ្រប់គ្រង'
+            resolvedBy: actorLabel
           };
         }
         return item;
@@ -770,8 +791,11 @@ export default function AdminInvitationLetters() {
     }
   };
 
+  const scopedPendingStudents = filterByTeacherScope(pendingStudents, session, s => s.class || s.className);
+  const scopedPrintedHistory = filterByTeacherScope(printedHistory, session, h => h.class || h.className);
+
   // Filtered lists
-  const filteredPending = pendingStudents.filter(student => {
+  const filteredPending = scopedPendingStudents.filter(student => {
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       const matchName = String(student.name || '').toLowerCase().includes(term);
@@ -782,7 +806,7 @@ export default function AdminInvitationLetters() {
     return true;
   });
 
-  const filteredHistory = printedHistory.filter(student => {
+  const filteredHistory = scopedPrintedHistory.filter(student => {
     const studentStatus = student.status || (student.resolvedDate ? 'RESOLVED' : 'UNRESOLVED');
     if (historyStatusFilter === 'UNRESOLVED' && studentStatus !== 'UNRESOLVED') return false;
     if (historyStatusFilter === 'RESOLVED' && studentStatus !== 'RESOLVED') return false;
@@ -797,19 +821,21 @@ export default function AdminInvitationLetters() {
     return true;
   });
 
-  const studentsToPrint = customPrintStudents || pendingStudents.filter(s => selectedIds.includes(s.id));
+  const studentsToPrint = customPrintStudents || scopedPendingStudents.filter(s => selectedIds.includes(s.id));
 
   // Counts
-  const unresolvedHistoryCount = printedHistory.filter(h => (h.status || (h.resolvedDate ? 'RESOLVED' : 'UNRESOLVED')) === 'UNRESOLVED').length;
-  const resolvedHistoryCount = printedHistory.filter(h => (h.status || (h.resolvedDate ? 'RESOLVED' : 'UNRESOLVED')) === 'RESOLVED').length;
-  const totalPending = pendingStudents.length;
+  const unresolvedHistoryCount = scopedPrintedHistory.filter(h => (h.status || (h.resolvedDate ? 'RESOLVED' : 'UNRESOLVED')) === 'UNRESOLVED').length;
+  const resolvedHistoryCount = scopedPrintedHistory.filter(h => (h.status || (h.resolvedDate ? 'RESOLVED' : 'UNRESOLVED')) === 'RESOLVED').length;
+  const totalPending = scopedPendingStudents.length;
 
-  const selectedUnresolvedCount = printedHistory.filter(h => 
+  const selectedUnresolvedCount = scopedPrintedHistory.filter(h => 
     selectedHistoryIds.includes(h.id) && (h.status || 'UNRESOLVED') === 'UNRESOLVED'
   ).length;
 
   return (
     <div className="flex flex-col gap-5 max-w-7xl mx-auto w-full pb-20">
+
+    
 
       {/* 1. PAGE HEADER (Clean, balanced, standard dashboard scale) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
@@ -824,15 +850,17 @@ export default function AdminInvitationLetters() {
 
         {/* Action buttons */}
         <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={handleOpenThresholdModal}
-            className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[13px] font-bold transition-all shadow-xs hover:shadow cursor-pointer"
-            title="កំណត់កម្រិតវិន័យអវត្តមានដែលត្រូវកោះហៅ"
-          >
-            <Settings size={15} className="text-slate-500" />
-            <span>កំណត់វិន័យ ({thresholds['10-12'] || 20} ថ្ងៃ)</span>
-          </button>
+          {superAdmin && (
+            <button
+              type="button"
+              onClick={handleOpenThresholdModal}
+              className="flex items-center gap-2 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[13px] font-bold transition-all shadow-xs hover:shadow cursor-pointer"
+              title="កំណត់កម្រិតវិន័យអវត្តមានដែលត្រូវកោះហៅ"
+            >
+              <Settings size={15} className="text-slate-500" />
+              <span>កំណត់វិន័យ ({thresholds['10-12'] || 20} ថ្ងៃ)</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={fetchInvitationData}
@@ -1452,7 +1480,7 @@ export default function AdminInvitationLetters() {
       )}
 
       {/* Threshold Settings Modal */}
-      {thresholdModalOpen && (
+      {superAdmin && thresholdModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300">
             <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">

@@ -2,10 +2,12 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   ArrowLeft, Phone, Calendar, ShieldAlert, CheckCircle2,
   AlertTriangle, FileText, Download, ChevronDown, FileCode, FileImage,
-  Mail, BookOpen, Clock, Search, ChevronLeft, ChevronRight, PhoneCall,
+  Mail, BookOpen, Clock, Search, PhoneCall,
   Users, Send
 } from 'lucide-react'
 import { SearchableDropdown } from '../attendance/AdminStudentAttendance'
+import TablePagination from '../../common/TablePagination'
+import { MONTH_FILTER_OPTIONS, matchesMonthFilter } from '../../../utils/dateFilters'
 import api, { getCachedSchoolName } from '../../../utils/api'
 import { exportTrackingDetailExcel } from './exports/exportTrackingExcel'
 import { exportTrackingDetailWord } from './exports/exportTrackingWord'
@@ -49,11 +51,11 @@ function getStatusBadge(status) {
   }
 }
 
-export default function AdminStudentTrackingDetail({ student, onBack, threshold, status, onNavigate }) {
+export default function AdminStudentTrackingDetail({ student, onBack, threshold, status, onNavigate, initialMonth = 'ALL' }) {
   const [detailSearch, setDetailSearch]         = useState('')
   const [detailSubject, setDetailSubject]       = useState('ALL')
   const [detailStatus,  setDetailStatus]        = useState('ALL')
-  const [detailMonth,   setDetailMonth]         = useState('ALL')
+  const [detailMonth,   setDetailMonth]         = useState(initialMonth)
   const [detailPage, setDetailPage]             = useState(1)
   const [detailExportOpen, setDetailExportOpen] = useState(false)
   const detailExportRef = useRef(null)
@@ -107,21 +109,11 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
     { id: 'LEAVE',  label: 'មានច្បាប់' },
   ]
 
-  const monthOpts = [
-    { id: 'ALL', label: 'គ្រប់ខែ' },
-    { id: '01', label: 'មករា (Jan)' }, { id: '02', label: 'កុម្ភៈ (Feb)' },
-    { id: '03', label: 'មីនា (Mar)' }, { id: '04', label: 'មេសា (Apr)' },
-    { id: '05', label: 'ឧសភា (May)' }, { id: '06', label: 'មិថុនា (Jun)' },
-    { id: '07', label: 'កក្កដា (Jul)' }, { id: '08', label: 'សីហា (Aug)' },
-    { id: '09', label: 'កញ្ញា (Sep)' }, { id: '10', label: 'តុលា (Oct)' },
-    { id: '11', label: 'វិច្ឆិកា (Nov)' }, { id: '12', label: 'ធ្នូ (Dec)' },
-  ]
-
   // Filter records
   let filtered = allRecords
   if (detailSubject !== 'ALL') filtered = filtered.filter(r => r.subject === detailSubject)
   if (detailStatus  !== 'ALL') filtered = filtered.filter(r => r.status  === detailStatus)
-  if (detailMonth   !== 'ALL') filtered = filtered.filter(r => r.date.split('-')[1] === detailMonth)
+  if (detailMonth   !== 'ALL') filtered = filtered.filter(r => matchesMonthFilter(r.date, detailMonth))
   if (detailSearch.trim()) {
     const q = detailSearch.toLowerCase()
     filtered = filtered.filter(r =>
@@ -424,7 +416,7 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
             <SearchableDropdown options={subjectOpts} value={detailSubject} onChange={v => { setDetailSubject(v); setDetailPage(1) }} placeholder="ជ្រើសរើសមុខវិជ្ជា" icon={BookOpen} />
             <SearchableDropdown options={statusOpts}  value={detailStatus}  onChange={v => { setDetailStatus(v);  setDetailPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" />
-            <SearchableDropdown options={monthOpts}   value={detailMonth}   onChange={v => { setDetailMonth(v);   setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
+            <SearchableDropdown options={MONTH_FILTER_OPTIONS} value={detailMonth} onChange={v => { setDetailMonth(v); setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
           </div>
         </div>
 
@@ -507,44 +499,14 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
         </div>
 
         {/* Pagination */}
-        <div className="p-4 border-t border-slate-100 flex items-center justify-between">
-          <span className="text-[12px] font-medium text-slate-400">
-            {filtered.length > 0
-              ? `បង្ហាញ ${(detailPage - 1) * itemsPerPage + 1}–${Math.min(detailPage * itemsPerPage, filtered.length)} នៃ ${filtered.length} កំណត់ត្រា`
-              : '0 កំណត់ត្រា'}
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setDetailPage(p => Math.max(1, p - 1))}
-              disabled={detailPage === 1}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
-                detailPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            {[...Array(totalDetailPages)].map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setDetailPage(i + 1)}
-                className={`w-8 h-8 rounded-full font-bold text-[13px] flex items-center justify-center transition-all ${
-                  detailPage === i + 1 ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-            <button
-              onClick={() => setDetailPage(p => Math.min(totalDetailPages, p + 1))}
-              disabled={detailPage === totalDetailPages}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${
-                detailPage === totalDetailPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
+        <TablePagination
+          currentPage={detailPage}
+          totalPages={totalDetailPages}
+          totalItems={filtered.length}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setDetailPage}
+          itemLabel="កំណត់ត្រា"
+        />
       </div>
     </div>
   )

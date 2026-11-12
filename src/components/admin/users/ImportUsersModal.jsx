@@ -146,7 +146,11 @@ export default function ImportUsersModal({
       if (!rawName) rawName = rawUsername;
       if (!rawPass) rawPass = '123456';
 
-      const role = (rawRole.includes('admin') || rawRole.includes('គ្រប់គ្រង')) ? 'admin' : 'monitor';
+      const role = (rawRole.includes('admin') || rawRole.includes('គ្រប់គ្រង'))
+        ? 'admin'
+        : (rawRole.includes('teacher') || rawRole.includes('គ្រូ'))
+          ? 'teacher'
+          : 'monitor';
       const status = (rawRole.includes('inactive') || rawRole.includes('ផ្អាក') || rawStatus.includes('inactive') || rawStatus.includes('ផ្អាក')) ? 'inactive' : 'active';
       const targetClass = role === 'admin' ? (rawClass || 'ALL') : (rawClass || '10A');
 
@@ -449,10 +453,12 @@ export default function ImportUsersModal({
                               className={`px-2 py-0.5 rounded-full text-[10.5px] font-bold ${
                                 u.role === 'admin'
                                   ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                                  : 'bg-blue-50 text-blue-700 border border-blue-200'
+                                  : u.role === 'teacher'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-blue-50 text-blue-700 border border-blue-200'
                               }`}
                             >
-                              {u.role === 'admin' ? 'Admin' : 'Monitor'}
+                              {u.role === 'admin' ? 'Admin' : u.role === 'teacher' ? 'Teacher' : 'Monitor'}
                             </span>
                           </td>
                           <td className="py-2.5 px-3 text-center font-bold text-slate-700">

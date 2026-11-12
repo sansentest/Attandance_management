@@ -1,19 +1,31 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { api } from '../../../utils/api'
-import { Users, AlertCircle, FileText, TrendingUp, CalendarDays, BarChart3, PieChart as PieChartIcon, BarChart2, RefreshCw, CheckCircle2 } from 'lucide-react'
+import {
+  isTeacher,
+  getAssignedClass,
+  getTeacherScopeClass,
+  getScopedDashboardCacheKey
+} from '../../../utils/accessControl'
+import { Users, AlertCircle, FileText, TrendingUp, CalendarDays, BarChart3, PieChart as PieChartIcon, BarChart2, RefreshCw, CheckCircle2, GraduationCap } from 'lucide-react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ session }) {
+  const teacherMode = isTeacher(session)
+  const assignedClass = teacherMode ? getAssignedClass(session) : ''
+  const scopeClass = getTeacherScopeClass(session)
+  const cacheKey = getScopedDashboardCacheKey(scopeClass)
+  const cacheTimeKey = `${cacheKey}_time`
+
   const [data, setData] = useState(() => {
     try {
-      const cached = localStorage.getItem('school_dashboard_cache')
+      const cached = localStorage.getItem(cacheKey)
       if (cached) return JSON.parse(cached)
     } catch (e) {}
     return null
   })
   const [loading, setLoading] = useState(() => {
     try {
-      const cached = localStorage.getItem('school_dashboard_cache')
+      const cached = localStorage.getItem(cacheKey)
       return !cached
     } catch (e) {
       return true
@@ -22,7 +34,7 @@ export default function AdminDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [lastSynced, setLastSynced] = useState(() => {
     try {
-      const t = localStorage.getItem('school_dashboard_cache_time')
+      const t = localStorage.getItem(cacheTimeKey) || (!teacherMode ? localStorage.getItem('school_dashboard_cache_time') : null)
       return t ? Number(t) : null
     } catch (e) {
       return null
@@ -30,14 +42,17 @@ export default function AdminDashboard() {
   })
   const [toast, setToast] = useState(null)
 
-  const loadData = async (force = false) => {
+  const loadData = useCallback(async (force = false) => {
     if (force) setIsRefreshing(true)
     try {
-      const res = await api('admin.dashboardStats', { force })
+      const res = await api('admin.dashboardStats', { force, scopeClass })
       if (res && res.success && res.data) {
         setData(res.data)
-        const syncedAt = localStorage.getItem('school_dashboard_cache_time')
-        if (syncedAt) setLastSynced(Number(syncedAt))
+        const nowTs = Date.now()
+        try {
+          localStorage.setItem(cacheTimeKey, String(nowTs))
+        } catch (e) {}
+        setLastSynced(nowTs)
         if (force) {
           setToast({ type: 'success', message: 'បានទាញយកទិន្នន័យថ្មីពី Cloud រួចរាល់!' })
           setTimeout(() => setToast(null), 3000)
@@ -56,16 +71,21 @@ export default function AdminDashboard() {
       setLoading(false)
       setIsRefreshing(false)
     }
-  }
+  }, [scopeClass, cacheTimeKey])
 
   useEffect(() => {
-    // Only fetch automatically when local cache does not exist yet; otherwise strictly wait for manual refresh click (0 Firestore reads)
-    if (!data) {
-      loadData(false)
-    } else {
-      setLoading(false)
-    }
-  }, [])
+    try {
+      const cached = localStorage.getItem(cacheKey)
+      if (cached) {
+        setData(JSON.parse(cached))
+        const t = localStorage.getItem(cacheTimeKey) || (!teacherMode ? localStorage.getItem('school_dashboard_cache_time') : null)
+        setLastSynced(t ? Number(t) : null)
+        setLoading(false)
+        return
+      }
+    } catch (e) {}
+    loadData(false)
+  }, [cacheKey, cacheTimeKey, teacherMode, loadData])
 
   const formatLastSynced = (ts) => {
     if (!ts) return 'ទិន្នន័យពី Cache ក្នុងម៉ាស៊ីន (សន្សំ Quota)'
@@ -102,6 +122,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+     
       {/* Top Sync / Refresh Bar (Manual Firebase Fetch to save Quota) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-[20px] px-5 py-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-100">
         <div className="flex items-center gap-2.5 text-[12px] sm:text-[13px] font-bold text-slate-500">

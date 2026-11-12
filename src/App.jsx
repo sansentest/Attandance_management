@@ -8,6 +8,7 @@ import InstallAppBanner from './components/common/InstallAppBanner'
 import AppUpdateBanner from './components/common/AppUpdateBanner'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import { loadSession, saveSession, clearSession, api } from './utils/api'
+import { canAccessAdminPanel, normalizeClassName } from './utils/accessControl'
 import { startDailySummaryScheduler } from './services/dailySummaryScheduler'
 import { startMonthlyBackupScheduler } from './services/monthlyBackupScheduler'
 import { syncOfflineAttendanceQueue } from './utils/offlineSync'
@@ -38,7 +39,7 @@ export default function App() {
                 ...existingSession,
                 id: validUser.id,
                 fullName: validUser.name || validUser.username,
-                className: validUser.class || existingSession.className,
+                className: validUser.role === 'admin' ? 'ALL' : normalizeClassName(validUser.class),
                 role: validUser.role || 'monitor',
                 email: validUser.email || existingSession.email || '',
                 phone: validUser.phone || existingSession.phone || '',
@@ -58,14 +59,21 @@ export default function App() {
               u.id === existingSession.id
             )
             if (adminUser) {
+              if (adminUser.status !== 'active') {
+                clearSession()
+                setSession(null)
+                return
+              }
+              const nextRole = adminUser.role || 'admin'
               const updatedSession = {
                 ...existingSession,
                 id: adminUser.id,
                 fullName: adminUser.name || existingSession.fullName || existingSession.username,
+                className: nextRole === 'admin' ? 'ALL' : normalizeClassName(adminUser.class),
                 email: adminUser.email || existingSession.email || '',
                 phone: adminUser.phone || existingSession.phone || '',
                 avatar: adminUser.avatar || existingSession.avatar || null,
-                role: adminUser.role || 'admin'
+                role: nextRole
               }
               saveSession(updatedSession)
               setSession(updatedSession)
@@ -123,8 +131,8 @@ export default function App() {
     )
   }
 
-  // Admin Routing
-  if (session.role === 'admin') {
+  // Admin & Teacher Portal Routing
+  if (canAccessAdminPanel(session)) {
     return (
       <>
         <AppUpdateBanner />

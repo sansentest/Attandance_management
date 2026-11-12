@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { UserPlus, X, Save, Loader2, ChevronDown, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity } from 'lucide-react';
+import { UserPlus, X, Save, Loader2, CheckCircle, User, AtSign, Lock, Shield, BookOpen, Activity, AlertCircle } from 'lucide-react';
 import SearchableDropdown from '../../common/SearchableDropdown';
+import { normalizeClassName, requiresAssignedClass } from '../../../utils/accessControl';
 
 export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) {
   const roleOptions = [
     { id: 'monitor', label: 'អ្នកត្រួតពិនិត្យ (Monitor)' },
+    { id: 'teacher', label: 'គ្រូបន្ទុកថ្នាក់ (Teacher)' },
     { id: 'admin', label: 'អ្នកគ្រប់គ្រង (Admin)' }
   ];
   
@@ -25,21 +27,47 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
   const [newUser, setNewUser] = useState(initialUserState);
   const [isSaving, setIsSaving] = useState(false);
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [formError, setFormError] = useState('');
 
   if (!isOpen && !showSuccessAlert) return null;
 
   const handleSave = async () => {
+    setFormError('');
+    const trimmedName = (newUser.name || '').trim();
+    const trimmedUsername = (newUser.username || '').trim();
+    const trimmedPassword = (newUser.password || '').trim();
+    const cleanClass = newUser.role === 'admin' ? '-' : normalizeClassName(newUser.class);
+
+    if (!trimmedName || !trimmedUsername || !trimmedPassword) {
+      setFormError('សូមបំពេញឈ្មោះ Username និងពាក្យសម្ងាត់ឱ្យបានត្រឹមត្រូវ។');
+      return;
+    }
+    if (requiresAssignedClass(newUser.role) && !cleanClass) {
+      setFormError('សូមជ្រើសរើសថ្នាក់បន្ទុកសម្រាប់គណនីនេះ។');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      if (onSave) await onSave(newUser);
+      if (onSave) {
+        await onSave({
+          ...newUser,
+          name: trimmedName,
+          username: trimmedUsername,
+          password: trimmedPassword,
+          class: cleanClass
+        });
+      }
       setShowSuccessAlert(true);
       setTimeout(() => {
         setShowSuccessAlert(false);
         onClose();
         setNewUser(initialUserState);
+        setFormError('');
       }, 700);
     } catch (e) {
       console.error(e);
+      setFormError('មានបញ្ហាក្នុងការរក្សាទុកគណនី សូមព្យាយាមម្តងទៀត។');
     } finally {
       setIsSaving(false);
     }
@@ -73,7 +101,12 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
             
             {/* Modal Body */}
             <div className="p-6 sm:p-8 flex flex-col gap-6 overflow-y-auto custom-scrollbar bg-slate-50/30">
-
+              {formError && (
+                <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[13px] font-bold">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 {/* Name */}
@@ -141,7 +174,12 @@ export default function AddUserModal({ isOpen, onClose, onSave, classOptions }) 
                   </label>
                   <SearchableDropdown
                     value={newUser.role}
-                    onChange={(val) => setNewUser({...newUser, role: val})}
+                    onChange={(val) => {
+                      const nextClass = val === 'admin'
+                        ? '-'
+                        : (normalizeClassName(newUser.class) || filteredClassOptions[0]?.id || '');
+                      setNewUser({ ...newUser, role: val, class: nextClass });
+                    }}
                     options={roleOptions}
                     placeholder="ជ្រើសរើសតួនាទី"
                     icon={Shield}

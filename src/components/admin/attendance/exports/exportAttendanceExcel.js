@@ -13,6 +13,8 @@
  *   ឈ្មោះ parameter ដូចគ្នានឹង exportAttendancePdf.js ដូច្នេះអាចបញ្ជូន object តែមួយទៅទាំងពីរ។
  */
 
+import { buildSummarySubtitleParts, getExportMonthSuffix } from '../../../../utils/dateFilters'
+
 // ───────────── Config (ប្តូរបានតាមតម្រូវការ) ─────────────
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ'
 const DEFAULT_ACADEMIC_YEAR = '២០២៥ - ២០២៦'
@@ -175,7 +177,7 @@ function pageSetup(ws, { lastCol, lastRow, headerRowNo }) {
 }
 
 // ───────────── Summary: normalize + workbook + csv ─────────────
-function normalizeSummary({ filtered, getStatusInfo, filterClass, schoolName, department, academicYear }) {
+function normalizeSummary({ filtered, getStatusInfo, filterClass = 'ALL', filterMonth = 'ALL', schoolName, department, academicYear }) {
   const list = Array.isArray(filtered) ? filtered : []
   const records = list.map((d, i) => {
     const info = (getStatusInfo && getStatusInfo(d.total)) || { label: 'ធម្មតា' }
@@ -191,7 +193,7 @@ function normalizeSummary({ filtered, getStatusInfo, filterClass, schoolName, de
       status: str(info.label)
     }
   })
-  return { records, filterClass, schoolName, department, academicYear }
+  return { records, filterClass, filterMonth, schoolName, department, academicYear }
 }
 
 function buildSummaryWorkbook(ExcelJS, c) {
@@ -204,14 +206,14 @@ function buildSummaryWorkbook(ExcelJS, c) {
   widths.forEach((w, i) => (ws.getColumn(i + 1).width = w))
 
   let r = letterhead(ws, { cols: COLS, orgSpan: 4, department: c.department, schoolName: c.schoolName })
-  const subtitle = [
-    `ឆ្នាំសិក្សា ${c.academicYear}`,
-    c.filterClass !== 'ALL' ? `ថ្នាក់ទី ${c.filterClass}` : null,
-    `សរុបចំនួនសិស្ស៖ ${kh(c.records.length)} នាក់`
-  ]
-    .filter(Boolean)
-    .join('  |  ')
-  r = titleBlock(ws, r, COLS, 'របាយការណ៍បូកសរុបអវត្តមានសិស្ស', subtitle)
+  const monthSuffix = getExportMonthSuffix(c.filterMonth)
+  const reportTitle = `របាយការណ៍បូកសរុបអវត្តមានសិស្ស${monthSuffix}`
+  const subtitle = buildSummarySubtitleParts({
+    academicYear: c.academicYear,
+    studentCountText: kh(c.records.length),
+    filterClass: c.filterClass
+  }).join('  |  ')
+  r = titleBlock(ws, r, COLS, reportTitle, subtitle)
 
   const hdr = r
   headerRow(ws, hdr, ['ល.រ', 'អត្តលេខ', 'គោត្តនាម-នាម', 'ថ្នាក់', 'មានច្បាប់', 'គ្មានច្បាប់', 'សរុប', 'ម៉ោង', 'ស្ថានភាព'])
@@ -386,13 +388,15 @@ export async function exportAttendanceSummaryExcel({
   filtered = [],
   getStatusInfo,
   filterClass = 'ALL',
+  filterMonth = 'ALL',
   schoolName = '',
   department = DEFAULT_DEPARTMENT,
   academicYear = DEFAULT_ACADEMIC_YEAR
 } = {}) {
-  const ctx = normalizeSummary({ filtered, getStatusInfo, filterClass, schoolName, department, academicYear })
+  const ctx = normalizeSummary({ filtered, getStatusInfo, filterClass, filterMonth, schoolName, department, academicYear })
+  const monthSuffix = getExportMonthSuffix(filterMonth)
   await exportWorkbook({
-    fileBase: `របាយការណ៍អវត្តមានសិស្ស${filterClass !== 'ALL' ? `_ថ្នាក់${filterClass}` : ''}_${localDate()}`,
+    fileBase: `របាយការណ៍អវត្តមានសិស្ស_${monthSuffix}${filterClass !== 'ALL' ? `_ថ្នាក់${filterClass}` : ''}_${localDate()}`,
     build: (ExcelJS) => buildSummaryWorkbook(ExcelJS, ctx),
     csv: () => summaryCsv(ctx)
   })

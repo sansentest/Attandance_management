@@ -1,8 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { api, getCachedSchoolName } from '../../../utils/api'
+import { MONTH_FILTER_OPTIONS, matchesMonthFilter } from '../../../utils/dateFilters'
+import {
+  isTeacher,
+  getAssignedClass,
+  matchesAssignedClass,
+  filterByTeacherScope
+} from '../../../utils/accessControl'
+import TablePagination from '../../common/TablePagination'
 import {
   Download, Search, ChevronDown, AlertCircle, FileText, Calendar,
-  FileCode, FileImage, Users, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight,
+  FileCode, FileImage, Users, ChevronLeft, ChevronRight,
   BookOpen, Clock, Eye, ArrowLeft, ShieldAlert, CheckCircle, XCircle,
   TrendingUp, Info, Edit, Trash2, X, Save, RefreshCw
 } from 'lucide-react'
@@ -256,7 +264,7 @@ const colorMap = {
 // ─────────────────────────────────────────────
 // Student Detail Page with Edit, Delete & Multi-Select
 // ─────────────────────────────────────────────
-function StudentDetailPage({ student, onBack, onUpdateRecords }) {
+function StudentDetailPage({ student, onBack, onUpdateRecords, initialMonth = 'ALL' }) {
   // ── Records state with unique IDs ──
   const [records, setRecords] = useState(() => {
     return (student.records || []).map((r, i) => ({
@@ -291,7 +299,7 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
   const [detailSearch, setDetailSearch] = useState('')
   const [detailSubject, setDetailSubject] = useState('ALL')
   const [detailStatus, setDetailStatus] = useState('ALL')
-  const [detailMonth, setDetailMonth] = useState('ALL')
+  const [detailMonth, setDetailMonth] = useState(initialMonth)
   const [detailPage, setDetailPage] = useState(1)
   const [detailExportOpen, setDetailExportOpen] = useState(false)
   const detailExportRef = useRef(null)
@@ -349,21 +357,12 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
     { id: 'ABSENT', label: 'គ្មានច្បាប់' },
     { id: 'LEAVE', label: 'មានច្បាប់' },
   ]
-  const monthOpts = [
-    { id: 'ALL', label: 'គ្រប់ខែ' },
-    { id: '01', label: 'មករា (Jan)' }, { id: '02', label: 'កុម្ភៈ (Feb)' },
-    { id: '03', label: 'មីនា (Mar)' }, { id: '04', label: 'មេសា (Apr)' },
-    { id: '05', label: 'ឧសភា (May)' }, { id: '06', label: 'មិថុនា (Jun)' },
-    { id: '07', label: 'កក្កដា (Jul)' }, { id: '08', label: 'សីហា (Aug)' },
-    { id: '09', label: 'កញ្ញា (Sep)' }, { id: '10', label: 'តុលា (Oct)' },
-    { id: '11', label: 'វិច្ឆិកា (Nov)' }, { id: '12', label: 'ធ្នូ (Dec)' },
-  ]
 
   // Apply filters
   let filtered = allRecords
   if (detailSubject !== 'ALL') filtered = filtered.filter(r => r.subject === detailSubject)
   if (detailStatus !== 'ALL') filtered = filtered.filter(r => r.status === detailStatus)
-  if (detailMonth !== 'ALL') filtered = filtered.filter(r => r.date.split('-')[1] === detailMonth)
+  if (detailMonth !== 'ALL') filtered = filtered.filter(r => matchesMonthFilter(r.date, detailMonth))
   if (detailSearch.trim()) {
     const q = detailSearch.toLowerCase()
     filtered = filtered.filter(r =>
@@ -635,7 +634,7 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
             <SearchableDropdown options={subjectOpts} value={detailSubject} onChange={v => { setDetailSubject(v); setDetailPage(1) }} placeholder="ជ្រើសរើសមុខវិជ្ជា" icon={BookOpen} />
             <SearchableDropdown options={statusOpts} value={detailStatus} onChange={v => { setDetailStatus(v); setDetailPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" />
-            <SearchableDropdown options={monthOpts} value={detailMonth} onChange={v => { setDetailMonth(v); setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
+            <SearchableDropdown options={MONTH_FILTER_OPTIONS} value={detailMonth} onChange={v => { setDetailMonth(v); setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
           </div>
 
           {/* ── Multi-Select Batch Action Bar ── */}
@@ -1016,27 +1015,18 @@ function StudentDetailPage({ student, onBack, onUpdateRecords }) {
 // ─────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────
-// Smart pagination range generator with ellipsis
-function getPaginationRange(current, total) {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1)
-  }
-  if (current <= 4) {
-    return [1, 2, 3, 4, 5, '...', total]
-  }
-  if (current >= total - 3) {
-    return [1, '...', total - 4, total - 3, total - 2, total - 1, total]
-  }
-  return [1, '...', current - 1, current, current + 1, '...', total]
-}
+export default function AdminStudentAttendance({ session }) {
+  const teacherMode = isTeacher(session)
+  const assignedClass = teacherMode ? getAssignedClass(session) : ''
 
-export default function AdminStudentAttendance() {
   const [summaries, setSummaries] = useState(() => {
     try {
       const cached = localStorage.getItem('school_attendance_cache')
       if (cached) {
         const parsed = JSON.parse(cached)
-        if (Array.isArray(parsed) && parsed.length > 0) return buildStudentSummaries(parsed)
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return filterByTeacherScope(buildStudentSummaries(parsed), session)
+        }
       }
     } catch (e) { }
     return []
@@ -1046,8 +1036,9 @@ export default function AdminStudentAttendance() {
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedStudent, setSelectedStudent] = useState(null)
 
-  const [filterClass, setFilterClass] = useState('ALL')
+  const [filterClass, setFilterClass] = useState(assignedClass || 'ALL')
   const [filterStatus, setFilterStatus] = useState('ALL')
+  const [filterMonth, setFilterMonth] = useState('ALL')
 
   const [exportOpen, setExportOpen] = useState(false)
   const exportRef = useRef(null)
@@ -1101,16 +1092,20 @@ export default function AdminStudentAttendance() {
       }
 
       const builtSummaries = buildStudentSummaries(combinedRecords)
-      setSummaries(builtSummaries)
-      try {
-        localStorage.setItem('school_attendance_cache', JSON.stringify(builtSummaries))
-      } catch (e) {}
+      setSummaries(filterByTeacherScope(builtSummaries, session))
+      if (!teacherMode) {
+        try {
+          localStorage.setItem('school_attendance_cache', JSON.stringify(builtSummaries))
+        } catch (e) {}
+      }
     } catch (e) {
       console.error('Error reading attendance records:', e)
       setSummaries([])
-      try {
-        localStorage.setItem('school_attendance_cache', '[]')
-      } catch (err) {}
+      if (!teacherMode) {
+        try {
+          localStorage.setItem('school_attendance_cache', '[]')
+        } catch (err) {}
+      }
     } finally {
       setLoading(false)
     }
@@ -1118,7 +1113,7 @@ export default function AdminStudentAttendance() {
 
   useEffect(() => {
     fetchRecords(false)
-  }, [])
+  }, [assignedClass])
 
   const [classOptions, setClassOptions] = useState(() => {
     try {
@@ -1152,9 +1147,32 @@ export default function AdminStudentAttendance() {
     { id: 'normal', label: 'ធម្មតា (< 8 ថ្ងៃ)' },
   ]
 
+  const effectiveFilterClass = teacherMode ? (assignedClass || '__NONE__') : filterClass
+  const effectiveClassOptions = teacherMode
+    ? [{ id: assignedClass || '__NONE__', label: assignedClass ? `ថ្នាក់ ${assignedClass}` : 'មិនទាន់មានថ្នាក់' }]
+    : classOptions
+
+  const scopedSummaries = filterByTeacherScope(summaries, session)
+
+  // Scope student summaries to selected month when a specific month is chosen
+  const monthScopedSummaries = filterMonth === 'ALL'
+    ? scopedSummaries
+    : scopedSummaries.reduce((acc, s) => {
+        const monthRecords = (s.records || []).filter(r => matchesMonthFilter(r.date, filterMonth))
+        if (monthRecords.length === 0) return acc
+        acc.push({
+          ...s,
+          records: monthRecords,
+          ...calculateDailyAttendance(monthRecords)
+        })
+        return acc
+      }, [])
+
   // Filtering
-  let filtered = summaries
-  if (filterClass !== 'ALL') filtered = filtered.filter(s => s.class === filterClass)
+  let filtered = monthScopedSummaries
+  if (!teacherMode && effectiveFilterClass !== 'ALL') {
+    filtered = filtered.filter(s => matchesAssignedClass(s.class, effectiveFilterClass))
+  }
   if (filterStatus !== 'ALL') {
     filtered = filtered.filter(s => {
       const info = getStatusInfo(s.total)
@@ -1173,15 +1191,16 @@ export default function AdminStudentAttendance() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / itemsPerPage))
   const paginatedData = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
-  const dangerCount = summaries.filter(s => getStatusInfo(s.total).color === 'rose').length
-  const warningCount = summaries.filter(s => getStatusInfo(s.total).color === 'amber').length
+  const dangerCount = monthScopedSummaries.filter(s => getStatusInfo(s.total).color === 'rose').length
+  const warningCount = monthScopedSummaries.filter(s => getStatusInfo(s.total).color === 'amber').length
 
   const handleExport = (type) => {
     setExportOpen(false)
     const schoolName = getCachedSchoolName()
     const payload = {
       filtered,
-      filterClass,
+      filterClass: effectiveFilterClass,
+      filterMonth,
       schoolName,
       getStatusInfo
     }
@@ -1233,12 +1252,13 @@ export default function AdminStudentAttendance() {
   }
 
   // ── Render Detail Page ──
-  if (selectedStudent) {
+  if (selectedStudent && (!teacherMode || matchesAssignedClass(selectedStudent.class, assignedClass))) {
     return (
       <StudentDetailPage
         student={selectedStudent}
         onBack={() => setSelectedStudent(null)}
         onUpdateRecords={(newRecords) => handleUpdateStudentRecords(selectedStudent.studentId, newRecords)}
+        initialMonth={filterMonth}
       />
     )
   }
@@ -1246,6 +1266,8 @@ export default function AdminStudentAttendance() {
   // ── Render Main Page ──
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full pb-10">
+
+    
 
       {/* Top Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6 w-full">
@@ -1258,7 +1280,7 @@ export default function AdminStudentAttendance() {
             </div>
             <div className="text-[14px] font-bold text-slate-500">សិស្សមានអវត្តមាន</div>
           </div>
-          <div className="text-3xl font-black text-slate-800 relative z-10">{summaries.length}</div>
+          <div className="text-3xl font-black text-slate-800 relative z-10">{monthScopedSummaries.length}</div>
           <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់</div>
         </div>
 
@@ -1342,9 +1364,17 @@ export default function AdminStudentAttendance() {
           </div>
 
           {/* Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-[520px]">
-            <SearchableDropdown options={classOptions} value={filterClass} onChange={(v) => { setFilterClass(v); setCurrentPage(1) }} placeholder="ជ្រើសរើសថ្នាក់" icon={Users} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[780px]">
+            <SearchableDropdown
+              options={effectiveClassOptions}
+              value={effectiveFilterClass}
+              onChange={(v) => { if (!teacherMode) { setFilterClass(v); setCurrentPage(1) } }}
+              placeholder="ជ្រើសរើសថ្នាក់"
+              icon={Users}
+              disabled={teacherMode}
+            />
             <SearchableDropdown options={statusFilterOptions} value={filterStatus} onChange={(v) => { setFilterStatus(v); setCurrentPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" />
+            <SearchableDropdown options={MONTH_FILTER_OPTIONS} value={filterMonth} onChange={(v) => { setFilterMonth(v); setCurrentPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
           </div>
         </div>
 
@@ -1447,7 +1477,7 @@ export default function AdminStudentAttendance() {
                     {/* Action */}
                     <td className="py-4 px-5 text-center">
                       <button
-                        onClick={() => setSelectedStudent(student)}
+                        onClick={() => setSelectedStudent(summaries.find(orig => orig.studentId === student.studentId) || student)}
                         className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-50 hover:bg-indigo-600 text-indigo-600 hover:text-white font-bold text-[12px] rounded-lg transition-all hover:shadow-md border border-indigo-100 hover:border-indigo-600 group/btn cursor-pointer"
                       >
                         <Eye size={13} className="group-hover/btn:scale-110 transition-transform" />
@@ -1475,102 +1505,13 @@ export default function AdminStudentAttendance() {
         </div>
 
         {/* Pagination */}
-        <div className="p-4 sm:p-5 border-t border-slate-100 bg-white flex flex-col md:flex-row items-center justify-between gap-4 rounded-b-2xl">
-          <div className="flex items-center gap-2">
-            <span className="text-[12px] font-medium text-slate-500 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-lg">
-              បង្ហាញ <strong className="text-slate-800">{filtered.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filtered.length)}</strong> នៃ <strong className="text-indigo-600">{filtered.length}</strong> សិស្ស
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1 sm:gap-1.5">
-            {/* First Page */}
-            <button
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${currentPage === 1
-                ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
-                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
-                }`}
-              title="ទំព័រដំបូង"
-            >
-              <ChevronsLeft size={16} strokeWidth={2.2} />
-            </button>
-
-            {/* Prev Page */}
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${currentPage === 1
-                ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
-                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
-                }`}
-              title="ទំព័រមុន"
-            >
-              <ChevronLeft size={16} strokeWidth={2.2} />
-            </button>
-
-            {/* Mobile compact indicator */}
-            <div className="flex sm:hidden items-center px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[12px] font-bold text-slate-700">
-              {currentPage} / {totalPages}
-            </div>
-
-            {/* Desktop Smart Numbers with Ellipsis */}
-            <div className="hidden sm:flex items-center gap-1">
-              {getPaginationRange(currentPage, totalPages).map((item, idx) => {
-                if (item === '...') {
-                  return (
-                    <span
-                      key={`dots-${idx}`}
-                      className="w-8 h-8 flex items-center justify-center text-slate-400 font-bold select-none text-[13px]"
-                    >
-                      ...
-                    </span>
-                  )
-                }
-                const pageNum = Number(item)
-                const isActive = currentPage === pageNum
-                return (
-                  <button
-                    key={pageNum}
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={`min-w-8 h-8 px-2 rounded-lg font-bold text-[13px] flex items-center justify-center transition-all cursor-pointer ${isActive
-                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 border border-indigo-600'
-                      : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 shadow-2xs'
-                      }`}
-                  >
-                    {pageNum}
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* Next Page */}
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${currentPage === totalPages
-                ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
-                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
-                }`}
-              title="ទំព័របន្ទាប់"
-            >
-              <ChevronRight size={16} strokeWidth={2.2} />
-            </button>
-
-            {/* Last Page */}
-            <button
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${currentPage === totalPages
-                ? 'border-slate-100 text-slate-300 cursor-not-allowed bg-slate-50/50'
-                : 'border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-800 bg-white shadow-2xs cursor-pointer'
-                }`}
-              title="ទំព័រចុងក្រោយ"
-            >
-              <ChevronsRight size={16} strokeWidth={2.2} />
-            </button>
-          </div>
-        </div>
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filtered.length}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+        />
       </div>
     </div>
   )

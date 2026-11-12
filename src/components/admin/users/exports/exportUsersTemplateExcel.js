@@ -241,7 +241,7 @@ export async function exportUsersTemplateExcel({
       noteRow + 3,
       1,
       COLS,
-      '៣. តួនាទី (Role): ដាក់ "monitor" សម្រាប់ប្រធានថ្នាក់ ឬ "admin" សម្រាប់អ្នកគ្រប់គ្រង។',
+      '៣. តួនាទី (Role): ដាក់ "monitor" សម្រាប់ប្រធានថ្នាក់, "teacher" សម្រាប់គ្រូបន្ទុកថ្នាក់ ឬ "admin" សម្រាប់អ្នកគ្រប់គ្រង។',
       { font: F(9), align: A_LEFT }
     );
     put(

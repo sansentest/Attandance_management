@@ -10,7 +10,7 @@ import {
   User, Check, X, FileText, AlertCircle, CheckCircle2,
   Loader2, Send, LogOut, Search, BookOpen, ChevronDown,
   ArrowLeftRight, Calendar, WifiOff, CloudUpload, RefreshCw, Wifi, Lock,
-  UserX, Info, Edit3, Sparkles
+  UserX, Info, Edit3
 } from 'lucide-react'
 
 // Helper to format today's date in polite, complete Khmer text
@@ -298,7 +298,6 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     subject: '',
     teacher: ''
   })
-  const [inheritedFromPeriod, setInheritedFromPeriod] = useState(null)
 
   // Holiday / Vacation / Weekend support (Persist override in sessionStorage so reload preserves testing mode)
   const [allowHolidayOverride, setAllowHolidayOverrideState] = useState(() => {
@@ -467,7 +466,6 @@ export default function Attendance({ session, onNavigate, onLogout }) {
   }
 
   const applySavedState = (savedState, targetPeriod) => {
-    setInheritedFromPeriod(null)
     const fullDayMap = getSavedFullDayLeaves()
     const currentDropouts = getSavedDropoutMap()
     const mergedState = { ...savedState.attendanceState }
@@ -577,7 +575,6 @@ export default function Attendance({ session, onNavigate, onLogout }) {
 
     const freshState = {}
     const freshReasons = {}
-    let inheritedCount = 0
 
     studentList.forEach(s => {
       if (currentDropouts[s.id] || s.status === 'dropped') {
@@ -587,14 +584,12 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       } else if (prevAttendance[s.id] === 'ABSENT') {
         // Pre-fill ABSENT from previous period
         freshState[s.id] = 'ABSENT'
-        inheritedCount++
       } else if (prevAttendance[s.id] === 'LEAVE') {
         // Pre-fill LEAVE from previous period
         freshState[s.id] = 'LEAVE'
         if (prevReasons[s.id]) {
           freshReasons[s.id] = prevReasons[s.id]
         }
-        inheritedCount++
       } else {
         freshState[s.id] = 'PRESENT'
       }
@@ -617,15 +612,6 @@ export default function Attendance({ session, onNavigate, onLogout }) {
       isLibre: Boolean(targetPeriod.isLibre),
       hasTimetable: targetPeriod.hasTimetable !== false
     })
-
-    if (previousPeriodData && inheritedCount > 0) {
-      setInheritedFromPeriod({
-        periodLabel: previousPeriodData.period.periodLabel || `ម៉ោងទី ${previousPeriodData.period.period}`,
-        count: inheritedCount
-      })
-    } else {
-      setInheritedFromPeriod(null)
-    }
   }
 
   // Load attendance data for a specific period (Checks local storage instantly, then synchronizes from Firebase API)
@@ -805,7 +791,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
     if (!networkOnline) {
       setAlertMessage({
         show: true,
-        message: 'មិនអាចទាញទិន្នន័យសិស្សបានទេ ព្រោះគ្មានការភ្ជាប់ Internet!',
+        message: 'មិនអាចទាញទិន្នន័យសិស្សបានទេ ព្រោះគ្មាន Internet!',
         type: 'danger'
       })
       return
@@ -1345,11 +1331,11 @@ export default function Attendance({ session, onNavigate, onLogout }) {
               type="button"
               onClick={handleRefreshTimetable}
               disabled={isRefreshingTimetable}
-              className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-white/20 hover:bg-white/30 active:scale-95 transition-all backdrop-blur-md border border-white/25 flex items-center gap-1.5 text-white shadow-xs cursor-pointer text-[10px] sm:text-xs font-bold"
+              className="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full  active:scale-95 transition-all backdrop-blur-md  flex items-center gap-1.5 text-white shadow-xs cursor-pointer text-[10px] sm:text-xs font-bold"
               title="ចុចដើម្បីទាញកាលវិភាគថ្មីពី Cloud"
             >
-              <RefreshCw size={12} className={`sm:w-3.5 sm:h-3.5 ${isRefreshingTimetable ? 'animate-spin' : ''}`} />
-              <span>ទាញកាលវិភាគ</span>
+              <RefreshCw size={15} className={`sm:w-3.5 sm:h-3.5 ${isRefreshingTimetable ? 'animate-spin' : ''}`} />
+              {/* <span>ទាញកាលវិភាគ</span> */}
             </button>
 
             <button
@@ -1563,7 +1549,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
             </div>
           </div>
         ) : (
-          <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 mb-3.5 sm:mb-6 relative overflow-visible">
+          <div className="bg-white rounded-xl sm:rounded-2xl p-3.5 sm:p-5  mb-3.5 sm:mb-6 relative overflow-visible">
             {/* Background glow isolated in clipped container so it never bleeds past screen edge */}
             <div className="absolute inset-0 overflow-hidden rounded-xl sm:rounded-2xl pointer-events-none">
               <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full -mr-10 -mt-10 blur-2xl"></div>
@@ -1571,22 +1557,21 @@ export default function Attendance({ session, onNavigate, onLogout }) {
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-1 sm:mb-1.5 flex-wrap gap-1.5 sm:gap-2">
                 <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                  <span className="flex items-center gap-1 text-accent px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider">
+                  <span className="flex items-center gap-1 text-accent  py-0.5 sm:px-3 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold uppercase tracking-wider">
                     <GraduationCap size={13} className="sm:w-3.5 sm:h-3.5" /> ថ្នាក់ {periodInfo.className}
                   </span>
-
                   {/* 2h Double Period Badge */}
                   {periodInfo.hours === 2 && (
-                    <span className="inline-flex items-center gap-1 text-blue-700 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold animate-in fade-in duration-150">
-                      ២ ម៉ោង
+                    <span className="inline-flex items-center gap-1 text-accent py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold animate-in fade-in duration-150">
+                    | ២ ម៉ោង
                     </span>
                   )}
 
                   {/* Submitted / Edit Mode Badge */}
                   {isAlreadySubmitted && (
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-bold animate-in fade-in duration-150 ${isEditMode
-                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                        : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        ? 'text-amber-800'
+                        : 'text-emerald-800'
                       }`}>
                       {isEditMode ? <><Edit3 size={11} /> កំពុងកែប្រែ</> : <><Lock size={11} /> បានស្រង់រួច</>}
                     </span>
@@ -1598,7 +1583,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                   <button
                     type="button"
                     onClick={() => setShowPeriodDropdown(!showPeriodDropdown)}
-                    className="text-[12px] sm:text-[13px] text-slate-700 font-bold bg-slate-100 hover:bg-slate-200 px-2.5 py-1 sm:px-3 sm:py-1 rounded-lg flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer border border-slate-200/60"
+                    className="text-[12px] sm:text-[13px] text-slate-700 font-bold px-2.5 py-1 sm:px-3 sm:py-1 rounded-lg flex items-center gap-1 sm:gap-1.5 transition-colors cursor-pointer "
                     title="ចុចដើម្បីប្តូរម៉ោងសិក្សាផ្សេងបើចាំបាច់"
                   >
                     <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -1609,8 +1594,8 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                   {showPeriodDropdown && (
                     <div className="absolute right-0 top-full mt-2 w-72 max-w-[calc(100vw-28px)] bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-3.5 py-1.5 text-[11px] font-bold text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
-                        <span>ជ្រើសរើសម៉ោង ({activeShift === 'afternoon' ? 'វេនរសៀល' : 'វេនព្រឹក'})</span>
-                        <span className="text-[10px] text-indigo-500 font-semibold">ថ្ងៃ{todaySchedule.dayName} • {periodInfo.className}</span>
+                        <span>{activeShift === 'afternoon' ? 'វេនរសៀល' : 'វេនព្រឹក'}</span>
+                        {/* <span className="text-[10px] text-indigo-500 font-semibold">{periodInfo.className}</span> */}
                       </div>
                       {currentShiftPeriods.map(p => {
                         const isCurrent = periodInfo.period === p.period
@@ -1627,7 +1612,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <span className="leading-tight">{p.periodLabel} • {p.subject}</span>
                                 {p.hours === 2 && (
-                                  <span className="text-[10px] text-blue-700 bg-blue-50 border border-blue-200 px-1 py-0.2 rounded font-semibold whitespace-nowrap">
+                                  <span className="text-[10px] text-slate-400  py-0.2 rounded font-semibold whitespace-nowrap">
                                     2h
                                   </span>
                                 )}
@@ -1646,7 +1631,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                                 {p.isLibre ? 'ម៉ោងទំនេរ (មិនបាច់ស្រង់)' : p.teacher}
                               </span>
                             </div>
-                            <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap self-start mt-0.5">
+                            <span className="text-[10px] font-mono text-slate-400  px-1.5 py-0.5 rounded whitespace-nowrap self-start mt-0.5">
                               {p.startTime} - {p.endTime}
                             </span>
                           </button>
@@ -1658,10 +1643,9 @@ export default function Attendance({ session, onNavigate, onLogout }) {
               </div>
 
               {/* Subject Name */}
-              <div className="text-[18px] sm:text-[22px] font-extrabold text-slate-800 tracking-tight leading-tight mb-1 sm:mb-2">
+              <div className="text-[18px] sm:text-[22px] font-extrabold text-slate-800 tracking-tight leading-tight mb-3 sm:mb-2">
                 {periodInfo.subject}
               </div>
-
               {/* Time & Teacher Info */}
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[12px] sm:text-[14px] text-slate-500 font-medium">
                 <div className="flex items-center gap-1.5 sm:gap-2">
@@ -1708,7 +1692,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
               )}
 
               {/* Point 5: Quick Button to Swap Teacher / Subject */}
-              <div className="flex items-center justify-between mt-2.5 sm:mt-3 pt-2.5 sm:pt-3 ">
+              <div className="flex items-center justify-betwee sm:mt-3 pt-2.5 sm:pt-3 ">
                 <button
                   type="button"
                   onClick={openSubModal}
@@ -1737,35 +1721,14 @@ export default function Attendance({ session, onNavigate, onLogout }) {
           </div>
         )}
 
-        {/* ── Status Banner for Submitted Period: Locked vs Edit Mode ── */}
-        {inheritedFromPeriod && !isAlreadySubmitted && (
-          <div className="mb-3 sm:mb-4 p-2.5 sm:p-3 bg-indigo-50/90 border border-indigo-200/80 rounded-xl flex items-center justify-between gap-2.5 text-[12px] sm:text-[13px] text-indigo-900 shadow-xs animate-in fade-in duration-200">
-            <div className="flex items-center gap-2 min-w-0">
-              <Sparkles size={16} className="text-indigo-600 shrink-0" />
-              <span className="leading-snug">
-                បានស្រង់ឈ្មោះអវត្តមាន <strong>{inheritedFromPeriod.count} នាក់</strong> ពី <strong>{inheritedFromPeriod.periodLabel}</strong> មកម៉ោងនេះស្វ័យប្រវត្តិ។ (លោកគ្រូ/ប្រធានថ្នាក់អាចចុចកែប្រែបានតាមជាក់ស្ដែង)
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setInheritedFromPeriod(null)}
-              className="text-indigo-400 hover:text-indigo-700 p-1 rounded-lg hover:bg-indigo-100/60 transition-colors shrink-0 cursor-pointer"
-              title="បិទការជូនដំណឹង"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
-
         {/* ── Search Bar ── */}
-        <div className="relative mb-3 sm:mb-5">
+        <div className="relative mb-3 sm:mb-4">
           <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-            <Search size={16} className="sm:w-[18px] sm:h-[18px] text-slate-400" />
+            <Search size={14} className="sm:w-[18px] sm:h-[18px] text-slate-400" />
           </div>
           <input
             type="text"
-            className="w-full pl-10 pr-3.5 py-2.5 sm:py-3.5 bg-white border border-slate-200 rounded-xl text-[13px] sm:text-[14px] text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder:text-slate-400 shadow-xs font-medium"
+            className="w-full pl-9 pr-3 py-2 sm:py-3 bg-white  rounded-xl text-[12px] sm:text-[13px] text-slate-800 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all placeholder:text-slate-400  font-medium"
             placeholder="ស្វែងរកឈ្មោះសិស្ស..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -1785,7 +1748,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
           <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               type="button"
-              className="text-[11px] sm:text-[13px] font-bold text-indigo-600 hover:text-indigo-700 bg-white hover:bg-indigo-50 disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg transition-colors flex items-center gap-1 sm:gap-1.5 border border-slate-200 shadow-2xs cursor-pointer"
+              className="text-[11px] sm:text-[13px] font-bold text-indigo-600 hover:text-indigo-700  disabled:opacity-50 disabled:cursor-not-allowed px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg transition-colors flex items-center gap-1 sm:gap-1.5  cursor-pointer"
               onClick={handleRefreshStudents}
               disabled={isRefreshingStudents || !networkOnline}
               title="ចុចដើម្បីទាញទិន្នន័យសិស្សថ្មីៗពី Cloud"
@@ -1795,7 +1758,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
             </button>
             <button
               type="button"
-              className="text-[11px] sm:text-[13px] font-bold text-accent hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg transition-colors flex items-center gap-1 sm:gap-1.5 border border-indigo-100 cursor-pointer"
+              className="text-[11px] sm:text-[13px] font-bold text-accent hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg transition-colors flex items-center gap-1 sm:gap-1.5 cursor-pointer"
               onClick={resetAll}
               disabled={isActionDisabled}
               title={isLockedAfterSubmit ? "បានចាក់សោរ! សូមចុច «កែប្រែ» ជាមុនសិនទើបអាចកំណត់ឡើងវិញបាន" : isOffDisabled ? `សាលាកំពុងឈប់សម្រាក (${schoolStatus.badgeText})` : isLibreDisabled ? "មិនអាចកំណត់វត្តមានក្នុងម៉ោងទំនេរទេ" : "កំណត់សិស្សទាំងអស់ជាមានវត្តមានវិញ"}
@@ -1829,14 +1792,14 @@ export default function Attendance({ session, onNavigate, onLogout }) {
               const isFullDay = Boolean(fullDayState[s.id])
 
               let cardBg = 'bg-white border-transparent'
-              if (isAbsent) cardBg = 'bg-red-50/50 border-red-200'
-              if (isLeave) cardBg = 'bg-amber-50/50 border-amber-200'
-              if (isDropout) cardBg = 'bg-slate-100/90 border-slate-300'
+              if (isAbsent) cardBg = 'bg-red-50/50 border-red-50'
+              if (isLeave) cardBg = 'bg-amber-50/50 border-amber-50'
+              if (isDropout) cardBg = 'bg-slate-100/90 border-slate-50'
 
               return (
                 <div
                   key={s.id}
-                  className={`relative overflow-hidden rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col gap-2 sm:gap-3 transition-all duration-300 select-none border sm:border-2 shadow-xs ${cardBg}`}
+                  className={`relative overflow-hidden rounded-xl sm:rounded-2xl p-3 sm:p-4 flex flex-col gap-2 sm:gap-3 transition-all duration-300 select-none border sm:border-2  ${cardBg}`}
                 >
                   {/* Decorative number */}
                   <div className={`absolute right-1 bottom-0 text-[50px] sm:text-[60px] font-black opacity-[0.03] pointer-events-none transition-colors duration-300 select-none leading-none
@@ -1868,8 +1831,8 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                         <span className="text-[11px] sm:text-[13px] text-slate-500 font-medium flex items-center gap-1.5 mt-0.5">
                           <User size={11} className={`sm:w-3 sm:h-3 ${s.gender === 'F' ? "text-pink-400" : "text-blue-400"}`} />
                           <span>{s.gender === 'F' ? 'ស្រី' : 'ប្រុស'}</span>
-                          <span className="text-slate-300">•</span>
-                          <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">#{s.id}</span>
+                          {/* <span className="text-slate-300">•</span> */}
+                          {/* <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">#{s.id}</span> */}
                         </span>
                       </div>
                     </div>
@@ -1881,7 +1844,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                       type="button"
                       disabled={isActionDisabled}
                       onClick={() => handleStatusClick(s, 'PRESENT')}
-                      className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${!isAbsent && !isLeave && !isDropout
+                      className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl transition-all duration-200 ${!isAbsent && !isLeave && !isDropout
                           ? isActionDisabled
                             ? 'bg-success/15 border-success text-success shadow-xs cursor-default'
                             : 'bg-success/10 border-success text-success shadow-xs cursor-pointer'
@@ -1899,7 +1862,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                       type="button"
                       disabled={isActionDisabled}
                       onClick={() => handleStatusClick(s, 'ABSENT')}
-                      className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${isAbsent
+                      className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl  transition-all duration-200 ${isAbsent
                           ? isActionDisabled
                             ? 'bg-danger/15 border-danger text-danger shadow-xs cursor-default'
                             : 'bg-danger/10 border-danger text-danger shadow-xs cursor-pointer'
@@ -1917,7 +1880,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                       type="button"
                       disabled={isActionDisabled}
                       onClick={() => handleStatusClick(s, 'LEAVE')}
-                      className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${isLeave
+                      className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl  transition-all duration-200 ${isLeave
                           ? isActionDisabled
                             ? 'bg-amber-500/15 border-amber-500 text-amber-600 shadow-xs cursor-default'
                             : 'bg-amber-500/10 border-amber-500 text-amber-600 shadow-xs cursor-pointer'
@@ -1935,7 +1898,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                       type="button"
                       disabled={isActionDisabled}
                       onClick={() => handleStatusClick(s, 'DROPOUT')}
-                      className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl border transition-all duration-200 ${isDropout
+                      className={`flex flex-col items-center justify-center py-1.5 sm:py-2 rounded-lg sm:rounded-xl  transition-all duration-200 ${isDropout
                           ? isActionDisabled
                             ? 'bg-slate-800 border-slate-900 text-white shadow-xs cursor-default'
                             : 'bg-slate-800 border-slate-900 text-white shadow-xs cursor-pointer'
@@ -1955,7 +1918,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                     <div className="mt-1 sm:mt-1.5 py-1 px-2 bg-slate-200/80 rounded-lg text-[10.5px] sm:text-[11.5px] text-slate-700 font-medium flex items-center justify-between gap-1 animate-in fade-in duration-200">
                       <div className="flex items-center gap-1 min-w-0">
                         <Info size={12} className="text-slate-500 shrink-0" />
-                        <span className="truncate">ឈប់រៀនគ្រប់ម៉ោង (មិនលោតវត្តមាន)</span>
+                        <span className="truncate">ឈប់រៀនគ្រប់ម៉ោង</span>
                       </div>
                       <button
                         type="button"
@@ -1972,7 +1935,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
 
                   {/* Input មូលហេតុសុំច្បាប់ when student is on LEAVE */}
                   {isLeave && (
-                    <div className="mt-1.5 sm:mt-2.5 pt-1.5 sm:pt-2.5 border-t border-amber-200/70 flex flex-col gap-1 sm:gap-1.5 animate-in fade-in duration-200 relative z-10">
+                    <div className="mt-1.5 sm:mt-2.5 pt-1.5 sm:pt-2.5  flex flex-col gap-1 sm:gap-1.5 animate-in fade-in duration-200 relative z-10">
                       <div className="flex items-center justify-between flex-wrap gap-1">
                         <label className="text-[10px] sm:text-[11px] font-bold text-amber-900 flex items-center gap-1">
                           <FileText size={11} className="text-amber-600" />
@@ -1987,7 +1950,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                                 key={preset}
                                 type="button"
                                 onClick={() => setLeaveReason(s.id, preset)}
-                                className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded transition-all cursor-pointer border ${leaveReasons[s.id] === preset
+                                className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded transition-all cursor-pointer  ${leaveReasons[s.id] === preset
                                     ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
                                     : 'bg-white/90 hover:bg-amber-100 text-amber-800 border-amber-200'
                                   }`}
@@ -2006,9 +1969,9 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                         value={leaveReasons[s.id] || ''}
                         onChange={(e) => setLeaveReason(s.id, e.target.value)}
                         placeholder={isActionDisabled ? (leaveReasons[s.id] || 'មានច្បាប់ត្រឹមត្រូវ') : "វាយបញ្ចូលមូលហេតុ (ឧ. ឈឺ, គ្រុនក្តៅ, ធុរៈ...)"}
-                        className={`w-full px-2 sm:px-2.5 py-1 text-[11px] sm:text-[12px] rounded-md sm:rounded-lg font-medium transition-all shadow-xs ${isActionDisabled
-                            ? 'bg-amber-50/60 border border-amber-200 text-amber-900 cursor-not-allowed'
-                            : 'bg-white border border-amber-300 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400'
+                        className={`w-full px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] rounded-md sm:rounded-lg font-medium transition-all shadow-xs ${isActionDisabled
+                            ? 'bg-amber-50/60  text-amber-900 cursor-not-allowed'
+                            : 'bg-white  text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-300/30 focus:border-amber-200'
                           }`}
                       />
                     </div>
@@ -2155,7 +2118,7 @@ export default function Attendance({ session, onNavigate, onLogout }) {
                     <ArrowLeftRight size={20} />
                   </div>
                   <div>
-                    <h3 className="text-[17px] font-extrabold text-slate-800 leading-tight">ប្តូរម៉ោង / គ្រូជំនួស</h3>
+                    <h3 className="text-[17px] font-extrabold text-slate-800 leading-tight">ប្តូរម៉ោង</h3>
                     <p className="text-[12px] text-slate-400 font-medium mt-0.5">
                       {periodInfo.periodLabel || `ម៉ោងទី ${periodInfo.period}`} ({periodInfo.startTime} - {periodInfo.endTime}) • ថ្នាក់ {periodInfo.className}
                     </p>

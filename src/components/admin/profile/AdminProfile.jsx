@@ -21,6 +21,7 @@ import {
   Sparkles
 } from 'lucide-react'
 import { api, loadSession, saveSession } from '../../../utils/api'
+import { formatRoleLabel } from '../../../utils/accessControl'
 
 // Helper function to compress images to a high-quality lightweight Base64 string (~40-60KB)
 const compressImage = (file, maxWidth = 512, maxHeight = 512, quality = 0.85) => {
@@ -85,7 +86,7 @@ export default function AdminProfile({ session, onUpdateSession }) {
       username: active.username || 'admin',
       email: active.email || 'admin@angroka.edu.kh',
       phone: active.phone || '',
-      role: active.role === 'admin' ? 'អ្នកគ្រប់គ្រងប្រព័ន្ធ (Super Admin)' : (active.role || 'អ្នកគ្រប់គ្រង'),
+      role: active.role === 'admin' ? 'អ្នកគ្រប់គ្រងប្រព័ន្ធ (Super Admin)' : formatRoleLabel(active.role),
       avatar: active.avatar || null,
       lastLogin: active.lastLogin || '',
       newPassword: '',
@@ -200,6 +201,7 @@ export default function AdminProfile({ session, onUpdateSession }) {
       // Find existing user in DB
       const existingUser = allUsersList.find(u => u.id === targetId || (u.username || '').toLowerCase() === profile.username.toLowerCase())
 
+      const targetRole = existingUser?.role || active.role || 'admin'
       const userToSave = {
         id: targetId,
         name: profile.name.trim(),
@@ -207,7 +209,8 @@ export default function AdminProfile({ session, onUpdateSession }) {
         email: profile.email.trim(),
         phone: profile.phone.trim(),
         avatar: profile.avatar || null,
-        role: existingUser?.role || active.role || 'admin',
+        role: targetRole,
+        class: existingUser?.class || (targetRole === 'admin' ? 'ALL' : (active.className || '-')),
         status: existingUser?.status || 'active',
         ...(profile.newPassword ? { password: profile.newPassword } : (existingUser?.password ? { password: existingUser.password } : {})),
         lastModified: new Date().toISOString()

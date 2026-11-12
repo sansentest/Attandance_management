@@ -6,6 +6,7 @@
  */
 
 import { getCachedSchoolName } from '../../../../utils/api.js';
+import { formatRoleLabel } from '../../../../utils/accessControl.js';
 import { getKhmerLunarDateString } from '../../../../utils/khmerDate.js';
 
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ';
@@ -121,7 +122,7 @@ export async function exportUsersExcel({
   const headers = ['ល.រ', 'ឈ្មោះអ្នកប្រើប្រាស់', 'ឈ្មោះគណនី (Username)', 'តួនាទី', 'ថ្នាក់បន្ទុក', 'ចូលចុងក្រោយ', 'ស្ថានភាព'];
 
   const records = users.map((u, idx) => {
-    const roleStr = u.role === 'admin' ? 'អ្នកគ្រប់គ្រង (Admin)' : 'អ្នកត្រួតពិនិត្យ (Monitor)';
+    const roleStr = formatRoleLabel(u.role);
     const statusStr = u.status === 'active' || !u.status ? 'ដំណើរការ' : 'ផ្អាក';
     const classStr = u.class && u.class !== '-' ? str(u.class) : '-';
     const loginStr = u.lastLogin ? str(u.lastLogin) : 'មិនទាន់ចូលប្រើ';

@@ -13,6 +13,8 @@
  *   • Background graphics = បើក (ឲ្យពណ៌ផ្ទៃក្បាលតារាងចេញ)
  */
 
+import { buildSummarySubtitleParts, getExportClassLabel, getExportMonthSuffix } from '../../../../utils/dateFilters'
+
 // ───────────── Config (ប្តូរបានតាមតម្រូវការ) ─────────────
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ'
 const DEFAULT_ACADEMIC_YEAR = '២០២៥ - ២០២៦'
@@ -244,6 +246,7 @@ function printDocument({ title, body }) {
 export function exportAttendanceSummaryPdf({
   filtered = [],
   filterClass = 'ALL',
+  filterMonth = 'ALL',
   schoolName = '',
   getStatusInfo,
   department = DEFAULT_DEPARTMENT,
@@ -252,13 +255,15 @@ export function exportAttendanceSummaryPdf({
   const rows = Array.isArray(filtered) ? filtered : []
   const hoursOf = (d) => toNum(d.totalHours !== undefined ? d.totalHours : d.totalSessions)
   const sum = (fn) => round2(rows.reduce((s, d) => s + fn(d), 0))
+  const monthSuffix = getExportMonthSuffix(filterMonth)
+  const reportTitle = `របាយការណ៍បូកសរុបអវត្តមានសិស្ស${monthSuffix}`
 
-  const subtitle = [
-    `ឆ្នាំសិក្សា ${esc(academicYear)}`,
-    filterClass !== 'ALL' ? `ថ្នាក់ទី ${esc(filterClass)}` : null,
-    `សរុបចំនួនសិស្ស៖ ${kh(rows.length)} នាក់`
-  ]
-    .filter(Boolean)
+  const subtitle = buildSummarySubtitleParts({
+    academicYear,
+    studentCountText: kh(rows.length),
+    filterClass
+  })
+    .map(esc)
     .join(' &nbsp;|&nbsp; ')
 
   const bodyRows = rows
@@ -294,7 +299,7 @@ export function exportAttendanceSummaryPdf({
   const body = `
   ${letterhead({ department, schoolName })}
 
-  <div class="doc-title muol">របាយការណ៍បូកសរុបអវត្តមានសិស្ស</div>
+  <div class="doc-title muol">${esc(reportTitle)}</div>
   <div class="doc-subtitle">${subtitle}</div>
 
   <table class="data-table">
@@ -327,7 +332,7 @@ export function exportAttendanceSummaryPdf({
   ${signatureBlock([approver('នាយកសាលា'), preparer(schoolName)], '1fr 7.6cm')}`
 
   printDocument({
-    title: `របាយការណ៍បូកសរុបអវត្តមានសិស្ស${filterClass !== 'ALL' ? ` ថ្នាក់ទី ${filterClass}` : ''} - ${schoolName}`,
+    title: `${reportTitle}${filterClass !== 'ALL' ? ` ${getExportClassLabel(filterClass)}` : ''} - ${schoolName}`,
     body
   })
 }

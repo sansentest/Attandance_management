@@ -1,6 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { LayoutDashboard, FileText, Settings, LogOut, Menu, X, Bell, User, ChevronDown, Users, Bot, BookOpen, Mail, ShieldAlert, Database, Edit, GraduationCap, Calendar, School } from 'lucide-react'
 import { api, getCachedSchoolSettings } from '../../utils/api'
+import {
+  isSuperAdmin,
+  isTeacher,
+  getAssignedClass,
+  isPageAllowedForSession,
+  formatRoleLabel
+} from '../../utils/accessControl'
 import AdminDashboard from './dashboard/AdminDashboard'
 import AdminStudentAttendance from './attendance/AdminStudentAttendance'
 import AdminStudentTracking from './tracking/AdminStudentTracking'
@@ -71,12 +78,23 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
     onLogout()
   }
 
+  const superAdmin = isSuperAdmin(session)
+  const teacherMode = isTeacher(session)
+  const teacherClass = teacherMode ? getAssignedClass(session) : ''
+
+  useEffect(() => {
+    if (!isPageAllowedForSession(session, activePage)) {
+      setActivePage('dashboard')
+    }
+  }, [activePage, session])
+
   const renderPage = () => {
-    switch(activePage) {
-      case 'dashboard': return <AdminDashboard />
-      case 'student_attendance': return <AdminStudentAttendance />
-      case 'student_tracking': return <AdminStudentTracking onNavigate={setActivePage} />
-      case 'invitation-letters': return <AdminInvitationLetters />
+    const safePage = isPageAllowedForSession(session, activePage) ? activePage : 'dashboard'
+    switch (safePage) {
+      case 'dashboard': return <AdminDashboard session={session} />
+      case 'student_attendance': return <AdminStudentAttendance session={session} />
+      case 'student_tracking': return <AdminStudentTracking onNavigate={setActivePage} session={session} />
+      case 'invitation-letters': return <AdminInvitationLetters session={session} />
       case 'students': return <AdminStudents onNavigate={setActivePage} />
       case 'classes': return <AdminAcademic initialTab="classes" />
       case 'subjects': return <AdminAcademic initialTab="subjects" />
@@ -86,11 +104,11 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
       case 'telegram': return <AdminTelegramBot />
       case 'settings': return <AdminSettings initialTab={settingsInitialTab} />
       case 'profile': return <AdminProfile session={session} onUpdateSession={onUpdateSession} />
-      default: return <AdminDashboard />
+      default: return <AdminDashboard session={session} />
     }
   }
 
-  const navItems = [
+  const allNavItems = [
     { id: 'dashboard', label: 'ផ្ទាំងគ្រប់គ្រងទូទៅ', icon: LayoutDashboard },
     { 
       id: 'attendance_group', 
@@ -116,6 +134,12 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
     { id: 'telegram', label: 'Telegram Bot', icon: Bot },
     { id: 'settings', label: 'ការកំណត់', icon: Settings },
   ]
+
+  const navItems = superAdmin
+    ? allNavItems
+    : teacherMode
+      ? allNavItems.filter(item => item.id === 'dashboard' || item.id === 'attendance_group')
+      : []
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] selection:bg-indigo-100 selection:text-indigo-900">
@@ -384,18 +408,20 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
           
           <div className="flex items-center gap-2 sm:gap-4 relative" onClick={e => e.stopPropagation()}>
             
-            {/* Backup Button */}
-            <button 
-              onClick={() => {
-                setSettingsInitialTab('backup');
-                setActivePage('settings');
-              }}
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:border-emerald-300 transition-all font-bold text-[12px] shadow-sm hover:shadow cursor-pointer"
-              title="ការបម្រុងទុក និងស្ដារទិន្នន័យ (Cloud Backup & Restore)"
-            >
-              <Database size={14} strokeWidth={2.5} />
-              <span>Backup</span>
-            </button>
+            {/* Backup Button (Super Admin Only) */}
+            {superAdmin && (
+              <button 
+                onClick={() => {
+                  setSettingsInitialTab('backup');
+                  setActivePage('settings');
+                }}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:border-emerald-300 transition-all font-bold text-[12px] shadow-sm hover:shadow cursor-pointer"
+                title="ការបម្រុងទុក និងស្ដារទិន្នន័យ (Cloud Backup & Restore)"
+              >
+                <Database size={14} strokeWidth={2.5} />
+                <span>Backup</span>
+              </button>
+            )}
 
             {/* Notification Bell with Pulse Animation */}
             <button className="relative p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-all duration-300 hover:scale-110 active:scale-95">
@@ -426,7 +452,9 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
                     {session?.fullName || session?.username || 'Admin'}
                   </span>
                   <span className="text-[10px] font-medium text-indigo-500 mt-1">
-                    {session?.role === 'admin' ? 'អ្នកគ្រប់គ្រង' : (session?.role || 'អ្នកប្រើប្រាស់')}
+                    {teacherMode
+                      ? `${formatRoleLabel('teacher', 'short')}${teacherClass ? ` • ថ្នាក់ ${teacherClass}` : ' • មិនទាន់មានថ្នាក់'}`
+                      : formatRoleLabel(session?.role, 'short')}
                   </span>
                 </div>
                 <ChevronDown size={16} className={`text-slate-400 transition-all ml-1 lg:ml-2 duration-300 ${profileDropdownOpen ? 'rotate-180 text-indigo-500' : 'group-hover:text-indigo-500 group-hover:translate-y-0.5'}`} />
@@ -440,19 +468,23 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
                       {session?.fullName || session?.username || 'Admin User'}
                     </span>
                     <span className="text-[11px] font-bold text-slate-400 truncate">
-                      {session?.email || (session?.username ? `${session.username}@angroka.edu.kh` : 'admin@angroka.edu.kh')}
+                      {teacherMode && teacherClass
+                        ? `គ្រូបន្ទុកថ្នាក់ ${teacherClass}`
+                        : (session?.email || (session?.username ? `${session.username}@angroka.edu.kh` : 'admin@angroka.edu.kh'))}
                     </span>
                   </div>
                   <div className="p-2 flex flex-col gap-1">
-                    <button 
-                      onClick={() => { setActivePage('profile'); setProfileDropdownOpen(false); }}
-                      className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-50 text-slate-600 hover:text-indigo-600 font-bold text-[13px] transition-colors"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
-                        <Edit size={14} />
-                      </div>
-                      កែប្រែប្រវត្តិរូប
-                    </button>
+                    {superAdmin && (
+                      <button 
+                        onClick={() => { setActivePage('profile'); setProfileDropdownOpen(false); }}
+                        className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-slate-50 text-slate-600 hover:text-indigo-600 font-bold text-[13px] transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                          <Edit size={14} />
+                        </div>
+                        កែប្រែប្រវត្តិរូប
+                      </button>
+                    )}
                     <button 
                       onClick={handleLogout}
                       className="flex items-center gap-3 w-full p-2.5 rounded-xl hover:bg-rose-50 text-slate-600 hover:text-rose-600 font-bold text-[13px] transition-colors"

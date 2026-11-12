@@ -6,6 +6,7 @@
  */
 
 import { getCachedSchoolName } from '../../../../utils/api.js';
+import { formatRoleLabel } from '../../../../utils/accessControl.js';
 import { getKhmerLunarDateString } from '../../../../utils/khmerDate.js';
 
 const esc = (v) =>
@@ -193,7 +194,7 @@ export function exportUsersWord({
   const subtitleText = `ឆ្នាំសិក្សា ${academicYear} | សរុបចំនួន៖ ${toKhmerNum(total)} នាក់`;
 
   const rowsHtml = users.map((u, idx) => {
-    const roleStr = u.role === 'admin' ? 'អ្នកគ្រប់គ្រង (Admin)' : 'អ្នកត្រួតពិនិត្យ (Monitor)';
+    const roleStr = formatRoleLabel(u.role);
     const statusStr = u.status === 'active' || !u.status ? 'ដំណើរការ' : 'ផ្អាក';
     const classStr = u.class && u.class !== '-' ? toKhmerNum(u.class) : '-';
     const loginStr = u.lastLogin ? toKhmerNum(u.lastLogin) : 'មិនទាន់ចូលប្រើ';
@@ -204,9 +205,9 @@ export function exportUsersWord({
         <td class="text-left" style="font-weight: bold; padding-left: 8px;">${esc(u.name || '')}</td>
         <td class="text-left" style="padding-left: 8px;">${esc(u.username || '')}</td>
         <td class="text-center">${esc(roleStr)}</td>
-        <td class="text-center" style="font-weight: bold;">${classStr}</td>
-        <td class="text-center">${loginStr}</td>
-        <td class="text-center">${statusStr}</td>
+        <td class="text-center" style="font-weight: bold;">${esc(classStr)}</td>
+        <td class="text-center">${esc(loginStr)}</td>
+        <td class="text-center">${esc(statusStr)}</td>
       </tr>
     `;
   }).join('');

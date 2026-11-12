@@ -7,6 +7,8 @@
  *  2. exportTrackingDetailWord  – ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស
  */
 
+import { buildSummarySubtitleParts, getExportClassLabel, getExportMonthSuffix } from '../../../../utils/dateFilters'
+
 // ───────────── Config (ប្តូរបានតាមតម្រូវការ) ─────────────
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ'
 const DEFAULT_ACADEMIC_YEAR = '២០២៦ - ២០២៧'
@@ -234,6 +236,7 @@ function triggerWordDownload(htmlContent, filename) {
 export function exportTrackingSummaryWord({
   filteredData = [],
   filterClass = 'ALL',
+  filterMonth = 'ALL',
   schoolName = '',
   totalWarning = 0,
   totalCritical = 0,
@@ -245,13 +248,15 @@ export function exportTrackingSummaryWord({
   const hoursOf = (d) => toNum(d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0)))
   const sum = (fn) => round2(rows.reduce((s, d) => s + fn(d), 0))
   const totalWithAbsence = rows.filter((s) => (Number(s.absent) || 0) > 0 || (Number(s.leave) || 0) > 0).length
+  const monthSuffix = getExportMonthSuffix(filterMonth)
+  const reportTitle = `តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស${monthSuffix}`
 
-  const subtitle = [
-    `ឆ្នាំសិក្សា ${esc(academicYear)}`,
-    filterClass !== 'ALL' ? `ថ្នាក់ទី ${esc(filterClass)}` : null,
-    `សរុបចំនួនសិស្ស៖ ${kh(rows.length)} នាក់`
-  ]
-    .filter(Boolean)
+  const subtitle = buildSummarySubtitleParts({
+    academicYear,
+    studentCountText: kh(rows.length),
+    filterClass
+  })
+    .map(esc)
     .join(' &nbsp;|&nbsp; ')
 
   const bodyRows = rows
@@ -288,7 +293,7 @@ export function exportTrackingSummaryWord({
   const body = `
   ${letterhead({ department, schoolName })}
 
-  <div class="doc-title muol">តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស</div>
+  <div class="doc-title muol">${esc(reportTitle)}</div>
   <div class="doc-subtitle">${subtitle}</div>
 
   <table class="data-table strip" border="1" cellspacing="0" cellpadding="4" style="width: 100%; border-collapse: collapse; border: 0.75pt solid #000000; margin-bottom: 14px;">
@@ -351,8 +356,9 @@ export function exportTrackingSummaryWord({
     </tr>
   </table>`
 
-  const docTitle = `តារាងតាមដានវិន័យសិស្ស${filterClass !== 'ALL' ? ` ថ្នាក់ទី ${filterClass}` : ''} - ${schoolName}`
-  const filename = `តារាងតាមដានវិន័យសិស្ស${filterClass !== 'ALL' ? `_ថ្នាក់ទី_${filterClass}` : ''}_${new Date().toISOString().slice(0, 10)}.doc`
+  const classLabel = filterClass !== 'ALL' ? getExportClassLabel(filterClass) : ''
+  const docTitle = `${reportTitle}${classLabel ? ` ${classLabel}` : ''} - ${schoolName}`
+  const filename = `${reportTitle}${classLabel ? `_${classLabel.replace(/\s+/g, '_')}` : ''}_${new Date().toISOString().slice(0, 10)}.doc`
   const htmlContent = buildWordDocument({ title: docTitle, body })
   triggerWordDownload(htmlContent, filename)
 }

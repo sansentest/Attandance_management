@@ -6,6 +6,8 @@
  *  2. exportTrackingDetailPdf  – ព្រឹត្តិបត្រតាមដានប្រវត្តិអវត្តមានសិស្ស
  */
 
+import { buildSummarySubtitleParts, getExportClassLabel, getExportMonthSuffix } from '../../../../utils/dateFilters'
+
 // ───────────── Config (ប្តូរបានតាមតម្រូវការ) ─────────────
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ'
 const DEFAULT_ACADEMIC_YEAR = '២០២៥ - ២០២៦'
@@ -197,6 +199,7 @@ function printDocument({ title, body }) {
 export function exportTrackingSummaryPdf({
   filteredData = [],
   filterClass = 'ALL',
+  filterMonth = 'ALL',
   schoolName = '',
   totalWarning = 0,
   totalCritical = 0,
@@ -208,13 +211,15 @@ export function exportTrackingSummaryPdf({
   const hoursOf = (d) => toNum(d.totalHours !== undefined ? d.totalHours : ((d.absentHours || d.absent || 0) + (d.leaveHours || d.leave || 0)))
   const sum = (fn) => round2(rows.reduce((s, d) => s + fn(d), 0))
   const totalWithAbsence = rows.filter((s) => (Number(s.absent) || 0) > 0 || (Number(s.leave) || 0) > 0).length
+  const monthSuffix = getExportMonthSuffix(filterMonth)
+  const reportTitle = `តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស${monthSuffix}`
 
-  const subtitle = [
-    `ឆ្នាំសិក្សា ${esc(academicYear)}`,
-    filterClass !== 'ALL' ? `ថ្នាក់ទី ${esc(filterClass)}` : null,
-    `សរុបចំនួនសិស្ស៖ ${kh(rows.length)} នាក់`
-  ]
-    .filter(Boolean)
+  const subtitle = buildSummarySubtitleParts({
+    academicYear,
+    studentCountText: kh(rows.length),
+    filterClass
+  })
+    .map(esc)
     .join(' &nbsp;|&nbsp; ')
 
   const bodyRows = rows
@@ -251,7 +256,7 @@ export function exportTrackingSummaryPdf({
   const body = `
   ${letterhead({ department, schoolName })}
 
-  <div class="doc-title muol">តារាងតាមដានវិន័យ និងអវត្តមានសិស្ស</div>
+  <div class="doc-title muol">${esc(reportTitle)}</div>
   <div class="doc-subtitle">${subtitle}</div>
 
   <table class="data-table strip">
@@ -303,7 +308,7 @@ export function exportTrackingSummaryPdf({
   ${signatureBlock([approver('នាយកសាលា'), preparer(schoolName)], '1fr 7.6cm')}`
 
   printDocument({
-    title: `តារាងតាមដានវិន័យសិស្ស${filterClass !== 'ALL' ? ` ថ្នាក់ទី ${filterClass}` : ''} - ${schoolName}`,
+    title: `${reportTitle}${filterClass !== 'ALL' ? ` ${getExportClassLabel(filterClass)}` : ''} - ${schoolName}`,
     body
   })
 }

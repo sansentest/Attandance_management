@@ -1,23 +1,79 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   Search, AlertTriangle, Settings, PhoneCall, ShieldAlert, CheckCircle2,
-  User, ChevronLeft, ChevronRight, X, Save, Users, Calendar, Download,
+  User, X, Save, Users, Calendar, Download,
   ChevronDown, FileText, FileCode, FileImage, Mail, Phone, Eye, RefreshCw, Clock
 } from 'lucide-react'
 import { SearchableDropdown } from '../attendance/AdminStudentAttendance'
+import TablePagination from '../../common/TablePagination'
+import { MONTH_FILTER_OPTIONS, matchesMonthFilter } from '../../../utils/dateFilters'
+
+/**
+ * Recompute absent/leave day and hour counts for a slice of attendance records.
+ */
+function computeTrackingCounts(records = []) {
+  const dateMap = new Map()
+  let absentHours = 0
+  let leaveHours = 0
+
+  records.forEach(r => {
+    const hrs = Number(r.hours) || Number(r.periods) || 1
+    if (r.status === 'LEAVE') {
+      leaveHours += hrs
+    } else {
+      absentHours += hrs
+    }
+    const d = r.date || 'unknown'
+    if (!dateMap.has(d)) dateMap.set(d, [])
+    dateMap.get(d).push(r)
+  })
+
+  let absentDays = 0
+  let leaveDays = 0
+  dateMap.forEach(dayRecs => {
+    const hasUnexcused = dayRecs.some(r => r.status === 'ABSENT' || !r.status || r.status === 'LATE' || r.status === 'DROPOUT')
+    const hasLeave = dayRecs.some(r => r.status === 'LEAVE')
+    if (hasUnexcused) {
+      absentDays += 1
+    } else if (hasLeave) {
+      leaveDays += 1
+    }
+  })
+
+  return {
+    absent: absentDays,
+    leave: leaveDays,
+    absentHours,
+    leaveHours,
+    totalHours: absentHours + leaveHours
+  }
+}
 import AdminStudentTrackingDetail from './AdminStudentTrackingDetail'
 import { api, getCachedSchoolName } from '../../../utils/api'
+import {
+  isSuperAdmin,
+  isTeacher,
+  getAssignedClass,
+  matchesAssignedClass,
+  filterByTeacherScope
+} from '../../../utils/accessControl'
 import { exportTrackingSummaryExcel } from './exports/exportTrackingExcel'
 import { exportTrackingSummaryWord } from './exports/exportTrackingWord'
 import { exportTrackingSummaryPdf } from './exports/exportTrackingPdf'
 
-export default function AdminStudentTracking({ onNavigate }) {
+export default function AdminStudentTracking({ onNavigate, session }) {
+  const superAdmin = isSuperAdmin(session)
+  const teacherMode = isTeacher(session)
+  const assignedClass = teacherMode ? getAssignedClass(session) : ''
+
   const [data, setData] = useState(() => {
     try {
       const cached = localStorage.getItem('school_discipline_cache')
       if (cached) {
         const parsed = JSON.parse(cached)
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return filterByTeacherScope(parsed, session)
+        }
       }
     } catch (e) {}
     return []
@@ -27,14 +83,15 @@ export default function AdminStudentTracking({ onNavigate }) {
       const cached = localStorage.getItem('school_discipline_cache')
       if (cached) {
         const parsed = JSON.parse(cached)
-        if (Array.isArray(parsed) && parsed.length > 0) return false
+        if (Array.isArray(parsed) && parsed.length > 0 && !teacherMode) return false
       }
     } catch (e) {}
     return true
   })
   const [searchQuery, setSearchQuery] = useState('')
-  const [filterClass, setFilterClass] = useState('ALL')
+  const [filterClass, setFilterClass] = useState(assignedClass || 'ALL')
   const [filterStatus, setFilterStatus] = useState('HAS_ABSENCE')
+  const [filterMonth, setFilterMonth] = useState('ALL')
   const [currentPage, setCurrentPage] = useState(1)
 
   // Selected Student for Detail View
@@ -92,7 +149,7 @@ export default function AdminStudentTracking({ onNavigate }) {
     try {
       const res = await api('discipline.getTracking', { force: true })
       if (res && res.success && Array.isArray(res.data)) {
-        setData(res.data)
+        setData(filterByTeacherScope(res.data, session))
       }
     } catch (err) {
       console.error('Failed to fetch discipline tracking data:', err)
@@ -104,7 +161,7 @@ export default function AdminStudentTracking({ onNavigate }) {
 
   useEffect(() => {
     fetchTrackingData(data.length === 0)
-  }, [])
+  }, [assignedClass])
 
   const [academicClasses, setAcademicClasses] = useState(() => {
     try {
@@ -125,15 +182,22 @@ export default function AdminStudentTracking({ onNavigate }) {
     }).catch(() => {})
   }, [])
 
+  const scopedData = filterByTeacherScope(data, session)
+
   const availableClasses = Array.from(new Set([
     ...academicClasses,
-    ...data.map(d => d.class).filter(Boolean)
+    ...scopedData.map(d => d.class).filter(Boolean)
   ])).sort()
 
   const classOptions = [
     { id: 'ALL', label: 'គ្រប់ថ្នាក់' },
     ...availableClasses.map(c => ({ id: c, label: `ថ្នាក់ ${c}` }))
   ]
+
+  const effectiveFilterClass = teacherMode ? (assignedClass || '__NONE__') : filterClass
+  const effectiveClassOptions = teacherMode
+    ? [{ id: assignedClass || '__NONE__', label: assignedClass ? `ថ្នាក់ ${assignedClass}` : 'មិនទាន់មានថ្នាក់' }]
+    : classOptions
 
   const statusFilterOptions = [
     { id: 'HAS_ABSENCE', label: 'សិស្សមានអវត្តមាន (លំនាំដើម)' },
@@ -171,10 +235,24 @@ export default function AdminStudentTracking({ onNavigate }) {
     return 'NORMAL'
   }
 
+  // Scope counts to selected month when a specific month is chosen
+  const monthScopedData = filterMonth === 'ALL'
+    ? scopedData
+    : scopedData.map(d => {
+        const sourceRecords = Array.isArray(d.cycleRecords)
+          ? d.cycleRecords
+          : (Array.isArray(d.records) ? d.records : [])
+        const monthRecords = sourceRecords.filter(r => matchesMonthFilter(r.date, filterMonth))
+        return {
+          ...d,
+          ...computeTrackingCounts(monthRecords)
+        }
+      })
+
   // Filtering
-  let filteredData = data
-  if (filterClass !== 'ALL') {
-    filteredData = filteredData.filter(d => d.class === filterClass)
+  let filteredData = monthScopedData
+  if (!teacherMode && effectiveFilterClass !== 'ALL') {
+    filteredData = filteredData.filter(d => matchesAssignedClass(d.class, effectiveFilterClass))
   }
   if (filterStatus === 'HAS_ABSENCE') {
     filteredData = filteredData.filter(d => (Number(d.absent) || 0) > 0 || (Number(d.leave) || 0) > 0)
@@ -197,9 +275,9 @@ export default function AdminStudentTracking({ onNavigate }) {
   const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
 
   // Stats
-  const totalWithAbsence = data.filter(d => (Number(d.absent) || 0) > 0 || (Number(d.leave) || 0) > 0).length
-  const totalCritical = data.filter(d => getStudentStatus(d) === 'CRITICAL').length
-  const totalWarning = data.filter(d => getStudentStatus(d) === 'WARNING').length
+  const totalWithAbsence = monthScopedData.filter(d => (Number(d.absent) || 0) > 0 || (Number(d.leave) || 0) > 0).length
+  const totalCritical = monthScopedData.filter(d => getStudentStatus(d) === 'CRITICAL').length
+  const totalWarning = monthScopedData.filter(d => getStudentStatus(d) === 'WARNING').length
 
   const handleOpenSettings = () => {
     setTempThresholds({ ...thresholds })
@@ -217,7 +295,8 @@ export default function AdminStudentTracking({ onNavigate }) {
     const schoolName = getCachedSchoolName()
     const payload = {
       filteredData,
-      filterClass,
+      filterClass: effectiveFilterClass,
+      filterMonth,
       schoolName,
       totalWarning,
       totalCritical,
@@ -232,25 +311,31 @@ export default function AdminStudentTracking({ onNavigate }) {
     }
   }
 
-  // If a student is selected, show the detail view
+  // If a student is selected, show the detail view (preserve full student record counts & pass selected month)
   if (selectedStudent) {
-    return (
-      <AdminStudentTrackingDetail
-        student={selectedStudent}
-        onBack={() => {
-          setSelectedStudent(null)
-          fetchTrackingData()
-        }}
-        threshold={getThreshold(selectedStudent.class)}
-        status={getStudentStatus(selectedStudent)}
-        onNavigate={onNavigate}
-        onDataChanged={fetchTrackingData}
-      />
-    )
+    const fullStudent = scopedData.find(d => d.id === selectedStudent.id || d.studentId === selectedStudent.studentId)
+    if (fullStudent && (!teacherMode || matchesAssignedClass(fullStudent.class, assignedClass))) {
+      return (
+        <AdminStudentTrackingDetail
+          student={fullStudent}
+          onBack={() => {
+            setSelectedStudent(null)
+            fetchTrackingData()
+          }}
+          threshold={getThreshold(fullStudent.class)}
+          status={getStudentStatus(fullStudent)}
+          onNavigate={onNavigate}
+          onDataChanged={fetchTrackingData}
+          initialMonth={filterMonth}
+        />
+      )
+    }
   }
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full pb-10">
+
+   
 
       {/* Top Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6 w-full">
@@ -263,7 +348,7 @@ export default function AdminStudentTracking({ onNavigate }) {
             </div>
             <div className="text-[14px] font-bold text-slate-500">សិស្សទាំងអស់កំពុងតាមដាន</div>
           </div>
-          <div className="text-3xl font-black text-slate-800 relative z-10">{data.length}</div>
+          <div className="text-3xl font-black text-slate-800 relative z-10">{filterMonth === 'ALL' ? monthScopedData.length : totalWithAbsence}</div>
           <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់</div>
         </div>
 
@@ -328,15 +413,17 @@ export default function AdminStudentTracking({ onNavigate }) {
                 <span>{isRefreshing ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
               </button>
 
-              {/* Threshold Settings Button */}
-              <button
-                onClick={handleOpenSettings}
-                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow hover:-translate-y-0.5"
-                title="កំណត់កម្រិតវិន័យអវត្តមាន"
-              >
-                <Settings size={15} strokeWidth={2.5} className="text-slate-400 group-hover:text-indigo-600" />
-                <span>កំណត់វិន័យ</span>
-              </button>
+              {/* Threshold Settings Button (Super Admin Only) */}
+              {superAdmin && (
+                <button
+                  onClick={handleOpenSettings}
+                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow hover:-translate-y-0.5"
+                  title="កំណត់កម្រិតវិន័យអវត្តមាន"
+                >
+                  <Settings size={15} strokeWidth={2.5} className="text-slate-400 group-hover:text-indigo-600" />
+                  <span>កំណត់វិន័យ</span>
+                </button>
+              )}
 
               {/* Export Dropdown */}
               <div className="relative flex-1 lg:flex-none" ref={exportRef}>
@@ -379,19 +466,27 @@ export default function AdminStudentTracking({ onNavigate }) {
           </div>
 
           {/* Filters Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-[500px]">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[780px]">
             <SearchableDropdown
-              value={filterClass}
-              onChange={(v) => { setFilterClass(v); setCurrentPage(1) }}
-              options={classOptions}
+              value={effectiveFilterClass}
+              onChange={(v) => { if (!teacherMode) { setFilterClass(v); setCurrentPage(1) } }}
+              options={effectiveClassOptions}
               placeholder="ជ្រើសរើសថ្នាក់"
               icon={Users}
+              disabled={teacherMode}
             />
             <SearchableDropdown
               value={filterStatus}
               onChange={(v) => { setFilterStatus(v); setCurrentPage(1) }}
               options={statusFilterOptions}
               placeholder="ជ្រើសរើសស្ថានភាព"
+            />
+            <SearchableDropdown
+              value={filterMonth}
+              onChange={(v) => { setFilterMonth(v); setCurrentPage(1) }}
+              options={MONTH_FILTER_OPTIONS}
+              placeholder="ជ្រើសរើសខែ"
+              icon={Calendar}
             />
           </div>
         </div>
@@ -586,43 +681,17 @@ export default function AdminStudentTracking({ onNavigate }) {
         </div>
 
         {/* Pagination */}
-        <div className="p-4 sm:p-5 border-t border-slate-100 bg-white flex flex-col sm:flex-row items-center justify-between gap-4 rounded-b-2xl">
-          <span className="text-[12px] font-medium text-slate-400">
-            បង្ហាញ {filteredData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, filteredData.length)} នៃ {filteredData.length} សិស្ស
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === 1 ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-            >
-              <ChevronLeft size={18} />
-            </button>
-            {[...Array(totalPages)].map((_, i) => (
-              <button
-                key={i + 1}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`w-8 h-8 rounded-full font-bold text-[13px] flex items-center justify-center transition-all ${currentPage === i + 1 ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
-                  }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-            <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${currentPage === totalPages ? 'text-slate-300 cursor-not-allowed' : 'text-slate-600 hover:bg-slate-100'
-                }`}
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-        </div>
+        <TablePagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={filteredData.length}
+          itemsPerPage={itemsPerPage}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Threshold Settings Modal */}
-      {settingsOpen && (
+      {superAdmin && settingsOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">

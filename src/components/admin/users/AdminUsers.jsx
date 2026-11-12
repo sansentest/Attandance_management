@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
-import { Search, Plus, Shield, User, Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown, CheckCircle, RefreshCw, CheckCircle2, Loader2, Download, FileText, FileCode, FileImage, FileSpreadsheet, Link2 } from 'lucide-react'
+import { Search, Plus, Shield, User, GraduationCap, Edit, Trash2, Users, ChevronLeft, ChevronRight, ChevronsRight, ChevronDown, CheckCircle, RefreshCw, CheckCircle2, Loader2, Download, FileText, FileCode, FileImage, FileSpreadsheet, Link2 } from 'lucide-react'
 import AddUserModal from './AddUserModal'
 import EditUserModal from './EditUserModal'
 import ImportUsersModal from './ImportUsersModal'
 import SearchableDropdown from '../../common/SearchableDropdown'
 import { api, getCachedSchoolName } from '../../../utils/api'
+import { requiresAssignedClass, normalizeClassKey } from '../../../utils/accessControl'
 import { exportUsersPdf } from './exports/exportUsersPdf.js'
 import { exportUsersWord } from './exports/exportUsersWord.js'
 import { exportUsersExcel } from './exports/exportUsersExcel.js'
@@ -54,6 +55,7 @@ export default function AdminUsers() {
   const roleOptions = [
     { id: 'ALL', label: 'គ្រប់តួនាទី' },
     { id: 'admin', label: 'អ្នកគ្រប់គ្រង (Admin)' },
+    { id: 'teacher', label: 'គ្រូបន្ទុកថ្នាក់ (Teacher)' },
     { id: 'monitor', label: 'អ្នកត្រួតពិនិត្យ (Monitor)' }
   ]
   
@@ -276,6 +278,7 @@ export default function AdminUsers() {
   const totalRecords = filteredUsers.length
   const totalActive = filteredUsers.filter(u => u.status === 'active').length
   const totalAdmins = filteredUsers.filter(u => u.role === 'admin').length
+  const totalTeachers = filteredUsers.filter(u => u.role === 'teacher').length
   const totalMonitors = filteredUsers.filter(u => u.role === 'monitor').length
 
   return (
@@ -291,8 +294,8 @@ export default function AdminUsers() {
         </div>
       )}
       
-      {/* Top Stats - 4 Balanced Premium Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 w-full">
+      {/* Top Stats - 5 Balanced Premium Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 lg:gap-5 w-full">
         {/* Total Data Card */}
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
@@ -327,6 +330,18 @@ export default function AdminUsers() {
             <div className="text-[14px] font-bold text-slate-500">អ្នកគ្រប់គ្រង (Admin)</div>
           </div>
           <div className="text-3xl font-black text-rose-500 relative z-10">{totalAdmins}</div>
+        </div>
+
+        {/* Total Teachers Card */}
+        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-teal-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-24 h-24 bg-teal-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
+          <div className="flex items-center gap-3 mb-4 relative z-10">
+            <div className="w-10 h-10 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center">
+              <GraduationCap size={20} strokeWidth={2.5} />
+            </div>
+            <div className="text-[14px] font-bold text-slate-500">គ្រូបន្ទុកថ្នាក់ (Teacher)</div>
+          </div>
+          <div className="text-3xl font-black text-teal-600 relative z-10">{totalTeachers}</div>
         </div>
 
         {/* Total Monitors Card */}
@@ -505,7 +520,13 @@ export default function AdminUsers() {
                 <tr key={idx} className="hover:bg-slate-50/80 transition-colors group">
                   <td className="py-3 px-6">
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[14px] shadow-sm border ${user.role === 'admin' ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50' : 'bg-slate-50 text-slate-600 border-slate-200/50'}`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-[14px] shadow-sm border ${
+                        user.role === 'admin'
+                          ? 'bg-indigo-50 text-indigo-600 border-indigo-100/50'
+                          : user.role === 'teacher'
+                            ? 'bg-emerald-50 text-emerald-600 border-emerald-100/60'
+                            : 'bg-slate-50 text-slate-600 border-slate-200/50'
+                      }`}>
                         {user.name.charAt(0)}
                       </div>
                       <div className="flex flex-col">
@@ -519,6 +540,10 @@ export default function AdminUsers() {
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 font-bold text-[12px] border border-indigo-100/50">
                         <Shield size={13} strokeWidth={2.5}/> Admin
                       </span>
+                    ) : user.role === 'teacher' ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 text-emerald-700 font-bold text-[12px] border border-emerald-200/60">
+                        <GraduationCap size={13} strokeWidth={2.5}/> Teacher
+                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 font-bold text-[12px]">
                         <User size={13} strokeWidth={2.5}/> Monitor
@@ -526,9 +551,10 @@ export default function AdminUsers() {
                     )}
                   </td>
                   <td className="py-3 px-6">
-                    {user.class !== '-' ? (
+                    {user.class && user.class !== '-' ? (
                       (() => {
-                        const isDeleted = user.role === 'monitor' && classOptions.length > 1 && !classOptions.some(o => o.id === user.class || o.id === (user.class || '').replace('ថ្នាក់ ', '').trim());
+                        const userClassKey = normalizeClassKey(user.class);
+                        const isDeleted = requiresAssignedClass(user.role) && classOptions.length > 1 && !classOptions.some(o => normalizeClassKey(o.id) === userClassKey);
                         return isDeleted ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-red-50 text-danger border border-red-200/60 font-bold text-[12px]" title="ថ្នាក់នេះត្រូវបានលុបចេញពីប្រព័ន្ធហើយ">
                             <span>{user.class}</span>
@@ -571,7 +597,6 @@ export default function AdminUsers() {
                       <button 
                         type="button"
                         onClick={() => {
-                          console.log("Edit button clicked for:", user);
                           setEditingUser(user);
                           setIsEditModalOpen(true);
                         }}

@@ -15,6 +15,7 @@ import {
   deleteAttendanceRecordInFirestore,
   deleteMultipleAttendanceRecordsInFirestore,
   saveRawAttendanceRecordsToFirestore,
+  buildDashboardStats,
   getAdminDashboardStatsFromFirestore,
   getAllStudentsFromFirestore,
   saveStudentToFirestore,
@@ -74,6 +75,13 @@ import {
   dispatchAttendanceNotification,
   dispatchDisciplineWarningNotification
 } from '../services/telegram'
+import {
+  requiresAssignedClass,
+  matchesAssignedClass,
+  normalizeClassName,
+  normalizeClassKey,
+  getScopedDashboardCacheKey
+} from './accessControl.js'
 
 const PASSWORD_SALT = 'angroka_school_salt_2026';
 
@@ -520,15 +528,17 @@ export async function api(action, body = {}, token = null) {
           } catch (e) {}
         }
 
-        // Validate monitor assigned class against active classes
-        let assignedClass = foundUser.class || '';
-        if (foundUser.role === 'monitor' && assignedClass && assignedClass !== '-') {
+        // Validate assigned class for role-scoped users (monitor & teacher) against active classes
+        let assignedClass = normalizeClassName(foundUser.class);
+        if (requiresAssignedClass(foundUser.role) && assignedClass) {
           try {
             const rawCls = localStorage.getItem('school_classes_cache');
             if (rawCls) {
               const activeCls = JSON.parse(rawCls);
               if (Array.isArray(activeCls) && activeCls.length > 0) {
-                const classExists = activeCls.some(c => c.name === assignedClass || c.id === assignedClass);
+                const classExists = activeCls.some(
+                  c => normalizeClassKey(c.name) === normalizeClassKey(assignedClass) || normalizeClassKey(c.id) === normalizeClassKey(assignedClass)
+                );
                 if (!classExists) {
                   // Class was deleted by admin! Unlink user from deleted class
                   foundUser.class = '-';
@@ -565,7 +575,7 @@ export async function api(action, body = {}, token = null) {
             id: foundUser.id,
             username: foundUser.username,
             role: foundUser.role || 'monitor',
-            className: foundUser.role === 'admin' ? 'ALL' : (foundUser.class === '-' ? '' : (foundUser.class || '')),
+            className: foundUser.role === 'admin' ? 'ALL' : assignedClass,
             fullName: foundUser.name || foundUser.username,
             email: foundUser.email || '',
             phone: foundUser.phone || '',
@@ -1437,10 +1447,13 @@ export async function api(action, body = {}, token = null) {
 
     case 'admin.dashboardStats': {
       const forceFetch = Boolean(body?.force);
+      const rawScope = body?.scopeClass || body?.className || '';
+      const scopeClass = rawScope === '__NONE__' ? '__NONE__' : normalizeClassName(rawScope);
+      const cacheKey = getScopedDashboardCacheKey(scopeClass);
 
       if (!forceFetch) {
         try {
-          const raw = localStorage.getItem('school_dashboard_cache');
+          const raw = localStorage.getItem(cacheKey);
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed && parsed.totalStudents !== undefined) {
@@ -1450,13 +1463,17 @@ export async function api(action, body = {}, token = null) {
         } catch (e) {}
       }
 
+      if (scopeClass === '__NONE__') {
+        return { success: true, data: buildDashboardStats([], [], '__NONE__') };
+      }
+
       if (isFirebaseConfigured()) {
         try {
-          const fbStats = await getAdminDashboardStatsFromFirestore(forceFetch);
+          const fbStats = await getAdminDashboardStatsFromFirestore(forceFetch, scopeClass);
           if (fbStats) {
             try {
-              localStorage.setItem('school_dashboard_cache', JSON.stringify(fbStats));
-              if (forceFetch || !localStorage.getItem('school_dashboard_cache_time')) {
+              localStorage.setItem(cacheKey, JSON.stringify(fbStats));
+              if (!scopeClass && (forceFetch || !localStorage.getItem('school_dashboard_cache_time'))) {
                 localStorage.setItem('school_dashboard_cache_time', String(Date.now()));
               }
             } catch (e) {}
@@ -1469,7 +1486,7 @@ export async function api(action, body = {}, token = null) {
 
       // Check localStorage cache first
       try {
-        const raw = localStorage.getItem('school_dashboard_cache');
+        const raw = localStorage.getItem(cacheKey);
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && parsed.totalStudents !== undefined) {
@@ -1488,43 +1505,9 @@ export async function api(action, body = {}, token = null) {
         if (aRaw) localAttendance = JSON.parse(aRaw) || [];
       } catch (e) {}
 
-      const totalStudents = localStudents.length;
-      const today = new Date().toISOString().split('T')[0];
-      const todayRecords = localAttendance.filter(r => r.date === today);
-      const todayStudentMap = {};
-      todayRecords.forEach(r => {
-        if (!todayStudentMap[r.name]) todayStudentMap[r.name] = [];
-        todayStudentMap[r.name].push(r);
-      });
-      let todayAbsent = 0;
-      let todayLeave = 0;
-      Object.values(todayStudentMap).forEach(recs => {
-        const hasUnexcused = recs.some(r => r.status === 'ABSENT');
-        const hasLeave = recs.some(r => r.status === 'LEAVE');
-        const isFullDay = recs.some(r => Boolean(r.isFullDay));
-        const totalHrs = recs.reduce((sum, r) => sum + (Number(r.hours) || 1), 0);
-        if (hasUnexcused) {
-          todayAbsent++;
-        } else if (hasLeave) {
-          todayLeave++;
-        }
-      });
-      const globalRate = totalStudents > 0 
-        ? Math.max(0, Math.round(((totalStudents - (todayAbsent + todayLeave)) / totalStudents) * 100))
-        : 100;
-
       return {
         success: true,
-        data: {
-          totalStudents,
-          totalAbsent: todayAbsent,
-          totalLeave: todayLeave,
-          globalRate,
-          weeklyTrend: [],
-          monthlyTrend: [],
-          gradeTrend: [],
-          classTrend: []
-        }
+        data: buildDashboardStats(localStudents, localAttendance, scopeClass)
       };
     }
 
@@ -2005,7 +1988,7 @@ export async function api(action, body = {}, token = null) {
           const uList = JSON.parse(rawUsers);
           let usersChanged = false;
           uList.forEach(u => {
-            if (u.role === 'monitor' && (u.class === targetClassName || u.class === classId)) {
+            if (requiresAssignedClass(u.role) && (matchesAssignedClass(u.class, targetClassName) || matchesAssignedClass(u.class, classId))) {
               u.class = '-';
               usersChanged = true;
               if (isFirebaseConfigured()) {

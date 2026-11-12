@@ -13,7 +13,7 @@ export const TEACHER_ALLOWED_PAGES = new Set([
   'dashboard',
   'student_attendance',
   'student_tracking',
-  'invitation-letters',
+  'teacher-invitation-letters',
 ]);
 
 export const ADMIN_PANEL_ROLES = new Set([ROLES.ADMIN, ROLES.TEACHER]);

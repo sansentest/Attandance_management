@@ -16,18 +16,11 @@ import {
   where,
   serverTimestamp
 } from 'firebase/firestore';
-import { dispatchDailySummaryNotification } from '../src/services/telegram.js';
-
-// Resolve current date in Cambodia timezone (Asia/Phnom_Penh, UTC+7)
-function getCambodiaDate() {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Phnom_Penh',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-  return formatter.format(new Date()); // e.g. "2026-11-09"
-}
+import {
+  dispatchDailySummaryNotification,
+  getCambodiaNowParts,
+  isValidDailySummaryLogEntry
+} from '../src/services/telegram.js';
 
 async function run() {
   console.log('🚀 [Daily Summary Cloud] Starting Daily Attendance Summary Dispatcher...');
@@ -44,20 +37,35 @@ async function run() {
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  const today = process.env.TARGET_DATE || getCambodiaDate();
+  const cambodiaNow = getCambodiaNowParts();
+  const hasExplicitTargetDate = Boolean(process.env.TARGET_DATE);
+  const today = process.env.TARGET_DATE || cambodiaNow.date;
   const forceRun = process.env.FORCE === 'true';
 
-  console.log(`📅 Target Date: ${today} (Timezone: Asia/Phnom_Penh)`);
+  console.log(`📅 Target Date: ${today} | Current Cambodia Time: ${cambodiaNow.timeText} (${cambodiaNow.date}, Asia/Phnom_Penh)`);
 
-  // 1. Check if already dispatched today in Firestore
+  // Guard: If GitHub Actions delayed a scheduled run past midnight into 00:00–16:59 ICT,
+  // never dispatch a premature 0-record summary for the new day or poison daily_summary_log.
+  if (!forceRun && !hasExplicitTargetDate && cambodiaNow.hour < 17) {
+    console.log(`⏰ [Daily Summary Cloud] Current Cambodia time (${cambodiaNow.timeText}) is before 17:00 ICT. Exiting without sending to avoid a premature midnight report for ${today}.`);
+    process.exit(0);
+  }
+
+  // 1. Check if already dispatched today in Firestore (ignoring any stale pre-17:00 cloud_cron logs)
   if (!forceRun) {
     try {
       const logSnap = await getDoc(doc(db, 'school_settings', 'daily_summary_log'));
       if (logSnap.exists()) {
         const data = logSnap.data();
-        if (data.lastSentDate === today || data[`sent_${today}`]) {
+        const dayEntry = data[`sent_${today}`];
+        const validDayEntry = dayEntry ? isValidDailySummaryLogEntry(dayEntry) : false;
+        const lastSentValid = data.lastSentDate === today && (!dayEntry || validDayEntry);
+        if (validDayEntry || (!dayEntry && lastSentValid)) {
           console.log(`ℹ️ [Daily Summary Cloud] Summary for ${today} was ALREADY dispatched today! Exiting to prevent duplicates.`);
           process.exit(0);
+        }
+        if (dayEntry && !validDayEntry) {
+          console.log(`⚠️ [Daily Summary Cloud] Ignoring stale premature log entry for ${today} (${dayEntry.timestamp}); proceeding with 17:00+ ICT dispatch.`);
         }
       }
     } catch (e) {
@@ -69,13 +77,14 @@ async function run() {
 
   // 2. Fetch all necessary data in parallel
   console.log('📥 Fetching attendance records, classes, students, and telegram bots from Firestore...');
-  const [attSnap, clsSnap, stdSnap, botSnap, settingsSnap, discSnap] = await Promise.all([
+  const [attSnap, clsSnap, stdSnap, botSnap, settingsSnap, generalSnap, disciplineSnap] = await Promise.all([
     getDocs(query(collection(db, 'attendance_records'), where('date', '==', today))),
     getDocs(collection(db, 'academic_classes')),
     getDocs(collection(db, 'students')),
     getDocs(collection(db, 'telegram_bots')),
     getDoc(doc(db, 'school_settings', 'telegram')),
-    getDocs(collection(db, 'discipline_resolutions'))
+    getDoc(doc(db, 'school_settings', 'general')),
+    getDoc(doc(db, 'school_settings', 'discipline'))
   ]);
 
   const records = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -83,7 +92,10 @@ async function run() {
   const students = stdSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const bots = botSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const globalTokens = settingsSnap.exists() && settingsSnap.data().globalTokens ? settingsSnap.data().globalTokens : [];
-  const disciplineTracking = discSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const schoolName = generalSnap.exists() && generalSnap.data()?.name
+    ? String(generalSnap.data().name).replace(/\s*\(.*\)$/, '').trim()
+    : '';
+  const thresholds = disciplineSnap.exists() ? disciplineSnap.data() : null;
 
   console.log(`📊 Loaded Data:`);
   console.log(`   - Today's Attendance Records: ${records.length}`);
@@ -107,7 +119,9 @@ async function run() {
     bots,
     globalTokens,
     manualTrigger: false,
-    disciplineTracking
+    disciplineTracking: [],
+    schoolName,
+    thresholds
   });
 
   if (result && result.success) {

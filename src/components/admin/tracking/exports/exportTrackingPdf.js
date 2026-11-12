@@ -7,11 +7,11 @@
  */
 
 import { buildSummarySubtitleParts, getExportClassLabel, getExportMonthSuffix } from '../../../../utils/dateFilters'
+import { TACTEING_FONT_CSS } from '../../../../utils/tacteingFont.js'
 
 // ───────────── Config (ប្តូរបានតាមតម្រូវការ) ─────────────
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ'
 const DEFAULT_ACADEMIC_YEAR = '២០២៥ - ២០២៦'
-const USE_TACTEING_FONT = false
 
 // ───────────── Helpers ─────────────
 const esc = (v) =>
@@ -39,12 +39,6 @@ const FONT_LINKS = `
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Moul&family=Noto+Sans+Khmer:wght@400;700&display=swap">`
 
-const ORNAMENT_SVG = `<svg class="ornament-svg" width="64" height="12" viewBox="0 0 64 12" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <path d="M2 6H24M40 6H62" stroke="#000" stroke-width="0.9" fill="none"/>
-  <path d="M32 1L37 6L32 11L27 6Z" fill="none" stroke="#000" stroke-width="0.9"/>
-  <circle cx="32" cy="6" r="1.3" fill="#000"/>
-</svg>`
-
 const BASE_CSS = `
   @page { size: A4 portrait; margin: 2cm; }
   :root {
@@ -65,10 +59,8 @@ const BASE_CSS = `
 
   /* ── Letterhead ── */
   .kingdom { text-align: center; font-size: 12pt; }
-  .ornament-svg { display: block; margin: 4px auto 0; }
-  .ornament-font { font-family: 'Tacteing', var(--font-muol); font-size: 20pt; line-height: 1.2; margin-top: 2px; }
+  .ornament-tacteing { font-family: 'Tacteing', var(--font-muol), serif !important; font-size: 16pt; line-height: 1; margin-top: 2px; margin-bottom: 2px; }
   .org { width: 9.5cm; text-align: center; font-size: 11pt; margin-top: 2px; }
-  .org-rule { width: 2.4cm; border-top: 0.75pt solid #000; margin: 6px auto 0; }
 
   /* ── Title ── */
   .doc-title { text-align: center; font-size: 13pt; margin: 16px 0 2px; }
@@ -121,18 +113,15 @@ const BASE_CSS = `
   @media print { body { padding: 0; } }
 `
 
-const ornament = () => (USE_TACTEING_FONT ? '<div class="ornament-font">3</div>' : ORNAMENT_SVG)
-
 const letterhead = ({ department, schoolName }) => `
   <div class="kingdom">
     <div class="muol">ព្រះរាជាណាចក្រកម្ពុជា</div>
     <div class="muol">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
-    ${ornament()}
+    <div class="ornament-tacteing">3</div>
   </div>
   <div class="org">
     <div class="muol">${esc(department)}</div>
     ${schoolName ? `<div class="muol">${esc(schoolName)}</div>` : ''}
-    <div class="org-rule"></div>
   </div>`
 
 // ជួរហត្ថលេខា
@@ -167,7 +156,7 @@ function printDocument({ title, body }) {
 <head>
   <meta charset="utf-8">
   <title>${esc(title)}</title>${FONT_LINKS}
-  <style>${BASE_CSS}</style>
+  <style>${TACTEING_FONT_CSS}${BASE_CSS}</style>
 </head>
 <body>${body}</body>
 </html>`)

@@ -3,14 +3,18 @@
 // Ang Roka High School Attendance Management
 // ─────────────────────────────────────────────
 
-import { dispatchDailySummaryNotification } from './telegram'
+import {
+  dispatchDailySummaryNotification,
+  getCambodiaNowParts,
+  isValidDailySummaryLogEntry
+} from './telegram'
 import { api } from '../utils/api'
 
 /**
  * Trigger the Daily Summary dispatch either manually or automatically
  */
 export async function triggerDailySummary(customDate, manual = false) {
-  const today = customDate || new Date().toISOString().split('T')[0]
+  const today = customDate || getCambodiaNowParts().date
   
   try {
     // 1. Fetch attendance records, students, classes, bots, and discipline tracking
@@ -45,7 +49,8 @@ export async function triggerDailySummary(customDate, manual = false) {
       const summaryLog = {
         timestamp: new Date().toISOString(),
         count: result.count,
-        overallRate: result.overallRate
+        overallRate: result.overallRate,
+        source: manual ? 'manual' : 'browser_auto'
       };
 
       try {
@@ -73,19 +78,26 @@ export async function triggerDailySummary(customDate, manual = false) {
  * Check if today's 5:00 PM summary has already been sent
  */
 export async function isDailySummarySentToday(date) {
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || getCambodiaNowParts().date;
   try {
     const raw = localStorage.getItem(`school_daily_summary_sent_${targetDate}`);
-    if (raw) return true;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (isValidDailySummaryLogEntry(parsed)) return true;
+      localStorage.removeItem(`school_daily_summary_sent_${targetDate}`);
+    }
   } catch {}
 
   // Check Firestore (e.g. sent by GitHub Actions Cloud Cron or another administrator)
   try {
     const res = await api('telegram.getDailySummaryLog');
     if (res && res.success && res.data) {
-      if (res.data.lastSentDate === targetDate || res.data[`sent_${targetDate}`]) {
+      const dayEntry = res.data[`sent_${targetDate}`];
+      const validDayEntry = dayEntry ? isValidDailySummaryLogEntry(dayEntry) : false;
+      const lastSentValid = res.data.lastSentDate === targetDate && (!dayEntry || validDayEntry);
+      if (validDayEntry || (!dayEntry && lastSentValid)) {
         try {
-          const logData = res.data[`sent_${targetDate}`] || { timestamp: new Date().toISOString() };
+          const logData = dayEntry || { timestamp: new Date().toISOString() };
           localStorage.setItem(`school_daily_summary_sent_${targetDate}`, JSON.stringify(logData));
         } catch {}
         return true;
@@ -100,7 +112,7 @@ export async function isDailySummarySentToday(date) {
  * Get daily summary sent log for today
  */
 export function getDailySummarySentLog(date) {
-  const targetDate = date || new Date().toISOString().split('T')[0];
+  const targetDate = date || getCambodiaNowParts().date;
   try {
     const raw = localStorage.getItem(`school_daily_summary_sent_${targetDate}`);
     return raw ? JSON.parse(raw) : null;
@@ -110,14 +122,12 @@ export function getDailySummarySentLog(date) {
 }
 
 /**
- * Check time and automatically dispatch at 5:00 PM (17:00+)
+ * Check time and automatically dispatch at 5:00 PM Cambodia Time (17:00+)
  */
 export async function checkAndSendDailySummaryScheduled() {
-  const now = new Date();
-  const hour = now.getHours();
-  const today = now.toISOString().split('T')[0];
+  const { hour, date: today } = getCambodiaNowParts();
 
-  // Only trigger at or after 17:00 (5:00 PM)
+  // Only trigger at or after 17:00 (5:00 PM) Cambodia Time
   if (hour < 17) {
     return { triggered: false, reason: 'មិនទាន់ដល់ម៉ោង ៥:០០ ល្ងាច' };
   }

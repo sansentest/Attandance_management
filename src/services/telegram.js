@@ -38,17 +38,77 @@ export function getTelegramSchoolName() {
   return 'វិទ្យាល័យអង្គរកា';
 }
 
+export const CAMBODIA_TIMEZONE = 'Asia/Phnom_Penh';
+
 /**
- * Format a standard Date to Khmer readable date
+ * Resolve current date (YYYY-MM-DD), hour, minute, and HH:mm in Cambodia Time (UTC+7).
+ */
+export function getCambodiaNowParts(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: CAMBODIA_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(now);
+
+  const get = (type) => parts.find(p => p.type === type)?.value || '00';
+  const year = get('year');
+  const month = get('month');
+  const day = get('day');
+  const hourStr = get('hour') === '24' ? '00' : get('hour');
+  const minStr = get('minute');
+  const hour = parseInt(hourStr, 10);
+  const minute = parseInt(minStr, 10);
+
+  return {
+    date: `${year}-${month}-${day}`,
+    hour: Number.isFinite(hour) ? hour : 0,
+    minute: Number.isFinite(minute) ? minute : 0,
+    timeText: `${hourStr}:${minStr}`
+  };
+}
+
+/**
+ * Rejects bogus cloud_cron dispatch logs recorded before 17:00 Cambodia Time
+ * (e.g. a delayed GitHub Actions run arriving after midnight UTC+7).
+ */
+export function isValidDailySummaryLogEntry(entry) {
+  if (!entry || typeof entry !== 'object') return false;
+  if (entry.source === 'cloud_cron' && entry.timestamp) {
+    const parsed = new Date(entry.timestamp);
+    if (!Number.isNaN(parsed.getTime())) {
+      const { hour } = getCambodiaNowParts(parsed);
+      if (hour < 17) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Format a standard Date to Khmer readable date in Cambodia Time (Asia/Phnom_Penh)
  */
 export function getKhmerCurrentDateString(d = new Date()) {
   const daysKhmer = ['អាទិត្យ', 'ច័ន្ទ', 'អង្គារ', 'ពុធ', 'ព្រហស្បតិ៍', 'សុក្រ', 'សៅរ៍'];
   const monthsKhmer = ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'];
 
-  const dayName = daysKhmer[d.getDay()];
-  const day = toKhmerNum(d.getDate());
-  const month = monthsKhmer[d.getMonth()];
-  const year = toKhmerNum(d.getFullYear());
+  const target = d instanceof Date ? d : new Date(d);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: CAMBODIA_TIMEZONE,
+    weekday: 'short',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  }).formatToParts(target);
+
+  const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const get = (type) => parts.find(p => p.type === type)?.value;
+  const dayName = daysKhmer[weekdayMap[get('weekday')] ?? target.getDay()];
+  const day = toKhmerNum(parseInt(get('day'), 10) || target.getDate());
+  const month = monthsKhmer[(parseInt(get('month'), 10) || (target.getMonth() + 1)) - 1];
+  const year = toKhmerNum(parseInt(get('year'), 10) || target.getFullYear());
 
   return `ថ្ងៃ${dayName} ទី${day} ខែ${month} ឆ្នាំ${year}`;
 }
@@ -431,14 +491,16 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
  * Dispatch a Daily 5:00 PM Summary notification to active school management Telegram bots
  */
 export async function dispatchDailySummaryNotification({
-  date = new Date().toISOString().split('T')[0],
+  date = getCambodiaNowParts().date,
   records = [],
   classes = [],
   students = [],
   bots = [],
   globalTokens = [],
   manualTrigger = false,
-  disciplineTracking = []
+  disciplineTracking = [],
+  schoolName: schoolNameOverride = '',
+  thresholds: thresholdsOverride = null
 }) {
   // 1. Resolve matching recipients (Bots for ALL or with notifyDailySummary enabled)
   let matchingBots = bots.filter(b => b.status === 'active' && (b.class === 'ALL' || b.notifyDailySummary === true));
@@ -547,9 +609,8 @@ export async function dispatchDailySummaryNotification({
     ? Math.round((totalSchoolPresent / totalSchoolStudents) * 100)
     : 100;
 
-  const dateText = getKhmerCurrentDateString(new Date(date + 'T12:00:00'));
-  const now = new Date();
-  const timeText = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const dateText = getKhmerCurrentDateString(new Date(`${date}T12:00:00+07:00`));
+  const timeText = getCambodiaNowParts().timeText;
 
   // 4. Construct Khmer message: Filter ONLY classes that have absences or leave
   const classesWithAbsence = classSummaries.filter(
@@ -621,14 +682,19 @@ export async function dispatchDailySummaryNotification({
 
   // 5. Build discipline warning students list
   let thresholds = { '7-9': 20, '10-12': 20 };
+  if (thresholdsOverride && typeof thresholdsOverride === 'object') {
+    thresholds = { ...thresholds, ...thresholdsOverride };
+  }
   try {
-    const rawThresh = localStorage.getItem('disciplineThresholds');
-    if (rawThresh) thresholds = { ...thresholds, ...JSON.parse(rawThresh) };
-    const settingsRaw = localStorage.getItem('school_settings_cache');
-    if (settingsRaw) {
-      const parsedSettings = JSON.parse(settingsRaw);
-      if (parsedSettings?.discipline) {
-        thresholds = { ...thresholds, ...parsedSettings.discipline };
+    if (typeof localStorage !== 'undefined') {
+      const rawThresh = localStorage.getItem('disciplineThresholds');
+      if (rawThresh) thresholds = { ...thresholds, ...JSON.parse(rawThresh) };
+      const settingsRaw = localStorage.getItem('school_settings_cache');
+      if (settingsRaw) {
+        const parsedSettings = JSON.parse(settingsRaw);
+        if (parsedSettings?.discipline) {
+          thresholds = { ...thresholds, ...parsedSettings.discipline };
+        }
       }
     }
   } catch (e) {}
@@ -732,7 +798,7 @@ export async function dispatchDailySummaryNotification({
     '<i>សូមអាណាព្យាបាល ឬលោកគ្រូអ្នកគ្រូជួយតាមដាន និងអប់រំណែនាំសិស្សជាបន្ទាន់។</i>'
   ] : [];
 
-  const schoolName = getTelegramSchoolName();
+  const schoolName = schoolNameOverride || getTelegramSchoolName();
 
   const message = [
     `🏫 <b>${escapeTelegramHtml(schoolName)}</b>`,

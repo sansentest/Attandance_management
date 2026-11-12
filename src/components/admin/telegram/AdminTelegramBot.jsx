@@ -10,11 +10,11 @@ import EditBotModal from './EditBotModal'
 import GlobalTokenModal from './GlobalTokenModal'
 import SearchableDropdown from '../../common/SearchableDropdown'
 import { api, getCachedSchoolName } from '../../../utils/api'
-import { triggerDailySummary, isDailySummarySentToday, getDailySummarySentLog } from '../../../services/dailySummaryScheduler'
+import { triggerDailySummary, isDailySummarySentToday } from '../../../services/dailySummaryScheduler'
 import { exportTelegramPdf } from './exports/exportTelegramPdf.js'
 import { exportTelegramWord } from './exports/exportTelegramWord.js'
 import { exportTelegramExcel } from './exports/exportTelegramExcel.js'
-import { normalizeTelegramChatId } from '../../../services/telegram'
+import { normalizeTelegramChatId, getCambodiaNowParts } from '../../../services/telegram'
 
 const isDummyToken = (t) => {
   if (!t) return false;
@@ -51,7 +51,21 @@ export default function AdminTelegramBot() {
   const [testingBotId, setTestingBotId] = useState(null)
   const [toast, setToast] = useState(null)
   const [isSendingDailySummary, setIsSendingDailySummary] = useState(false)
-  const [summarySentToday, setSummarySentToday] = useState(() => isDailySummarySentToday())
+  const [summarySentToday, setSummarySentToday] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    isDailySummarySentToday().then((sent) => {
+      if (active) setSummarySentToday(Boolean(sent))
+    }).catch(() => {})
+
+    const onSent = () => setSummarySentToday(true)
+    window.addEventListener('school_daily_summary_sent', onSent)
+    return () => {
+      active = false
+      window.removeEventListener('school_daily_summary_sent', onSent)
+    }
+  }, [])
 
   // Export State
   const [exportOpen, setExportOpen] = useState(false)
@@ -250,7 +264,7 @@ export default function AdminTelegramBot() {
   const handleSendDailySummaryNow = async () => {
     setIsSendingDailySummary(true)
     try {
-      const today = new Date().toISOString().split('T')[0]
+      const today = getCambodiaNowParts().date
       const res = await triggerDailySummary(today, true)
       if (res && res.success) {
         setSummarySentToday(true)

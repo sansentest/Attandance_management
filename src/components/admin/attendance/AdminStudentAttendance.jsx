@@ -1041,11 +1041,15 @@ export default function AdminStudentAttendance({ session }) {
   const [filterMonth, setFilterMonth] = useState('ALL')
 
   const [exportOpen, setExportOpen] = useState(false)
+  const [schoolExportOpen, setSchoolExportOpen] = useState(false)
+  const [isExportingSchoolFormat, setIsExportingSchoolFormat] = useState(false)
   const exportRef = useRef(null)
+  const schoolExportRef = useRef(null)
 
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false)
+      if (schoolExportRef.current && !schoolExportRef.current.contains(e.target)) setSchoolExportOpen(false)
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
@@ -1213,6 +1217,87 @@ export default function AdminStudentAttendance({ session }) {
     }
   }
 
+  const handleSchoolFormatExport = async (type) => {
+    setSchoolExportOpen(false)
+    if (!teacherMode || !assignedClass || isExportingSchoolFormat) return
+
+    setIsExportingSchoolFormat(true)
+    try {
+      let res = await api('students.getAll')
+      let allStudents = Array.isArray(res?.data) ? res.data : []
+      let classStudents = allStudents.filter((s) =>
+        matchesAssignedClass(s.class || s.className, assignedClass)
+      )
+
+      // Retry force fetch once when local student cache has no entries for this class
+      if (classStudents.length === 0) {
+        res = await api('students.getAll', { force: true })
+        allStudents = Array.isArray(res?.data) ? res.data : []
+        classStudents = allStudents.filter((s) =>
+          matchesAssignedClass(s.class || s.className, assignedClass)
+        )
+      }
+
+      const byId = new Map()
+      const byName = new Map()
+      monthScopedSummaries.forEach((item) => {
+        const idKey = String(item.studentId || '').trim().toLowerCase()
+        const nameKey = String(item.name || '').trim().toLowerCase()
+        if (idKey && !byId.has(idKey)) byId.set(idKey, item)
+        if (nameKey && !byName.has(nameKey)) byName.set(nameKey, item)
+      })
+
+      const mergedRows = classStudents.length > 0
+        ? classStudents.map((student) => {
+            const sid = String(student.studentId || student.id || '').trim()
+            const sname = String(student.name || '').trim()
+            const matched =
+              (sid && byId.get(sid.toLowerCase())) ||
+              (sname && byName.get(sname.toLowerCase()))
+
+            if (matched) {
+              return {
+                ...matched,
+                studentId: sid || matched.studentId || '',
+                name: sname || matched.name || '',
+                class: student.class || student.className || matched.class || assignedClass
+              }
+            }
+
+            return {
+              studentId: sid,
+              name: sname,
+              class: student.class || student.className || assignedClass,
+              leave: 0,
+              absent: 0,
+              total: 0,
+              totalHours: 0,
+              totalSessions: 0
+            }
+          })
+        : monthScopedSummaries
+
+      const payload = {
+        filtered: mergedRows,
+        filterClass: assignedClass,
+        filterMonth,
+        schoolName: getCachedSchoolName(),
+        getStatusInfo,
+        blankZeroRows: true
+      }
+
+      if (type === 'Word') {
+        exportAttendanceSummaryWord(payload)
+      } else if (type === 'PDF') {
+        exportAttendanceSummaryPdf(payload)
+      }
+    } catch (err) {
+      console.error('School format export error:', err)
+    } finally {
+      setIsExportingSchoolFormat(false)
+    }
+  }
+
   const handleUpdateStudentRecords = (studentId, newRecords) => {
     const stats = calculateDailyAttendance(newRecords)
 
@@ -1329,8 +1414,8 @@ export default function AdminStudentAttendance({ session }) {
               />
             </div>
 
-            {/* Action Buttons: Refresh & Export */}
-            <div className="flex items-center gap-2.5 w-full lg:w-auto">
+            {/* Action Buttons: Refresh, School Format Export (Teacher Only) & Export */}
+            <div className="flex items-center gap-2.5 flex-wrap w-full lg:w-auto">
               <button
                 type="button"
                 onClick={() => fetchRecords(true)}
@@ -1342,10 +1427,38 @@ export default function AdminStudentAttendance({ session }) {
                 <span>{loading ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
               </button>
 
+              {/* School Format Export (Teacher Role Only) */}
+              {teacherMode && (
+                <div className="relative w-full lg:w-auto" ref={schoolExportRef}>
+                  <button
+                    type="button"
+                    disabled={isExportingSchoolFormat}
+                    onClick={() => {
+                      setSchoolExportOpen((prev) => !prev)
+                      setExportOpen(false)
+                    }}
+                    className="flex items-center justify-center gap-2 bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:border-emerald-300 w-full xl:w-auto cursor-pointer disabled:opacity-50"
+                  >
+                    <Download size={15} strokeWidth={2.5} />
+                    <span>{isExportingSchoolFormat ? 'កំពុងរៀបចំ...' : 'នាំចេញជាទម្រង់សាលា'}</span>
+                    <ChevronDown size={15} strokeWidth={2.5} className={`transition-transform duration-300 ml-1 ${schoolExportOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {schoolExportOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] z-50 overflow-hidden py-2">
+                      <button type="button" onClick={() => handleSchoolFormatExport('PDF')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileText size={16} className="text-rose-500 group-hover:scale-110 transition-transform" /> Export as PDF</button>
+                      <button type="button" onClick={() => handleSchoolFormatExport('Word')} className="flex items-center gap-3 w-full px-5 py-3 text-left text-[13px] font-bold text-slate-700 hover:bg-slate-50 transition-colors hover:text-indigo-600 group cursor-pointer"><FileImage size={16} className="text-blue-500 group-hover:scale-110 transition-transform" /> Export as Word</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Export */}
               <div className="relative w-full lg:w-auto" ref={exportRef}>
                 <button
-                  onClick={() => setExportOpen(!exportOpen)}
+                  onClick={() => {
+                    setExportOpen(!exportOpen)
+                    setSchoolExportOpen(false)
+                  }}
                   className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-6 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full xl:w-auto cursor-pointer"
                 >
                   <Download size={15} strokeWidth={2.5} />

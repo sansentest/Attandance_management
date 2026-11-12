@@ -2,9 +2,13 @@ name: Daily Attendance Telegram Summary
 
 on:
   schedule:
-    # 5:00 PM Cambodia Time (UTC+7) = 10:00 AM UTC
-    # Runs every day at 10:00 UTC
-    - cron: '0 10 * * *'
+    # 5:02 PM, 5:12 PM, 5:27 PM, 5:42 PM Cambodia Time (UTC+7) = 10:02, 10:12, 10:27, 10:42 UTC
+    # Using staggered off-peak minutes avoids GitHub Actions :00 top-of-hour queue bottlenecks.
+    # Firestore daily_summary_log ensures only the FIRST successful run dispatches once per day.
+    - cron: '2 10 * * *'
+    - cron: '12 10 * * *'
+    - cron: '27 10 * * *'
+    - cron: '42 10 * * *'
   workflow_dispatch:
     inputs:
       force:
@@ -38,6 +42,7 @@ jobs:
 
       - name: Run Daily Attendance Summary Dispatcher
         env:
+          TZ: Asia/Phnom_Penh
           VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY || 'AIzaSyBJa26ZGvjLrZB3W1mydi_8hNkKSDFv_Cg' }}
           VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN || 'attendace-ark.firebaseapp.com' }}
           VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID || 'attendace-ark' }}

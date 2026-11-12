@@ -14,13 +14,11 @@
  */
 
 import { buildSummarySubtitleParts, getExportClassLabel, getExportMonthSuffix } from '../../../../utils/dateFilters'
+import { TACTEING_FONT_CSS } from '../../../../utils/tacteingFont.js'
 
 // ───────────── Config (ប្តូរបានតាមតម្រូវការ) ─────────────
 const DEFAULT_DEPARTMENT = 'មន្ទីរអប់រំ យុវជន និងកីឡា ខេត្តតាកែវ'
 const DEFAULT_ACADEMIC_YEAR = '២០២៥ - ២០២៦'
-// false = គូរសញ្ញាតុបតែងដោយ SVG (ចេញដូចគ្នាគ្រប់កុំព្យូទ័រ)
-// true  = ប្រើ font Tacteing (ត្រូវតែដំឡើង font នេះក្នុងកុំព្យូទ័រដែលបោះពុម្ព)
-const USE_TACTEING_FONT = false
 
 // ───────────── Helpers ─────────────
 const esc = (v) =>
@@ -46,44 +44,7 @@ const fill = (width) => `<span class="fill" style="width:${width}"></span>`
 const FONT_LINKS = `
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Moul&family=Noto+Sans+Khmer:wght@400;700&display=swap">`
-
-const ORNAMENT_SVG = `
-<svg class="ornament-svg"
-     width="100"
-     height="24"
-     viewBox="0 0 100 24"
-     xmlns="http://www.w3.org/2000/svg"
-     aria-hidden="true">
-
-  <g fill="none" stroke="#000"
-     stroke-width="1"
-     stroke-linecap="round"
-     stroke-linejoin="round">
-
-    <!-- Horizontal lines -->
-    <path d="M2 12 H25 M75 12 H98"/>
-
-    <!-- Khmer ornamental curves -->
-    <path d="M25 12
-             C30 12 30 4 38 4
-             C43 4 43 9 50 12
-             C57 9 57 4 62 4
-             C70 4 70 12 75 12"/>
-
-    <path d="M25 12
-             C30 12 30 20 38 20
-             C43 20 43 15 50 12
-             C57 15 57 20 62 20
-             C70 20 70 12 75 12"/>
-
-    <!-- Center diamond -->
-    <path d="M50 3 L58 12 L50 21 L42 12 Z"/>
-
-    <!-- Center detail -->
-    <circle cx="50" cy="12" r="2" fill="#000"/>
-  </g>
-</svg>`;
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Moul&family=Noto+Sans+Khmer:wght@400;700&display=swap">`;
 
 const BASE_CSS = `
   @page { size: A4 portrait; margin: 2cm; }
@@ -105,10 +66,8 @@ const BASE_CSS = `
 
   /* ── Letterhead ── */
   .kingdom { text-align: center; font-size: 12pt; }
-  .ornament-svg { display: block; margin: 4px auto 0; }
-  .ornament-font { font-family: 'Tacteing', var(--font-muol); font-size: 20pt; line-height: 1.2; margin-top: 2px; }
-  .org { width: 9.5cm; text-align: center; font-size: 11pt; margin-top: 2px; }
-  .org-rule { width: 2.4cm; border-top: 0.75pt solid #000; margin: 6px auto 0; }
+  .ornament-tacteing { font-family: 'Tacteing', var(--font-muol), serif !important; font-size: 16pt; line-height: 1; margin-top: 2px; margin-bottom: 2px; }
+  .org { width: 7.5cm; text-align: center; font-size: 11pt; margin-top: 2px; }
 
   /* ── Title ── */
   .doc-title { text-align: center; font-size: 13pt; margin: 16px 0 2px; }
@@ -128,12 +87,6 @@ const BASE_CSS = `
     text-align: center;
     overflow-wrap: anywhere;
   }
-    .ornament-svg {
-    display: block;
-    width: 100px;
-    height: 14px;
-    margin: 3px auto 0;
-}
   table.data-table th { background: #EDEDED; font-weight: 700; }
   table.data-table td.l { text-align: left; }
   table.data-table .nw { white-space: nowrap; overflow-wrap: normal; }
@@ -167,18 +120,15 @@ const BASE_CSS = `
   @media print { body { padding: 0; } }
 `
 
-const ornament = () => (USE_TACTEING_FONT ? '<div class="ornament-font">3</div>' : ORNAMENT_SVG)
-
 const letterhead = ({ department, schoolName }) => `
   <div class="kingdom">
     <div class="muol">ព្រះរាជាណាចក្រកម្ពុជា</div>
     <div class="muol">ជាតិ សាសនា ព្រះមហាក្សត្រ</div>
-    ${ornament()}
+    <div class="ornament-tacteing">3</div>
   </div>
   <div class="org">
     <div class="muol">${esc(department)}</div>
     ${schoolName ? `<div class="muol">${esc(schoolName)}</div>` : ''}
-    <div class="org-rule"></div>
   </div>`
 
 // ជួរហត្ថលេខា៖ តម្រឹមជួរដេកឲ្យត្រូវគ្នា (បន្ទាត់កាលបរិច្ឆេទ / បានឃើញ / តួនាទី)
@@ -188,9 +138,9 @@ const approver = (role) => ({
   role: `<span class="muol">${role}</span>`
 })
 const preparer = (schoolName) => ({
-  top: `ថ្ងៃ${fill('0.9cm')}ខែ${fill('0.9cm')}ឆ្នាំ${fill('0.9cm')}ព.ស ២៥${fill('0.8cm')}`,
-  mid: `${esc(schoolName)} ថ្ងៃទី${fill('0.9cm')}ខែ${fill('0.9cm')}ឆ្នាំ${fill('1.1cm')}`,
-  role: '<span class="muol">អ្នករៀបចំរបាយការណ៍</span>'
+  top: `ថ្ងៃ${fill('2cm')}ខែ${fill('2cm')}ឆ្នាំ${fill('1.5cm')}ព.ស ២៥${fill('0.8cm')}`,
+  mid: `វិ.អង្គរកា ថ្ងៃទី${fill('0.9cm')}ខែ${fill('1cm')}ឆ្នាំ${fill('1.1cm')}`,
+  role: '<span class="muol">គ្រូទទួលបន្ទុក</span>'
 })
 
 const signatureBlock = (cols, template) => {
@@ -214,7 +164,7 @@ function printDocument({ title, body }) {
 <head>
   <meta charset="utf-8">
   <title>${esc(title)}</title>${FONT_LINKS}
-  <style>${BASE_CSS}</style>
+  <style>${TACTEING_FONT_CSS}${BASE_CSS}</style>
 </head>
 <body>${body}</body>
 </html>`)
@@ -250,7 +200,8 @@ export function exportAttendanceSummaryPdf({
   schoolName = '',
   getStatusInfo,
   department = DEFAULT_DEPARTMENT,
-  academicYear = DEFAULT_ACADEMIC_YEAR
+  academicYear = DEFAULT_ACADEMIC_YEAR,
+  blankZeroRows = false
 }) {
   const rows = Array.isArray(filtered) ? filtered : []
   const hoursOf = (d) => toNum(d.totalHours !== undefined ? d.totalHours : d.totalSessions)
@@ -268,6 +219,13 @@ export function exportAttendanceSummaryPdf({
 
   const bodyRows = rows
     .map((d, idx) => {
+      const hours = hoursOf(d)
+      const isBlankRow =
+        blankZeroRows &&
+        toNum(d.leave) === 0 &&
+        toNum(d.absent) === 0 &&
+        toNum(d.total) === 0 &&
+        hours === 0
       const info = (getStatusInfo && getStatusInfo(d.total)) || { label: 'ធម្មតា' }
       return `
       <tr>
@@ -275,11 +233,11 @@ export function exportAttendanceSummaryPdf({
         <td>${esc(d.studentId)}</td>
         <td class="l">${esc(d.name)}</td>
         <td>${esc(d.class)}</td>
-        <td>${cell(d.leave)}</td>
-        <td>${cell(d.absent)}</td>
-        <td>${cell(d.total)}</td>
-        <td>${cell(hoursOf(d))}</td>
-        <td>${esc(info.label)}</td>
+        <td>${isBlankRow ? '' : cell(d.leave)}</td>
+        <td>${isBlankRow ? '' : cell(d.absent)}</td>
+        <td>${isBlankRow ? '' : cell(d.total)}</td>
+        <td>${isBlankRow ? '' : cell(hours)}</td>
+        <td>${isBlankRow ? '' : esc(info.label)}</td>
       </tr>`
     })
     .join('')
@@ -329,7 +287,7 @@ export function exportAttendanceSummaryPdf({
     </tbody>
   </table>
 
-  ${signatureBlock([approver('នាយកសាលា'), preparer(schoolName)], '1fr 7.6cm')}`
+  ${signatureBlock([approver('នាយកសាលា'), preparer(schoolName)], '1fr 10cm')}`
 
   printDocument({
     title: `${reportTitle}${filterClass !== 'ALL' ? ` ${getExportClassLabel(filterClass)}` : ''} - ${schoolName}`,

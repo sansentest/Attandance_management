@@ -18,6 +18,7 @@ import AdminAcademic from './academic/AdminAcademic'
 import AdminTimetable from './academic/AdminTimetable'
 import AdminProfile from './profile/AdminProfile'
 import AdminInvitationLetters from './invitation/AdminInvitationLetters'
+import TeacherInvitationLetters from './invitation/TeacherInvitationLetters'
 import AdminStudents from './students/AdminStudents'
 import AppVersionBadge from '../common/AppVersionBadge'
 
@@ -88,13 +89,22 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
     }
   }, [activePage, session])
 
+  const handleTrackingNavigate = (pageId) => {
+    if (teacherMode && pageId === 'invitation-letters') {
+      setActivePage('teacher-invitation-letters')
+      return
+    }
+    setActivePage(pageId)
+  }
+
   const renderPage = () => {
     const safePage = isPageAllowedForSession(session, activePage) ? activePage : 'dashboard'
     switch (safePage) {
       case 'dashboard': return <AdminDashboard session={session} />
       case 'student_attendance': return <AdminStudentAttendance session={session} />
-      case 'student_tracking': return <AdminStudentTracking onNavigate={setActivePage} session={session} />
+      case 'student_tracking': return <AdminStudentTracking onNavigate={handleTrackingNavigate} session={session} />
       case 'invitation-letters': return <AdminInvitationLetters session={session} />
+      case 'teacher-invitation-letters': return <TeacherInvitationLetters session={session} />
       case 'students': return <AdminStudents onNavigate={setActivePage} />
       case 'classes': return <AdminAcademic initialTab="classes" />
       case 'subjects': return <AdminAcademic initialTab="subjects" />
@@ -117,7 +127,7 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
       subItems: [
         { id: 'student_attendance', label: 'អវត្តមានសិស្ស' },
         { id: 'student_tracking',   label: 'តាមដានវិន័យសិស្ស' },
-        { id: 'invitation-letters', label: 'លិខិតកោះហៅ' }
+        { id: teacherMode ? 'teacher-invitation-letters' : 'invitation-letters', label: 'លិខិតកោះហៅ' }
       ]
     },
     {

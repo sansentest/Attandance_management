@@ -242,7 +242,8 @@ export function exportAttendanceSummaryWord({
   schoolName = '',
   getStatusInfo,
   department = DEFAULT_DEPARTMENT,
-  academicYear = DEFAULT_ACADEMIC_YEAR
+  academicYear = DEFAULT_ACADEMIC_YEAR,
+  blankZeroRows = false
 }) {
   const rows = Array.isArray(filtered) ? filtered : []
   const hoursOf = (d) => toNum(d.totalHours !== undefined ? d.totalHours : d.totalSessions)
@@ -260,6 +261,13 @@ export function exportAttendanceSummaryWord({
 
   const bodyRows = rows
     .map((d, idx) => {
+      const hours = hoursOf(d)
+      const isBlankRow =
+        blankZeroRows &&
+        toNum(d.leave) === 0 &&
+        toNum(d.absent) === 0 &&
+        toNum(d.total) === 0 &&
+        hours === 0
       const info = (getStatusInfo && getStatusInfo(d.total)) || { label: 'ធម្មតា' }
       return `
       <tr>
@@ -267,11 +275,11 @@ export function exportAttendanceSummaryWord({
         <td>${esc(d.studentId)}</td>
         <td class="l">${esc(d.name)}</td>
         <td>${esc(d.class)}</td>
-        <td>${cell(d.leave)}</td>
-        <td>${cell(d.absent)}</td>
-        <td>${cell(d.total)}</td>
-        <td>${cell(hoursOf(d))}</td>
-        <td>${esc(info.label)}</td>
+        <td>${isBlankRow ? '' : cell(d.leave)}</td>
+        <td>${isBlankRow ? '' : cell(d.absent)}</td>
+        <td>${isBlankRow ? '' : cell(d.total)}</td>
+        <td>${isBlankRow ? '' : cell(hours)}</td>
+        <td>${isBlankRow ? '' : esc(info.label)}</td>
       </tr>`
     })
     .join('')

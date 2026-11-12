@@ -45,9 +45,11 @@ function getDisciplineThreshold(className) {
   return 20;
 }
 
-export default function AdminInvitationLetters({ session }) {
+export default function AdminInvitationLetters({ session, teacherRestricted = false }) {
   const superAdmin = isSuperAdmin(session);
   const teacherMode = isTeacher(session);
+  const readOnlyMode = Boolean(teacherRestricted || teacherMode);
+  const canManageHistory = superAdmin && !readOnlyMode;
   const assignedClass = teacherMode ? getAssignedClass(session) : '';
   const actorLabel = session?.fullName || (teacherMode ? 'គ្រូបន្ទុកថ្នាក់' : 'អ្នកគ្រប់គ្រង');
 
@@ -87,12 +89,13 @@ export default function AdminInvitationLetters({ session }) {
   const [tempThresholds, setTempThresholds] = useState({ '7-9': 20, '10-12': 20 });
 
   const handleOpenThresholdModal = () => {
+    if (!canManageHistory) return;
     setTempThresholds({ ...thresholds });
     setThresholdModalOpen(true);
   };
 
   const handleSaveThresholds = () => {
-    if (!superAdmin) return;
+    if (!canManageHistory) return;
     setThresholds(tempThresholds);
     localStorage.setItem('disciplineThresholds', JSON.stringify(tempThresholds));
     setThresholdModalOpen(false);
@@ -286,6 +289,7 @@ export default function AdminInvitationLetters({ session }) {
   };
 
   const handleSelectAllHistory = (e) => {
+    if (!canManageHistory) return;
     if (e.target.checked) {
       setSelectedHistoryIds(filteredHistory.map(s => s.id));
     } else {
@@ -294,6 +298,7 @@ export default function AdminInvitationLetters({ session }) {
   };
 
   const handleSelectOneHistory = (id) => {
+    if (!canManageHistory) return;
     if (selectedHistoryIds.includes(id)) {
       setSelectedHistoryIds(selectedHistoryIds.filter(i => i !== id));
     } else {
@@ -394,6 +399,7 @@ export default function AdminInvitationLetters({ session }) {
 
   // Single Resolve (Instant 1-Click with Undo & Reset absences to 0 across system)
   const handleSingleResolve = async (student) => {
+    if (!canManageHistory) return;
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       const studentId = student.studentId || student.id;
@@ -471,7 +477,7 @@ export default function AdminInvitationLetters({ session }) {
 
   // Batch Resolve (Instant with Undo & Reset absences to 0 across system)
   const handleBatchResolve = async () => {
-    if (selectedHistoryIds.length === 0) return;
+    if (!canManageHistory || selectedHistoryIds.length === 0) return;
     setIsProcessingBatch(true);
 
     try {
@@ -574,6 +580,7 @@ export default function AdminInvitationLetters({ session }) {
   };
 
   const handleBatchReInvite = () => {
+    if (!canManageHistory) return;
     const selectedSet = new Set(selectedHistoryIds);
     const targetStudents = printedHistory
       .filter(h => selectedSet.has(h.id) && (h.status || 'UNRESOLVED') === 'UNRESOLVED')
@@ -592,6 +599,7 @@ export default function AdminInvitationLetters({ session }) {
   };
 
   const handleReInvite = (historyItem) => {
+    if (!canManageHistory) return;
     const nextCycle = (Number(historyItem.cycle) || 1) + 1;
     const reInviteStudent = {
       ...historyItem,
@@ -605,6 +613,7 @@ export default function AdminInvitationLetters({ session }) {
   };
 
   const handleRevertToUnresolved = async (historyItem) => {
+    if (!canManageHistory) return;
     try {
       const studentId = historyItem.studentId || historyItem.id;
       const letterDocId = historyItem.letterId || historyItem.id;
@@ -665,6 +674,7 @@ export default function AdminInvitationLetters({ session }) {
 
   // Single Delete History Item
   const handleDeleteHistoryItem = async (historyItem) => {
+    if (!canManageHistory) return;
     const confirm = window.confirm(`តើអ្នកពិតជាចង់លុបប្រវត្តិកោះហៅរបស់សិស្ស «${historyItem.name}» មែនទេ?`);
     if (!confirm) return;
 
@@ -688,7 +698,7 @@ export default function AdminInvitationLetters({ session }) {
 
   // Batch Delete History Items
   const handleBatchDeleteHistory = async () => {
-    if (selectedHistoryIds.length === 0) return;
+    if (!canManageHistory || selectedHistoryIds.length === 0) return;
     const confirm = window.confirm(`តើអ្នកពិតជាចង់លុបប្រវត្តិកោះហៅចំនួន ${selectedHistoryIds.length} ករណីដែលបានជ្រើសរើសមែនទេ?`);
     if (!confirm) return;
 
@@ -718,7 +728,7 @@ export default function AdminInvitationLetters({ session }) {
 
   // Batch Revert to Unresolved
   const handleBatchRevertToUnresolved = async () => {
-    if (selectedHistoryIds.length === 0) return;
+    if (!canManageHistory || selectedHistoryIds.length === 0) return;
     setIsProcessingBatch(true);
 
     try {
@@ -850,7 +860,7 @@ export default function AdminInvitationLetters({ session }) {
 
         {/* Action buttons */}
         <div className="flex items-center gap-2.5">
-          {superAdmin && (
+          {canManageHistory && (
             <button
               type="button"
               onClick={handleOpenThresholdModal}
@@ -996,19 +1006,21 @@ export default function AdminInvitationLetters({ session }) {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/70">
                 {/* Checkbox Column */}
-                <th className="py-3.5 px-4 w-12 text-center">
-                  <input 
-                    type="checkbox" 
-                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    checked={
-                      activeTab === 'pending'
-                        ? filteredPending.length > 0 && selectedIds.length === filteredPending.length
-                        : filteredHistory.length > 0 && selectedHistoryIds.length === filteredHistory.length
-                    }
-                    onChange={activeTab === 'pending' ? handleSelectAllPending : handleSelectAllHistory}
-                    title="ជ្រើសរើសទាំងអស់"
-                  />
-                </th>
+                {(activeTab === 'pending' || canManageHistory) && (
+                  <th className="py-3.5 px-4 w-12 text-center">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      checked={
+                        activeTab === 'pending'
+                          ? filteredPending.length > 0 && selectedIds.length === filteredPending.length
+                          : filteredHistory.length > 0 && selectedHistoryIds.length === filteredHistory.length
+                      }
+                      onChange={activeTab === 'pending' ? handleSelectAllPending : handleSelectAllHistory}
+                      title="ជ្រើសរើសទាំងអស់"
+                    />
+                  </th>
+                )}
                 <th className="py-3.5 px-4 text-[12.5px] font-bold text-slate-600">អត្តលេខ</th>
                 <th className="py-3.5 px-4 text-[12.5px] font-bold text-slate-600 min-w-[190px]">ឈ្មោះសិស្ស</th>
                 <th className="py-3.5 px-4 text-[12.5px] font-bold text-slate-600 text-center">ភេទ</th>
@@ -1021,7 +1033,7 @@ export default function AdminInvitationLetters({ session }) {
                 {activeTab === 'history' && (
                   <th className="py-3.5 px-4 text-[12.5px] font-bold text-slate-600 text-center">ស្ថានភាព</th>
                 )}
-                {activeTab === 'history' && (
+                {activeTab === 'history' && canManageHistory && (
                   <th className="py-3.5 px-4 text-[12.5px] font-bold text-slate-600 text-center min-w-[170px]">សកម្មភាព</th>
                 )}
               </tr>
@@ -1094,14 +1106,16 @@ export default function AdminInvitationLetters({ session }) {
                     key={student.id} 
                     className={`hover:bg-slate-50/80 transition-colors ${isChecked ? 'bg-emerald-50/30' : ''}`}
                   >
-                    <td className="py-3.5 px-4 text-center">
-                      <input 
-                        type="checkbox" 
-                        className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                        checked={isChecked}
-                        onChange={() => handleSelectOneHistory(student.id)}
-                      />
-                    </td>
+                    {canManageHistory && (
+                      <td className="py-3.5 px-4 text-center">
+                        <input 
+                          type="checkbox" 
+                          className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          checked={isChecked}
+                          onChange={() => handleSelectOneHistory(student.id)}
+                        />
+                      </td>
+                    )}
                     <td className="py-3.5 px-4">
                       <span className="text-[12px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md">
                         #{student.studentId || student.id}
@@ -1155,47 +1169,49 @@ export default function AdminInvitationLetters({ session }) {
                     </td>
 
                     {/* Actions */}
-                    <td className="py-3 px-4 text-center">
-                      {!isResolved ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleSingleResolve(student)}
-                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] rounded-lg transition-all shadow-xs hover:shadow cursor-pointer"
-                            title="ដោះស្រាយរួច និង Reset វិន័យមក 0 (មាន Undo)"
-                          >
-                            ដោះស្រាយ
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleReInvite(student)}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 font-bold text-[12px] rounded-lg transition-all border border-slate-200 cursor-pointer"
-                            title={`កោះហៅលើកទី ${nextCycle}`}
-                          >
-                            លើកទី {nextCycle}
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleRevertToUnresolved(student)}
-                            className="text-slate-500 hover:text-indigo-600 font-bold text-[12px] transition-colors cursor-pointer py-1 px-2.5 rounded-md hover:bg-indigo-50"
-                            title="ប្តូរត្រឡប់មក មិនទាន់ដោះស្រាយ វិញ"
-                          >
-                            ប្តូរមកវិញ
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteHistoryItem(student)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="លុបប្រវត្តិកោះហៅនេះ"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
+                    {canManageHistory && (
+                      <td className="py-3 px-4 text-center">
+                        {!isResolved ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSingleResolve(student)}
+                              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[12px] rounded-lg transition-all shadow-xs hover:shadow cursor-pointer"
+                              title="ដោះស្រាយរួច និង Reset វិន័យមក 0 (មាន Undo)"
+                            >
+                              ដោះស្រាយ
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleReInvite(student)}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 font-bold text-[12px] rounded-lg transition-all border border-slate-200 cursor-pointer"
+                              title={`កោះហៅលើកទី ${nextCycle}`}
+                            >
+                              លើកទី {nextCycle}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleRevertToUnresolved(student)}
+                              className="text-slate-500 hover:text-indigo-600 font-bold text-[12px] transition-colors cursor-pointer py-1 px-2.5 rounded-md hover:bg-indigo-50"
+                              title="ប្តូរត្រឡប់មក មិនទាន់ដោះស្រាយ វិញ"
+                            >
+                              ប្តូរមកវិញ
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteHistoryItem(student)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="លុបប្រវត្តិកោះហៅនេះ"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -1234,7 +1250,7 @@ export default function AdminInvitationLetters({ session }) {
       </div>
 
       {/* 4. SLEEK FLOATING BATCH ACTION BAR (Bottom Center) */}
-      {selectedHistoryIds.length > 0 && (
+      {canManageHistory && selectedHistoryIds.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-200">
           <div className="bg-slate-900 text-white px-4.5 py-2.5 rounded-xl shadow-2xl flex items-center gap-3.5 border border-slate-800">
             <span className="text-[13px] font-medium text-slate-300">
@@ -1480,7 +1496,7 @@ export default function AdminInvitationLetters({ session }) {
       )}
 
       {/* Threshold Settings Modal */}
-      {superAdmin && thresholdModalOpen && (
+      {canManageHistory && thresholdModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-300">
             <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">

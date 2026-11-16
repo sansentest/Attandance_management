@@ -532,6 +532,13 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   const isUpdate = Boolean(payload && payload.isUpdate);
   const updateTag = isUpdate ? ' [កែប្រែ]' : '';
 
+  // Build hashtags for easy Telegram filtering (e.g. #ថ្នាក់ទី10 #ថ្នាក់10A)
+  const gradeMatch = cleanClass.match(/\d+/);
+  const gradeNum = gradeMatch ? gradeMatch[0] : '';
+  const classTag = `#ថ្នាក់${cleanClass.replace(/\s+/g, '')}`;
+  const gradeTag = gradeNum ? `#ថ្នាក់ទី${gradeNum}` : '';
+  const hashtagsLine = [gradeTag, classTag].filter(Boolean).join(' ');
+
   const message = [
     `🏫 <b>${escapeTelegramHtml(schoolName)}   អវត្តមានសិស្សតាមម៉ោង${updateTag}</b>`,
     ' ',
@@ -548,6 +555,8 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
     `${summaryLine}`,
     ' ',
     `<i>អ្នកស្រង់៖ ${escapeTelegramHtml(recorderText)} </i>`,
+    ' ',
+    hashtagsLine
   ].filter(Boolean).join('\n');
 
   // Dispatch to all matching recipients in parallel
@@ -974,7 +983,9 @@ export async function dispatchDailySummaryNotification({
     ...notSubmittedBlock,
     ...disciplineWarningBlock,
     '━━━━━━━━━━━━━━━━━━━━',
-    `<i>🤖 ប្រព័ន្ធគ្រប់គ្រងវត្តមាន${escapeTelegramHtml(schoolName)}</i>`
+    `<i>🤖 ប្រព័ន្ធគ្រប់គ្រងវត្តមាន${escapeTelegramHtml(schoolName)}</i>`,
+    ' ',
+    '#របាយការណ៍ប្រចាំថ្ងៃ'
   ].filter(Boolean).join('\n');
 
   // Dispatch to recipients

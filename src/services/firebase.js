@@ -197,6 +197,21 @@ export async function getStudentsFromFirestore(className = '12A', force = false)
   }
 }
 
+function getCambodiaDateString() {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Phnom_Penh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).formatToParts(new Date());
+    const get = (type) => parts.find(p => p.type === type)?.value || '00';
+    return `${get('year')}-${get('month')}-${get('day')}`;
+  } catch (e) {
+    return new Date().toISOString().split('T')[0];
+  }
+}
+
 // ─────────────────────────────────────────────
 // 4. Save Attendance Records (with 2h support & Deduplication)
 // ─────────────────────────────────────────────
@@ -204,7 +219,7 @@ export async function saveAttendanceToFirestore(body) {
   if (!db) return { success: false, error: 'Firebase not configured' };
 
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = body.date || getCambodiaDateString();
     const periodVal = String(body.period || '1');
     const className = body.className || '12A';
     const hoursMissed = (periodVal === '1-2' || periodVal.includes('-') || body.hours === 2) ? 2 : 1;
@@ -347,6 +362,25 @@ export async function getPeriodStateFromFirestore(today, className, periodVal) {
   } catch (err) {
     console.error('[Firebase] getPeriodState error:', err);
     return null;
+  }
+}
+
+export async function getSubmittedClassesForDateFromFirestore(date) {
+  if (!db) return [];
+  const targetDate = date || getCambodiaDateString();
+  try {
+    const snap = await getDocs(collection(db, COL_PERIOD_STATE));
+    const classes = new Set();
+    snap.docs.forEach(d => {
+      if (d.id.includes(targetDate)) {
+        const parts = d.id.replace(/^STATE_/, '').split('_');
+        if (parts[1]) classes.add(parts[1]);
+      }
+    });
+    return Array.from(classes);
+  } catch (err) {
+    console.warn('[Firebase] getSubmittedClassesForDate error:', err);
+    return [];
   }
 }
 

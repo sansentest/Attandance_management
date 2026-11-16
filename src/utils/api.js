@@ -10,6 +10,7 @@ import {
   KHMER_MONTH_NAMES,
   toKhmerDigits,
   getPeriodStateFromFirestore,
+  getSubmittedClassesForDateFromFirestore,
   getAllAttendanceRecordsFromFirestore,
   updateAttendanceRecordInFirestore,
   deleteAttendanceRecordInFirestore,
@@ -1334,6 +1335,19 @@ export async function api(action, body = {}, token = null) {
         success: true,
         data: localRecords
       };
+    }
+
+    case 'attendance.getSubmittedClasses': {
+      const targetDate = body?.date || new Date().toISOString().split('T')[0];
+      if (isFirebaseConfigured()) {
+        try {
+          const list = await getSubmittedClassesForDateFromFirestore(targetDate);
+          return { success: true, data: list };
+        } catch (e) {
+          console.warn('[Firebase] getSubmittedClasses error:', e);
+        }
+      }
+      return { success: true, data: [] };
     }
 
     case 'attendance.updateRecord': {

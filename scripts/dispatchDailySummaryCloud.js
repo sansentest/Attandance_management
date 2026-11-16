@@ -51,7 +51,10 @@ async function run() {
     process.exit(0);
   }
 
-  // 1. Check if already dispatched today in Firestore (ignoring any stale pre-17:00 cloud_cron logs)
+  // 1. Check prior dispatch log in Firestore
+  let priorEntry = null;
+  let isProgressiveUpdate = false;
+
   if (!forceRun) {
     try {
       const logSnap = await getDoc(doc(db, 'school_settings', 'daily_summary_log'));
@@ -59,12 +62,9 @@ async function run() {
         const data = logSnap.data();
         const dayEntry = data[`sent_${today}`];
         const validDayEntry = dayEntry ? isValidDailySummaryLogEntry(dayEntry) : false;
-        const lastSentValid = data.lastSentDate === today && (!dayEntry || validDayEntry);
-        if (validDayEntry || (!dayEntry && lastSentValid)) {
-          console.log(`ℹ️ [Daily Summary Cloud] Summary for ${today} was ALREADY dispatched today! Exiting to prevent duplicates.`);
-          process.exit(0);
-        }
-        if (dayEntry && !validDayEntry) {
+        if (validDayEntry) {
+          priorEntry = dayEntry;
+        } else if (dayEntry && !validDayEntry) {
           console.log(`⚠️ [Daily Summary Cloud] Ignoring stale premature log entry for ${today} (${dayEntry.timestamp}); proceeding with 17:00+ ICT dispatch.`);
         }
       }
@@ -76,33 +76,71 @@ async function run() {
   }
 
   // 2. Fetch all necessary data in parallel
-  console.log('📥 Fetching attendance records, classes, students, and telegram bots from Firestore...');
-  const [attSnap, clsSnap, stdSnap, botSnap, settingsSnap, generalSnap, disciplineSnap] = await Promise.all([
+  console.log('📥 Fetching attendance records, classes, students, period states, and telegram bots from Firestore...');
+  const [attSnap, clsSnap, stdSnap, botSnap, settingsSnap, generalSnap, disciplineSnap, stateSnap] = await Promise.all([
     getDocs(query(collection(db, 'attendance_records'), where('date', '==', today))),
     getDocs(collection(db, 'academic_classes')),
     getDocs(collection(db, 'students')),
     getDocs(collection(db, 'telegram_bots')),
     getDoc(doc(db, 'school_settings', 'telegram')),
     getDoc(doc(db, 'school_settings', 'general')),
-    getDoc(doc(db, 'school_settings', 'discipline'))
+    getDoc(doc(db, 'school_settings', 'discipline')),
+    getDocs(collection(db, 'period_states'))
   ]);
 
   const records = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const classes = clsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const students = stdSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const bots = botSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const periodStates = stateSnap.docs.filter(d => d.id.includes(today)).map(d => ({ id: d.id, ...d.data() }));
   const globalTokens = settingsSnap.exists() && settingsSnap.data().globalTokens ? settingsSnap.data().globalTokens : [];
   const schoolName = generalSnap.exists() && generalSnap.data()?.name
     ? String(generalSnap.data().name).replace(/\s*\(.*\)$/, '').trim()
     : '';
   const thresholds = disciplineSnap.exists() ? disciplineSnap.data() : null;
 
+  const norm = (c) => String(c || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim().toLowerCase();
+  const submittedSet = new Set([
+    ...periodStates.map(p => {
+      const parts = String(p.id || '').replace(/^STATE_/, '').split('_');
+      return norm(parts[1] || p.className || p.class);
+    }),
+    ...records.map(r => norm(r.class))
+  ].filter(Boolean));
+
+  const currentSubmittedCount = submittedSet.size;
+  const currentRecordsCount = records.length;
+
   console.log(`📊 Loaded Data:`);
-  console.log(`   - Today's Attendance Records: ${records.length}`);
-  console.log(`   - Classes: ${classes.length}`);
+  console.log(`   - Today's Attendance Records: ${currentRecordsCount}`);
+  console.log(`   - Submitted Classes: ${currentSubmittedCount}`);
+  console.log(`   - Academic Classes: ${classes.length}`);
   console.log(`   - Students: ${students.length}`);
   console.log(`   - Telegram Bots: ${bots.length}`);
   console.log(`   - Global Tokens: ${globalTokens.length}`);
+
+  // Progressive Sync Guard: Avoid duplicate spam, but allow update if more classes submitted
+  if (priorEntry && !forceRun) {
+    const prevSubmittedCount = Number(priorEntry.submittedCount) || 0;
+    const prevRecordsCount = Number(priorEntry.recordsCount) || 0;
+    const prevComplete = Boolean(priorEntry.isComplete);
+
+    const hasNewClasses = currentSubmittedCount > prevSubmittedCount;
+    const hasSignificantNewRecords = currentRecordsCount >= prevRecordsCount + 3;
+
+    if (prevComplete && !hasNewClasses && !hasSignificantNewRecords) {
+      console.log(`ℹ️ [Daily Summary Cloud] Summary for ${today} is ALREADY COMPLETE (${prevSubmittedCount} classes). Exiting to prevent duplicate.`);
+      process.exit(0);
+    }
+
+    if (!hasNewClasses && !hasSignificantNewRecords) {
+      console.log(`ℹ️ [Daily Summary Cloud] No newly submitted classes or records found since prior dispatch (${prevSubmittedCount} classes, ${prevRecordsCount} recs). Exiting.`);
+      process.exit(0);
+    }
+
+    console.log(`🔄 [Daily Summary Cloud] Detected new submissions (${prevSubmittedCount} -> ${currentSubmittedCount} classes, ${prevRecordsCount} -> ${currentRecordsCount} recs). Sending progressive update!`);
+    isProgressiveUpdate = true;
+  }
 
   if (bots.length === 0) {
     console.warn('⚠️ No Telegram bots configured. Exiting.');
@@ -121,11 +159,15 @@ async function run() {
     manualTrigger: false,
     disciplineTracking: [],
     schoolName,
-    thresholds
+    thresholds,
+    periodStates,
+    isUpdate: isProgressiveUpdate
   });
 
   if (result && result.success) {
     console.log(`✅ [Daily Summary Cloud] Dispatched successfully to ${result.count} Telegram recipients!`);
+
+    const isComplete = (result.submittedCount >= result.totalClasses && result.totalClasses > 0);
 
     // 4. Record sent log in Firestore
     try {
@@ -135,11 +177,15 @@ async function run() {
           timestamp: new Date().toISOString(),
           count: result.count,
           overallRate: result.overallRate,
+          submittedCount: result.submittedCount || currentSubmittedCount,
+          totalClasses: result.totalClasses || 0,
+          recordsCount: currentRecordsCount,
+          isComplete,
           source: 'cloud_cron'
         },
         updatedAt: serverTimestamp()
       }, { merge: true });
-      console.log('📝 Sent log recorded in Firestore.');
+      console.log(`📝 Sent log recorded in Firestore (Submitted: ${result.submittedCount}/${result.totalClasses}, Complete: ${isComplete}).`);
     } catch (logErr) {
       console.warn('⚠️ Failed to record log to Firestore:', logErr.message);
     }

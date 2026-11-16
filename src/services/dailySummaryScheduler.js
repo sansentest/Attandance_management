@@ -17,14 +17,16 @@ export async function triggerDailySummary(customDate, manual = false) {
   const today = customDate || getCambodiaNowParts().date
   
   try {
-    // 1. Fetch attendance records, students, classes, bots, and discipline tracking
-    const [attRes, stdRes, clsRes, botRes, tokRes, discRes] = await Promise.all([
-      api('attendance.getAll'),
-      api('students.getAll'),
-      api('academic.getClasses'),
-      api('telegram.getBots'),
-      api('telegram.getGlobalTokens'),
-      api('discipline.getTracking')
+    // 1. Fetch attendance records, students, classes, bots, tokens, discipline tracking, and submitted classes
+    // ALWAYS force fresh cloud data so the summary is 100% accurate and never uses stale local cache!
+    const [attRes, stdRes, clsRes, botRes, tokRes, discRes, subClsRes] = await Promise.all([
+      api('attendance.getAll', { force: true }),
+      api('students.getAll', { force: true }),
+      api('academic.getClasses', { force: true }),
+      api('telegram.getBots', { force: true }),
+      api('telegram.getGlobalTokens', { force: true }),
+      api('discipline.getTracking', { force: true }),
+      api('attendance.getSubmittedClasses', { date: today })
     ])
 
     const records = (attRes && attRes.success && attRes.data) || JSON.parse(localStorage.getItem('school_attendance_records') || '[]')
@@ -33,6 +35,7 @@ export async function triggerDailySummary(customDate, manual = false) {
     const bots = (botRes && botRes.success && botRes.data) || JSON.parse(localStorage.getItem('school_telegram_bots_cache') || '[]')
     const globalTokens = (tokRes && tokRes.success && tokRes.data) || JSON.parse(localStorage.getItem('school_telegram_global_tokens_cache') || '[]')
     const disciplineTracking = (discRes && discRes.success && discRes.data) || JSON.parse(localStorage.getItem('school_discipline_cache') || '[]')
+    const submittedClasses = (subClsRes && subClsRes.success && subClsRes.data) || []
 
     const result = await dispatchDailySummaryNotification({
       date: today,
@@ -42,14 +45,20 @@ export async function triggerDailySummary(customDate, manual = false) {
       bots,
       globalTokens,
       manualTrigger: manual,
-      disciplineTracking
+      disciplineTracking,
+      submittedClasses
     })
 
     if (result && result.success) {
+      const isComplete = (result.submittedCount >= result.totalClasses && result.totalClasses > 0);
       const summaryLog = {
         timestamp: new Date().toISOString(),
         count: result.count,
         overallRate: result.overallRate,
+        submittedCount: result.submittedCount || 0,
+        totalClasses: result.totalClasses || 0,
+        recordsCount: records.length,
+        isComplete,
         source: manual ? 'manual' : 'browser_auto'
       };
 
@@ -75,7 +84,7 @@ export async function triggerDailySummary(customDate, manual = false) {
 }
 
 /**
- * Check if today's 5:00 PM summary has already been sent
+ * Check if today's 5:00 PM summary has already been sent and is complete
  */
 export async function isDailySummarySentToday(date) {
   const targetDate = date || getCambodiaNowParts().date;
@@ -83,8 +92,10 @@ export async function isDailySummarySentToday(date) {
     const raw = localStorage.getItem(`school_daily_summary_sent_${targetDate}`);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (isValidDailySummaryLogEntry(parsed)) return true;
-      localStorage.removeItem(`school_daily_summary_sent_${targetDate}`);
+      if (isValidDailySummaryLogEntry(parsed) && parsed.isComplete) return true;
+      if (!isValidDailySummaryLogEntry(parsed)) {
+        localStorage.removeItem(`school_daily_summary_sent_${targetDate}`);
+      }
     }
   } catch {}
 
@@ -95,7 +106,7 @@ export async function isDailySummarySentToday(date) {
       const dayEntry = res.data[`sent_${targetDate}`];
       const validDayEntry = dayEntry ? isValidDailySummaryLogEntry(dayEntry) : false;
       const lastSentValid = res.data.lastSentDate === targetDate && (!dayEntry || validDayEntry);
-      if (validDayEntry || (!dayEntry && lastSentValid)) {
+      if ((validDayEntry && dayEntry?.isComplete) || (!dayEntry && lastSentValid)) {
         try {
           const logData = dayEntry || { timestamp: new Date().toISOString() };
           localStorage.setItem(`school_daily_summary_sent_${targetDate}`, JSON.stringify(logData));
@@ -127,18 +138,18 @@ export function getDailySummarySentLog(date) {
 export async function checkAndSendDailySummaryScheduled() {
   const { hour, date: today } = getCambodiaNowParts();
 
-  // Only trigger at or after 17:00 (5:00 PM) Cambodia Time
-  if (hour < 17) {
-    return { triggered: false, reason: 'មិនទាន់ដល់ម៉ោង ៥:០០ ល្ងាច' };
+  // Only trigger between 17:00 and 22:00 Cambodia Time
+  if (hour < 17 || hour >= 22) {
+    return { triggered: false, reason: 'មិនទាន់ដល់ ឬហួសម៉ោងកំណត់ (១៧:០០ - ២២:០០)' };
   }
 
-  // Check if already sent today (locally or on Cloud)
+  // Check if already sent today and is complete
   const alreadySent = await isDailySummarySentToday(today);
   if (alreadySent) {
     return { triggered: false, reason: 'បានផ្ញើរួចរាល់ហើយសម្រាប់ថ្ងៃនេះ' };
   }
 
-  console.log('[DailySummaryScheduler] 5:00 PM reached! Auto-dispatching daily attendance summary to Telegram...');
+  console.log('[DailySummaryScheduler] 5:00 PM+ active! Auto-dispatching daily attendance summary to Telegram...');
   const result = await triggerDailySummary(today, false);
   return { triggered: true, result };
 }

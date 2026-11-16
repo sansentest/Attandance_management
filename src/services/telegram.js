@@ -166,7 +166,127 @@ export function normalizeTelegramChatId(rawChatId) {
 }
 
 /**
- * Send a raw Telegram message via Telegram Bot API
+ * Safely split long Telegram message text (limit 4096 chars) into clean chunks
+ */
+export function splitTelegramMessage(text, maxLength = 3900) {
+  if (!text || text.length <= maxLength) return [text];
+
+  const chunks = [];
+  let remaining = text;
+
+  while (remaining.length > 0) {
+    if (remaining.length <= maxLength) {
+      chunks.push(remaining);
+      break;
+    }
+
+    // Try splitting at double newline (paragraph boundary)
+    let splitIdx = remaining.lastIndexOf('\n\n', maxLength);
+    // If not found or too short, try single newline
+    if (splitIdx === -1 || splitIdx < maxLength * 0.4) {
+      splitIdx = remaining.lastIndexOf('\n', maxLength);
+    }
+    // If not found, try space
+    if (splitIdx === -1 || splitIdx < maxLength * 0.4) {
+      splitIdx = remaining.lastIndexOf(' ', maxLength);
+    }
+    // Hard fallback
+    if (splitIdx === -1 || splitIdx <= 0) {
+      splitIdx = maxLength;
+    }
+
+    const chunk = remaining.substring(0, splitIdx).trim();
+    if (chunk) chunks.push(chunk);
+    remaining = remaining.substring(splitIdx).trim();
+  }
+
+  return chunks;
+}
+
+async function sendSingleTelegramApiCall({ token, chatId, text, parseMode = 'HTML' }) {
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: parseMode,
+        disable_web_page_preview: true
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      console.warn('[Telegram] API error:', data);
+
+      // Auto-fallback 1: If Telegram rejected due to HTML entities parsing error, retry sending as plain text!
+      if (parseMode && data.description && (data.description.includes("can't parse entities") || data.description.includes('tag'))) {
+        try {
+          console.warn('[Telegram] Retrying sending as plain text without HTML...');
+          const plainText = text.replace(/<[^>]+>/g, '');
+          const retryRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: plainText,
+              disable_web_page_preview: true
+            })
+          });
+          const retryData = await retryRes.json();
+          if (retryData.ok) {
+            console.log('[Telegram] Plain-text fallback sent successfully!');
+            return { success: true, result: retryData.result };
+          }
+        } catch (retryErr) {
+          console.warn('[Telegram] Fallback retry failed:', retryErr);
+        }
+      }
+
+      // Auto-fallback 2: If Telegram rejected because message is still too long, split in half and retry
+      if (data.description && (data.description.includes('too long') || data.description.includes('length'))) {
+        try {
+          console.warn('[Telegram] Message too long. Splitting and retrying in parts...');
+          const subChunks = splitTelegramMessage(text, Math.floor(text.length / 2) + 50);
+          if (subChunks.length > 1) {
+            let lastSub = null;
+            for (let k = 0; k < subChunks.length; k++) {
+              lastSub = await sendSingleTelegramApiCall({ token, chatId, text: subChunks[k], parseMode });
+              if (!lastSub.success) return lastSub;
+              await new Promise(r => setTimeout(r, 300));
+            }
+            return lastSub || { success: true };
+          }
+        } catch (subErr) {
+          console.warn('[Telegram] Sub-chunk retry failed:', subErr);
+        }
+      }
+
+      const friendlyError = formatTelegramApiError(data.description, response.status);
+      return {
+        success: false,
+        error: friendlyError,
+        rawDescription: data.description
+      };
+    }
+
+    return { success: true, result: data.result };
+  } catch (err) {
+    console.error('[Telegram] Network exception:', err);
+    return {
+      success: false,
+      error: err.message || 'មិនអាចតភ្ជាប់ទៅកាន់ម៉ាស៊ីនបម្រើ Telegram បានទេ'
+    };
+  }
+}
+
+/**
+ * Send a raw Telegram message via Telegram Bot API (with auto-chunking for long messages)
  * @param {Object} options
  * @param {string} options.token - Telegram Bot Token
  * @param {string} options.chatId - Telegram Chat ID or Channel ID
@@ -196,66 +316,35 @@ export async function sendTelegramMessage({ token, chatId, text, parseMode = 'HT
     };
   }
 
-  const url = `https://api.telegram.org/bot${cleanToken}/sendMessage`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        chat_id: cleanChatId,
-        text,
-        parse_mode: parseMode,
-        disable_web_page_preview: true
-      })
-    });
-
-    const data = await response.json();
-    if (!response.ok || !data.ok) {
-      console.warn('[Telegram] API error:', data);
-
-      // Auto-fallback: If Telegram rejected due to HTML entities parsing error, retry sending as plain text!
-      if (parseMode && data.description && (data.description.includes("can't parse entities") || data.description.includes('tag'))) {
-        try {
-          console.warn('[Telegram] Retrying sending as plain text without HTML...');
-          const plainText = text.replace(/<[^>]+>/g, '');
-          const retryRes = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chat_id: cleanChatId,
-              text: plainText,
-              disable_web_page_preview: true
-            })
-          });
-          const retryData = await retryRes.json();
-          if (retryData.ok) {
-            console.log('[Telegram] Plain-text fallback sent successfully!');
-            return { success: true, result: retryData.result };
-          }
-        } catch (retryErr) {
-          console.warn('[Telegram] Fallback retry failed:', retryErr);
-        }
+  // Auto-chunk message if text exceeds safe Telegram size
+  const chunks = splitTelegramMessage(text, 3900);
+  if (chunks.length > 1) {
+    console.log(`[Telegram] Message is long (${text.length} chars). Splitting into ${chunks.length} parts...`);
+    let lastResult = null;
+    for (let i = 0; i < chunks.length; i++) {
+      const partHeader = i === 0 ? '' : `<i>(តពីផ្នែកមុន ផ្នែកទី ${toKhmerNum(i + 1)}/${toKhmerNum(chunks.length)})</i>\n\n`;
+      const chunkText = `${partHeader}${chunks[i]}`;
+      const res = await sendSingleTelegramApiCall({
+        token: cleanToken,
+        chatId: cleanChatId,
+        text: chunkText,
+        parseMode
+      });
+      if (!res.success) return res;
+      lastResult = res;
+      if (i < chunks.length - 1) {
+        await new Promise(r => setTimeout(r, 400));
       }
-
-      const friendlyError = formatTelegramApiError(data.description, response.status);
-      return {
-        success: false,
-        error: friendlyError,
-        rawDescription: data.description
-      };
     }
-
-    return { success: true, result: data.result };
-  } catch (err) {
-    console.error('[Telegram] Network exception:', err);
-    return {
-      success: false,
-      error: err.message || 'មិនអាចតភ្ជាប់ទៅកាន់ម៉ាស៊ីនបម្រើ Telegram បានទេ'
-    };
+    return lastResult || { success: true };
   }
+
+  return await sendSingleTelegramApiCall({
+    token: cleanToken,
+    chatId: cleanChatId,
+    text,
+    parseMode
+  });
 }
 
 /**
@@ -500,7 +589,11 @@ export async function dispatchDailySummaryNotification({
   manualTrigger = false,
   disciplineTracking = [],
   schoolName: schoolNameOverride = '',
-  thresholds: thresholdsOverride = null
+  thresholds: thresholdsOverride = null,
+  submittedClasses = [],
+  periodStates = [],
+  isUpdate = false,
+  statusLabel = ''
 }) {
   // 1. Resolve matching recipients (Bots for ALL or with notifyDailySummary enabled)
   let matchingBots = bots.filter(b => b.status === 'active' && (b.class === 'ALL' || b.notifyDailySummary === true));
@@ -534,10 +627,32 @@ export async function dispatchDailySummaryNotification({
   // 2. Filter records for the specified date
   const dayRecords = records.filter(r => r.date === date);
 
-  // 3. Build stats per class
-  const classList = classes.length > 0
+  // 3. Normalize helper & Build stats per class
+  const norm = (c) => String(c || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim().toLowerCase();
+  const studentClassSet = new Set(students.map(s => norm(s.className || s.class)).filter(Boolean));
+
+  // Determine valid school class list: exclude dummy/test classes (like year1, year2) if they have no registered students
+  const rawClassList = classes.length > 0
     ? classes.map(c => typeof c === 'string' ? c : c.name || c.id)
     : [...new Set(students.map(s => s.className || s.class).concat(dayRecords.map(r => r.class)))].filter(Boolean);
+
+  const classList = rawClassList.filter(className => {
+    const cNorm = norm(className);
+    if (studentClassSet.has(cNorm)) return true;
+    if (dayRecords.some(r => norm(r.class) === cNorm)) return true;
+    if (/^(10|11|12)[A-I]$/i.test(cNorm)) return true;
+    return false;
+  }).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+  // Set of classes that actually submitted attendance today (either via period states or attendance records)
+  const submittedSet = new Set([
+    ...(submittedClasses || []).map(norm),
+    ...(periodStates || []).map(p => {
+      const parts = String(p.id || '').replace(/^STATE_/, '').split('_');
+      return norm(parts[1] || p.className || p.class);
+    }),
+    ...dayRecords.map(r => norm(r.class))
+  ].filter(Boolean));
 
   let totalSchoolStudents = 0;
   let totalSchoolPresent = 0;
@@ -546,7 +661,6 @@ export async function dispatchDailySummaryNotification({
   const classSummaries = [];
 
   classList.forEach(className => {
-    const norm = (c) => String(c || '').replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim().toLowerCase();
     const classNorm = norm(className);
     const classStudents = students.filter(s => norm(s.className || s.class) === classNorm);
     const classRecs = dayRecords.filter(r => norm(r.class) === classNorm);
@@ -586,7 +700,8 @@ export async function dispatchDailySummaryNotification({
     const leaveTotalCount = absentList.filter(s => s.status === 'LEAVE').length;
 
     const studentCount = classStudents.length > 0 ? classStudents.length : Math.max(30, absentList.length);
-    const presentCount = Math.max(0, studentCount - absentCount - leaveDayCount);
+    const isSubmitted = submittedSet.has(classNorm);
+    const presentCount = isSubmitted ? Math.max(0, studentCount - absentCount - leaveDayCount) : studentCount;
     const rate = studentCount > 0 ? Math.round((presentCount / studentCount) * 100) : 100;
 
     totalSchoolStudents += studentCount;
@@ -601,7 +716,8 @@ export async function dispatchDailySummaryNotification({
       absentCount,
       leaveCount: leaveTotalCount,
       rate,
-      absentList
+      absentList,
+      isSubmitted
     });
   });
 
@@ -612,10 +728,20 @@ export async function dispatchDailySummaryNotification({
   const dateText = getKhmerCurrentDateString(new Date(`${date}T12:00:00+07:00`));
   const timeText = getCambodiaNowParts().timeText;
 
-  // 4. Construct Khmer message: Filter ONLY classes that have absences or leave
-  const classesWithAbsence = classSummaries.filter(
-    c => c.absentCount > 0 || c.leaveCount > 0 || (c.absentList && c.absentList.length > 0)
-  );
+  // 4. Construct Khmer message: Categorize classes
+  const classesWithAbsence = [];
+  const classesAllPresent = [];
+  const classesNotSubmitted = [];
+
+  classSummaries.forEach(c => {
+    if (c.absentCount > 0 || c.leaveCount > 0 || (c.absentList && c.absentList.length > 0)) {
+      classesWithAbsence.push(c);
+    } else if (c.isSubmitted) {
+      classesAllPresent.push(c.className);
+    } else {
+      classesNotSubmitted.push(c.className);
+    }
+  });
 
   let classListLines = ' ';
   if (classesWithAbsence.length > 0) {
@@ -677,8 +803,31 @@ export async function dispatchDailySummaryNotification({
     classListLines = '✅ <i>គ្រប់ថ្នាក់ទាំងអស់មកគ្រប់ ១០០% (គ្មានសិស្សអវត្តមានឡើយ 🎉)</i>';
   }
 
-  const triggerType = manualTrigger ? ' [ផ្ញើដោយផ្ទាល់]' : ' [ម៉ោង ០៥:០០ រសៀល]';
+  let triggerType = ` [ម៉ោង ${timeText}]`;
+  if (statusLabel) {
+    triggerType = ` [${statusLabel}]`;
+  } else if (manualTrigger) {
+    triggerType = ' [ផ្ញើដោយផ្ទាល់]';
+  } else if (isUpdate) {
+    triggerType = ` [អាប់ដេតម៉ោង ${timeText}]`;
+  }
+
   const detailTitle = '📋 <b>ឈ្មោះសិស្សអវត្តមានតាមថ្នាក់មាន៖</b>';
+
+  // 100% Present classes section
+  const allPresentBlock = classesAllPresent.length > 0 ? [
+    '━━━━━━━━━━━━━━━━━━━━',
+    `✅ <b>ថ្នាក់ដែលមានវត្តមាន ១០០% (គ្រប់ទាំងអស់)៖</b>`,
+    classesAllPresent.map(c => `<b>${escapeTelegramHtml(String(c).replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim())}</b>`).join(', ')
+  ] : [];
+
+  // Not yet submitted classes section
+  const notSubmittedBlock = classesNotSubmitted.length > 0 ? [
+    '━━━━━━━━━━━━━━━━━━━━',
+    `⚠️ <b>ថ្នាក់ដែលមិនទាន់បានស្រង់វត្តមាន (${toKhmerNum(classesNotSubmitted.length)} ថ្នាក់)៖</b>`,
+    classesNotSubmitted.map(c => `<b>${escapeTelegramHtml(String(c).replace(/^(ថ្នាក់ទី|ថ្នាក់|\s)+/i, '').trim())}</b>`).join(', '),
+    '<i>(សូមលោកគ្រូ-អ្នកគ្រូទទួលបន្ទុកថ្នាក់ខាងលើ ជួយពិនិត្យ និងស្រង់វត្តមានសិស្ស)</i>'
+  ] : [];
 
   // 5. Build discipline warning students list
   let thresholds = { '7-9': 20, '10-12': 20 };
@@ -710,7 +859,6 @@ export async function dispatchDailySummaryNotification({
   const isCriticalWarningStudent = (s) => {
     const limit = getThresholdForClass(s.class || s.className);
     const absentDays = Number(s.absent) || (s.absentDates ? s.absentDates.size : 0);
-    // Strictly must reach or exceed the school threshold in DAYS
     return absentDays >= limit;
   };
 
@@ -755,7 +903,6 @@ export async function dispatchDailySummaryNotification({
         studentMap.forEach(item => {
           const limit = getThresholdForClass(item.class);
           const absentDays = item.absentDates.size;
-          // Strictly must reach or exceed the school threshold in DAYS
           if (absentDays >= limit) {
             warningStudents.push({
               name: item.name,
@@ -800,6 +947,8 @@ export async function dispatchDailySummaryNotification({
 
   const schoolName = schoolNameOverride || getTelegramSchoolName();
 
+  const submittedClassesCount = classList.length - classesNotSubmitted.length;
+
   const message = [
     `🏫 <b>${escapeTelegramHtml(schoolName)}</b>`,
     ' ',
@@ -811,6 +960,8 @@ export async function dispatchDailySummaryNotification({
     '📈 <b>ស្ថិតិសរុបទូទាំងសាលា៖</b>',
     ' ',
     `  • ចំនួនថ្នាក់សរុប: <b>${toKhmerNum(classList.length)}</b> ថ្នាក់`,
+    `  • ថ្នាក់បានស្រង់វត្តមាន: <b>${toKhmerNum(submittedClassesCount)}</b> ថ្នាក់`,
+    ...(classesNotSubmitted.length > 0 ? [`  • ថ្នាក់មិនទាន់បានស្រង់: <b>${toKhmerNum(classesNotSubmitted.length)}</b> ថ្នាក់`] : []),
     `  • សិស្សសរុប: <b>${toKhmerNum(totalSchoolStudents)}</b> នាក់`,
     `  • មានវត្តមានសរុប: <b>${toKhmerNum(totalSchoolPresent)}</b> នាក់ (<b>${toKhmerNum(overallRate)}%</b>)`,
     `  • អវត្តមានសរុប: <b>${toKhmerNum(totalSchoolAbsent)}</b> នាក់`,
@@ -819,10 +970,12 @@ export async function dispatchDailySummaryNotification({
     detailTitle,
     ' ',
     classListLines,
+    ...allPresentBlock,
+    ...notSubmittedBlock,
     ...disciplineWarningBlock,
     '━━━━━━━━━━━━━━━━━━━━',
     `<i>🤖 ប្រព័ន្ធគ្រប់គ្រងវត្តមាន${escapeTelegramHtml(schoolName)}</i>`
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
   // Dispatch to recipients
   const sendPromises = validRecipients.map(recipient =>
@@ -841,7 +994,11 @@ export async function dispatchDailySummaryNotification({
     count: successCount,
     totalAttempted: validRecipients.length,
     date,
-    overallRate
+    overallRate,
+    totalClasses: classList.length,
+    submittedCount: submittedClassesCount,
+    notSubmittedCount: classesNotSubmitted.length,
+    recordsCount: dayRecords.length
   };
 }
 

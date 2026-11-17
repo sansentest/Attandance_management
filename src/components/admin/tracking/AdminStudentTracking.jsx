@@ -200,11 +200,11 @@ export default function AdminStudentTracking({ onNavigate, session }) {
     : classOptions
 
   const statusFilterOptions = [
-    { id: 'HAS_ABSENCE', label: 'សិស្សមានអវត្តមាន (លំនាំដើម)' },
-    { id: 'CRITICAL', label: 'ត្រូវហៅអាណាព្យាបាល (Critical)' },
-    { id: 'WARNING', label: 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន (Warning)' },
-    { id: 'NORMAL', label: 'ធម្មតា (Normal)' },
-    { id: 'ALL', label: 'សិស្សទាំងអស់ (All Students)' },
+    { id: 'HAS_ABSENCE', label: 'សិស្សមានអវត្តមាន (លំនាំដើម)', shortLabel: 'មានអវត្តមាន' },
+    { id: 'CRITICAL', label: 'ត្រូវហៅអាណាព្យាបាល (Critical)', shortLabel: 'គ្រោះថ្នាក់' },
+    { id: 'WARNING', label: 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន (Warning)', shortLabel: 'ប្រុងប្រយ័ត្ន' },
+    { id: 'NORMAL', label: 'ធម្មតា (Normal)', shortLabel: 'ធម្មតា' },
+    { id: 'ALL', label: 'សិស្សទាំងអស់ (All Students)', shortLabel: 'ទាំងអស់' },
   ]
 
   // Derived Logic for Status
@@ -337,8 +337,8 @@ export default function AdminStudentTracking({ onNavigate, session }) {
 
    
 
-      {/* Top Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6 w-full">
+      {/* Top Stats Cards (Desktop Only) */}
+      <div className="hidden sm:grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6 w-full">
         {/* Card 1: Total Under Tracking */}
         <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
@@ -383,53 +383,54 @@ export default function AdminStudentTracking({ onNavigate, session }) {
       <div className="bg-white rounded-2xl border border-slate-200/60 flex flex-col relative shadow-sm overflow-hidden">
 
         {/* Toolbar */}
-        <div className="p-5 border-b border-slate-100 flex flex-col gap-4 bg-slate-50/30">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 w-full">
+        <div className="p-3 sm:p-5 border-b border-slate-100 flex flex-col gap-3 sm:gap-4 bg-slate-50/30">
+          <div className="flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-2.5 sm:gap-4 w-full">
 
-            {/* Left: Search Bar */}
-            <div className="relative w-full lg:w-[320px] group">
-              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
-              <input
-                type="text"
-                placeholder="ស្វែងរកអត្តលេខ ឈ្មោះ លេខទូរស័ព្ទ..."
-                className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-9 pr-4 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm"
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-              />
-            </div>
-
-            {/* Right: Settings & Export Buttons */}
-            <div className="flex items-center gap-2.5 w-full lg:w-auto">
+            {/* Left: Search Bar & Actions */}
+            <div className="flex items-center gap-2 w-full lg:w-auto flex-1">
+              <div className="relative flex-1 lg:w-[320px] group">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <input
+                  type="text"
+                  placeholder="ស្វែងរកអត្តលេខ ឈ្មោះ លេខទូរស័ព្ទ..."
+                  className="w-full bg-white border border-slate-200 text-slate-800 py-2 sm:py-2.5 pl-9 pr-4 rounded-xl font-medium text-[12px] sm:text-[13px] focus:outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm"
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+                />
+              </div>
 
               {/* Live Sync / Refresh from Firebase */}
               <button
                 type="button"
                 onClick={() => fetchTrackingData(false)}
                 disabled={isRefreshing}
-                className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2.5 px-3.5 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 disabled:opacity-60"
+                className="flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 py-2 sm:py-2.5 px-3 sm:px-3.5 rounded-xl font-bold text-[12px] sm:text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 disabled:opacity-60 shrink-0 cursor-pointer"
                 title="ទាញយកទិន្នន័យវត្តមានផ្ទាល់ពី Cloud Firebase"
               >
-                <RefreshCw size={15} strokeWidth={2.2} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-                <span>{isRefreshing ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
+                <RefreshCw size={14} strokeWidth={2.2} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{isRefreshing ? 'កំពុងទាញ...' : 'ទាញទិន្នន័យថ្មី'}</span>
+                <span className="sm:hidden">{isRefreshing ? '...' : 'ទាញថ្មី'}</span>
               </button>
 
               {/* Threshold Settings Button (Super Admin Only) */}
               {superAdmin && (
                 <button
                   onClick={handleOpenSettings}
-                  className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 py-2.5 px-4 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow hover:-translate-y-0.5"
+                  className="flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 py-2 sm:py-2.5 px-2.5 sm:px-4 rounded-xl font-bold text-[12px] sm:text-[13px] transition-all shadow-sm hover:shadow hover:-translate-y-0.5 shrink-0 cursor-pointer"
                   title="កំណត់កម្រិតវិន័យអវត្តមាន"
                 >
-                  <Settings size={15} strokeWidth={2.5} className="text-slate-400 group-hover:text-indigo-600" />
-                  <span>កំណត់វិន័យ</span>
+                  <Settings size={14} strokeWidth={2.5} className="text-slate-400 group-hover:text-indigo-600" />
+                  <span className="hidden sm:inline">កំណត់វិន័យ</span>
                 </button>
               )}
+            </div>
 
-              {/* Export Dropdown */}
+            {/* Right: Export Dropdown (Hidden on Mobile) */}
+            <div className="hidden sm:flex items-center gap-2.5 w-full lg:w-auto">
               <div className="relative flex-1 lg:flex-none" ref={exportRef}>
                 <button
                   onClick={() => setExportOpen(!exportOpen)}
-                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full lg:w-auto whitespace-nowrap"
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full lg:w-auto whitespace-nowrap cursor-pointer"
                 >
                   <Download size={15} strokeWidth={2.5} />
                   <span>នាំចេញ / បោះពុម្ព</span>
@@ -465,13 +466,14 @@ export default function AdminStudentTracking({ onNavigate, session }) {
             </div>
           </div>
 
-          {/* Filters Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full max-w-[780px]">
+          {/* Filters Row - 1 Single Horizontal Row on Mobile */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 w-full max-w-[780px]">
             <SearchableDropdown
               value={effectiveFilterClass}
               onChange={(v) => { if (!teacherMode) { setFilterClass(v); setCurrentPage(1) } }}
               options={effectiveClassOptions}
               placeholder="ជ្រើសរើសថ្នាក់"
+              shortPlaceholder="ថ្នាក់"
               icon={Users}
               disabled={teacherMode}
             />
@@ -480,19 +482,22 @@ export default function AdminStudentTracking({ onNavigate, session }) {
               onChange={(v) => { setFilterStatus(v); setCurrentPage(1) }}
               options={statusFilterOptions}
               placeholder="ជ្រើសរើសស្ថានភាព"
+              shortPlaceholder="ស្ថានភាព"
             />
             <SearchableDropdown
               value={filterMonth}
               onChange={(v) => { setFilterMonth(v); setCurrentPage(1) }}
               options={MONTH_FILTER_OPTIONS}
               placeholder="ជ្រើសរើសខែ"
+              shortPlaceholder="ខែ"
               icon={Calendar}
+              align="right"
             />
           </div>
         </div>
 
-        {/* Data Table */}
-        <div className="w-full overflow-x-auto custom-scrollbar relative min-h-[300px]">
+        {/* Desktop Table View */}
+        <div className="hidden md:block w-full overflow-x-auto custom-scrollbar relative min-h-[300px]">
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px] z-30">
               <div className="flex flex-col items-center gap-3">
@@ -678,6 +683,135 @@ export default function AdminStudentTracking({ onNavigate, session }) {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Card List View */}
+        <div className="md:hidden relative min-h-[200px]">
+          {loading && (
+            <div className="py-12 flex flex-col items-center justify-center gap-3">
+              <div className="w-8 h-8 border-3 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+              <div className="text-[12px] font-bold text-indigo-600">កំពុងទាញទិន្នន័យ...</div>
+            </div>
+          )}
+          {!loading && filteredData.length === 0 && (
+            <div className="py-14 text-center px-4">
+              <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-3 mx-auto">
+                <Search size={22} className="text-slate-300" />
+              </div>
+              <p className="font-bold text-slate-700 text-[14px]">មិនមានទិន្នន័យត្រូវគ្នានឹងការស្វែងរកទេ</p>
+              <p className="text-[12px] font-medium text-slate-500 mt-1">សូមសាកល្បង Filter ផ្សេងទៀត</p>
+            </div>
+          )}
+          {!loading && filteredData.length > 0 && (
+            <div className="divide-y divide-slate-100">
+              {paginatedData.map((student) => {
+                const status = getStudentStatus(student)
+                const limit = getThreshold(student.class)
+                const percent = Math.min(100, Math.round((student.absent / limit) * 100))
+                const totalHrs = student.totalHours !== undefined ? student.totalHours : ((student.absentHours || student.absent || 0) + (student.leaveHours || student.leave || 0))
+
+                return (
+                  <div key={student.id} className="p-3.5 hover:bg-slate-50/60 transition-colors flex flex-col gap-2.5">
+                    {/* Header: Name, ID, Class & Status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-[13px] shadow-xs shrink-0">
+                          {student.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[14px] font-black text-slate-800 truncate">{student.name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[10.5px] font-bold text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded">
+                              #{student.id}
+                            </span>
+                            <span className="text-[10.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100/60">
+                              ថ្នាក់ {student.class}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status Badge */}
+                      {status === 'NORMAL' && (
+                        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-600 px-2.5 py-0.5 rounded-full border border-emerald-100 text-[10.5px] font-bold shrink-0">
+                          <CheckCircle2 size={12} strokeWidth={2.5} />
+                          ធម្មតា
+                        </span>
+                      )}
+                      {status === 'WARNING' && (
+                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-600 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold shrink-0">
+                          <AlertTriangle size={12} strokeWidth={2.5} />
+                          ប្រយ័ត្ន
+                        </span>
+                      )}
+                      {status === 'CRITICAL' && (
+                        <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-600 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold animate-pulse shrink-0">
+                          <PhoneCall size={12} strokeWidth={2.5} />
+                          កោះហៅ {student.cycle > 1 ? `(${student.cycle})` : ''}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Progress Bar & Absent Stats */}
+                    <div className="bg-slate-50/90 rounded-xl p-2.5 border border-slate-100 flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between text-[11.5px]">
+                        <span className="text-slate-500 font-medium">អវត្តមានគ្មានច្បាប់</span>
+                        <div className="flex items-baseline gap-1">
+                          <span className={`font-black ${status === 'CRITICAL' ? 'text-rose-600' : status === 'WARNING' ? 'text-amber-600' : 'text-slate-800'}`}>
+                            {student.absent}
+                          </span>
+                          <span className="text-slate-400 font-bold text-[10.5px]">/ {limit} ថ្ងៃ ({percent}%)</span>
+                        </div>
+                      </div>
+                      <div className="w-full h-1.5 bg-slate-200/80 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${status === 'CRITICAL' ? 'bg-rose-500' : status === 'WARNING' ? 'bg-amber-400' : 'bg-emerald-500'}`}
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10.5px] text-slate-500 pt-0.5">
+                        <span>ច្បាប់: <strong className="text-amber-600 font-bold">{student.leave} ថ្ងៃ</strong></span>
+                        <span>សរុប: <strong className="text-indigo-600 font-mono font-bold">{totalHrs} ម៉ោង</strong></span>
+                        {student.parentPhone && (
+                          <a href={`tel:${student.parentPhone}`} className="text-indigo-600 hover:underline flex items-center gap-1 font-bold">
+                            <Phone size={10} />
+                            <span>{student.parentPhone}</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2">
+                      {status === 'CRITICAL' && onNavigate && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            try {
+                              localStorage.setItem('printStudent', JSON.stringify(student))
+                            } catch (e) {}
+                            onNavigate('invitation-letters')
+                          }}
+                          className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 text-rose-600 bg-rose-50 hover:bg-rose-600 hover:text-white font-bold text-[12px] rounded-xl border border-rose-100 transition-all cursor-pointer"
+                        >
+                          <Mail size={13} />
+                          <span>រៀបចំលិខិត</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStudent(student)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-600 hover:text-white font-bold text-[12px] rounded-xl border border-indigo-100 transition-all cursor-pointer"
+                      >
+                        <ShieldAlert size={13} />
+                        <span>មើលលម្អិត</span>
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Pagination */}

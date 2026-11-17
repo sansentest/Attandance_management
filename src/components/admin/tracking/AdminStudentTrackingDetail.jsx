@@ -208,35 +208,35 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
       )}
 
       {/* ── Stats Cards (4 Cards) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-5">
 
         {/* Card 1: Student & Parent Info */}
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-indigo-100 flex flex-col justify-between relative overflow-hidden group hover:-translate-y-1 transition-transform">
+        <div className="col-span-2 sm:col-span-1 bg-white rounded-2xl sm:rounded-[24px] p-4 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-indigo-100 flex flex-col justify-between relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-indigo-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
-          <div className="relative z-10 flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-xl shadow-md flex-shrink-0">
+          <div className="relative z-10 flex items-center gap-3">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-lg sm:text-xl shadow-md flex-shrink-0">
               {student.name.charAt(0)}
             </div>
             <div className="min-w-0">
-              <p className="text-[15px] font-black text-slate-800 leading-tight truncate">{student.name}</p>
-              <p className="text-[12px] font-bold text-slate-400 mt-0.5">
+              <p className="text-[14px] sm:text-[15px] font-black text-slate-800 leading-tight truncate">{student.name}</p>
+              <p className="text-[11px] sm:text-[12px] font-bold text-slate-400 mt-0.5">
                 #{student.id} • ថ្នាក់ {student.class}
               </p>
               {student.parentPhone && (
                 <a
                   href={`tel:${student.parentPhone}`}
-                  className="text-[11px] font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1.5 mt-1"
+                  className="text-[10.5px] sm:text-[11px] font-bold text-slate-500 hover:text-indigo-600 flex items-center gap-1.5 mt-1"
                   title="ចុចដើម្បីហៅទូរស័ព្ទ"
                 >
-                  <Phone size={11} className="text-slate-400" />
+                  <Phone size={10} className="text-slate-400" />
                   <span>{student.parentPhone}</span>
                 </a>
               )}
             </div>
           </div>
-          <div className="mt-4 pt-3 border-t border-slate-100 relative z-10 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400">ស្ថានភាពវិន័យ</span>
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold border ${statusInfo.badge}`}>
+          <div className="mt-3 sm:mt-4 pt-2.5 sm:pt-3 border-t border-slate-100 relative z-10 flex items-center justify-between">
+            <span className="text-[10px] sm:text-[11px] font-bold text-slate-400">ស្ថានភាពវិន័យ</span>
+            <div className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-bold border ${statusInfo.badge}`}>
               <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot} ${statusInfo.pulse ? 'animate-pulse' : ''} inline-block`} />
               {statusInfo.label}
             </div>
@@ -244,20 +244,20 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
         </div>
 
         {/* Card 2: គ្មានច្បាប់ & កម្រិតវិន័យ */}
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-rose-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+        <div className="bg-white rounded-2xl sm:rounded-[24px] p-3.5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-rose-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
-          <div className="flex items-center gap-3 mb-2 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center">
-              <ShieldAlert size={18} strokeWidth={2.5} />
+          <div className="flex items-center gap-2 sm:gap-3 mb-1.5 sm:mb-2 relative z-10">
+            <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center shrink-0">
+              <ShieldAlert size={16} strokeWidth={2.5} className="sm:w-5 sm:h-5" />
             </div>
-            <div className="text-[13px] font-bold text-slate-500">គ្មានច្បាប់ (ល្មើសវិន័យ)</div>
+            <div className="text-[11px] sm:text-[13px] font-bold text-slate-500 leading-tight">គ្មានច្បាប់</div>
           </div>
           <div className="flex items-baseline gap-1 relative z-10">
-            <span className="text-3xl font-black text-rose-500">{student.absent}</span>
-            <span className="text-[13px] font-bold text-slate-400">/ {threshold} ថ្ងៃ</span>
+            <span className="text-xl sm:text-3xl font-black text-rose-500">{student.absent}</span>
+            <span className="text-[11px] sm:text-[13px] font-bold text-slate-400">/ {threshold} ថ្ងៃ</span>
           </div>
           {/* Progress Bar */}
-          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mt-2 relative z-10">
+          <div className="w-full h-1 sm:h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1.5 sm:mt-2 relative z-10">
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 status === 'CRITICAL' ? 'bg-rose-500' : status === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500'
@@ -265,38 +265,40 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
               style={{ width: `${percent}%` }}
             />
           </div>
-          <div className="text-[11px] font-medium text-slate-400 mt-1 relative z-10">
-            ឈានដល់ {percent}% នៃកម្រិតកំណត់ (គិតជាថ្ងៃ)
+          <div className="text-[9.5px] sm:text-[11px] font-medium text-slate-400 mt-1 relative z-10">
+            {percent}% នៃកម្រិតកំណត់
           </div>
         </div>
 
         {/* Card 3: មានច្បាប់ */}
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+        <div className="bg-white rounded-2xl sm:rounded-[24px] p-3.5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-amber-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
-          <div className="flex items-center gap-3 mb-3 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center">
-              <FileText size={18} strokeWidth={2.5} />
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3 relative z-10">
+            <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+              <FileText size={16} strokeWidth={2.5} className="sm:w-5 sm:h-5" />
             </div>
-            <div className="text-[13px] font-bold text-slate-500">មានច្បាប់</div>
+            <div className="text-[11px] sm:text-[13px] font-bold text-slate-500 leading-tight">មានច្បាប់</div>
           </div>
-          <div className="text-3xl font-black text-amber-500 relative z-10">{student.leave}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">ថ្ងៃ</div>
+          <div className="flex items-baseline gap-1 relative z-10">
+            <span className="text-xl sm:text-3xl font-black text-amber-500">{student.leave}</span>
+            <span className="text-[11px] sm:text-[12px] font-medium text-slate-400">ថ្ងៃ</span>
+          </div>
         </div>
 
         {/* Card 4: ម៉ោងខកខានសរុប */}
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+        <div className="bg-white rounded-2xl sm:rounded-[24px] p-3.5 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
           <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 rounded-full transition-transform group-hover:scale-150 duration-500" />
-          <div className="flex items-center gap-3 mb-3 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
-              <Clock size={18} strokeWidth={2.5} />
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3 relative z-10">
+            <div className="w-7 h-7 sm:w-10 sm:h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+              <Clock size={16} strokeWidth={2.5} className="sm:w-5 sm:h-5" />
             </div>
-            <div className="text-[13px] font-bold text-slate-500">ម៉ោងខកខានសរុប</div>
+            <div className="text-[11px] sm:text-[13px] font-bold text-slate-500 leading-tight">ម៉ោងខកខានសរុប</div>
           </div>
           <div className="flex items-baseline gap-1.5 relative z-10">
-            <span className="text-3xl font-black text-slate-800">
+            <span className="text-xl sm:text-3xl font-black text-slate-800">
               {student.totalHours !== undefined ? student.totalHours : ((student.absentHours || 0) + (student.leaveHours || 0) || student.records?.length || 0)}
             </span>
-            <span className="text-[13px] font-bold text-slate-500">ម៉ោង</span>
+            <span className="text-[11px] sm:text-[13px] font-bold text-slate-500">ម៉ោង</span>
           </div>
           <div className="text-[11px] font-medium text-slate-400 mt-1 relative z-10 flex items-center gap-1">
             <span>ស្មើនឹង {student.records?.length || 0} លើកកត់ត្រា</span>
@@ -360,15 +362,15 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
       <div className="bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden">
 
         {/* Toolbar */}
-        <div className="p-5 border-b border-slate-100 bg-slate-50/30 flex flex-col gap-4">
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 w-full">
+        <div className="p-3 sm:p-5 border-b border-slate-100 bg-slate-50/30 flex flex-col gap-3 sm:gap-4">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 sm:gap-4 w-full">
             {/* Title */}
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
                 <Calendar size={15} className="text-indigo-600" />
               </div>
               <div>
-                <p className="text-[14px] font-black text-slate-800">ប្រវត្តិអវត្តមានដែលឈានដល់កម្រិតវិន័យ</p>
+                <p className="text-[13px] sm:text-[14px] font-black text-slate-800">ប្រវត្តិអវត្តមានដែលឈានដល់កម្រិតវិន័យ</p>
                 <p className="text-[11px] font-medium text-slate-400">
                   {filtered.length === allRecords.length
                     ? `សរុប ${allRecords.length} កំណត់ត្រា`
@@ -378,24 +380,24 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
             </div>
 
             {/* Actions: Search & Export */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+            <div className="flex items-center gap-2.5 sm:gap-3 w-full lg:w-auto">
               {/* Search */}
-              <div className="relative w-full sm:w-[260px] lg:w-[280px] group">
+              <div className="relative flex-1 sm:w-[260px] lg:w-[280px] group">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                 <input
                   type="text"
                   placeholder="ស្វែងរកមុខវិជ្ជា គ្រូ មូលហេតុ..."
-                  className="w-full bg-white border border-slate-200 text-slate-800 py-2.5 pl-8 pr-4 rounded-xl font-medium text-[13px] focus:outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm"
+                  className="w-full bg-white border border-slate-200 text-slate-800 py-2 sm:py-2.5 pl-8 pr-3.5 rounded-xl font-medium text-[12px] sm:text-[13px] focus:outline-none focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100 transition-all placeholder:text-slate-400 shadow-sm"
                   value={detailSearch}
                   onChange={e => { setDetailSearch(e.target.value); setDetailPage(1) }}
                 />
               </div>
 
-              {/* Export */}
-              <div className="relative w-full sm:w-auto" ref={detailExportRef}>
+              {/* Export (Hidden on Mobile) */}
+              <div className="hidden sm:block relative w-full sm:w-auto" ref={detailExportRef}>
                 <button
                   onClick={() => setDetailExportOpen(!detailExportOpen)}
-                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full sm:w-auto"
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white py-2.5 px-5 rounded-xl font-bold text-[13px] transition-all shadow-sm hover:shadow-md hover:-translate-y-0.5 w-full sm:w-auto cursor-pointer"
                 >
                   <Download size={15} strokeWidth={2.5} />
                   <span>នាំចេញ / បោះពុម្ព</span>
@@ -412,16 +414,16 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
             </div>
           </div>
 
-          {/* Filters */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
-            <SearchableDropdown options={subjectOpts} value={detailSubject} onChange={v => { setDetailSubject(v); setDetailPage(1) }} placeholder="ជ្រើសរើសមុខវិជ្ជា" icon={BookOpen} />
-            <SearchableDropdown options={statusOpts}  value={detailStatus}  onChange={v => { setDetailStatus(v);  setDetailPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" />
-            <SearchableDropdown options={MONTH_FILTER_OPTIONS} value={detailMonth} onChange={v => { setDetailMonth(v); setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" icon={Calendar} />
+          {/* Filters - 1 Single Horizontal Row on Mobile */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-3 w-full">
+            <SearchableDropdown options={subjectOpts} value={detailSubject} onChange={v => { setDetailSubject(v); setDetailPage(1) }} placeholder="ជ្រើសរើសមុខវិជ្ជា" shortPlaceholder="មុខវិជ្ជា" icon={BookOpen} />
+            <SearchableDropdown options={statusOpts}  value={detailStatus}  onChange={v => { setDetailStatus(v);  setDetailPage(1) }} placeholder="ជ្រើសរើសស្ថានភាព" shortPlaceholder="ស្ថានភាព" />
+            <SearchableDropdown options={MONTH_FILTER_OPTIONS} value={detailMonth} onChange={v => { setDetailMonth(v); setDetailPage(1) }} placeholder="ជ្រើសរើសខែ" shortPlaceholder="ខែ" icon={Calendar} align="right" />
           </div>
         </div>
 
-        {/* Table */}
-        <div className="w-full overflow-x-auto custom-scrollbar">
+        {/* Table - Desktop View */}
+        <div className="hidden md:block w-full overflow-x-auto custom-scrollbar">
           <table className="w-full text-left border-collapse min-w-[820px]">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
@@ -496,6 +498,53 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile View - Absence Records Cards */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {paginatedRecords.map((rec, idx) => (
+            <div key={idx} className="p-3.5 hover:bg-slate-50/60 transition-colors flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[13.5px] font-black text-indigo-600 flex items-center gap-1.5">
+                    <BookOpen size={13} />
+                    <span>{rec.subject}</span>
+                  </p>
+                  <p className="text-[11.5px] font-medium text-slate-500 flex items-center gap-1.5 mt-0.5">
+                    <Calendar size={12} className="text-slate-400" />
+                    <span>{rec.date}</span>
+                    {rec.time && <span>• {rec.time}</span>}
+                  </p>
+                </div>
+                {rec.status === 'ABSENT' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-600 border border-rose-100 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                    គ្មានច្បាប់
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-amber-50 text-amber-600 border border-amber-100 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    មានច្បាប់
+                  </span>
+                )}
+              </div>
+
+              <div className="bg-slate-50/80 rounded-xl p-2.5 border border-slate-100 text-[11.5px] text-slate-600 flex items-center justify-between">
+                <span><strong className="text-slate-400 font-normal">គ្រូ:</strong> {rec.teacher || '—'}</span>
+                {rec.reason && (
+                  <span className="text-slate-500 truncate max-w-[160px]">
+                    <strong className="text-slate-400 font-normal">ហេតុផល:</strong> {rec.reason}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="py-12 text-center px-4 text-slate-400">
+              <Search size={22} className="mx-auto mb-2 text-slate-300" />
+              <p className="font-bold text-slate-600 text-[13px]">មិនមានទិន្នន័យត្រូវគ្នាទេ</p>
+            </div>
+          )}
         </div>
 
         {/* Pagination */}

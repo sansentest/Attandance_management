@@ -390,17 +390,21 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
 
       {/* Main Content Area */}
       <main 
-        className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-white rounded-l-[32px] my-2 mr-2 border border-slate-200/60 shadow-[0_4px_24px_rgba(0,0,0,0.02)]"
+        className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden bg-white lg:rounded-l-[32px] lg:my-2 lg:mr-2 lg:border lg:border-slate-200/60 shadow-[0_4px_24px_rgba(0,0,0,0.02)]"
         onClick={() => setProfileDropdownOpen(false)}
       >
         {/* Top Header */}
-        <header className="h-[72px] bg-white/80 backdrop-blur-md shrink-0 flex items-center justify-between px-6 lg:px-10 relative z-10 border-b border-slate-100">
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors">
-              <Menu size={22} strokeWidth={2.5} />
+        <header className="h-16 lg:h-[72px] bg-white/90 backdrop-blur-md shrink-0 flex items-center justify-between px-3.5 sm:px-6 lg:px-10 relative z-10 border-b border-slate-100">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <button 
+              onClick={() => setMobileMenuOpen(true)} 
+              className="lg:hidden p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/70 rounded-xl transition-all border border-slate-200/60 shrink-0"
+              aria-label="បើកម៉ឺនុយ"
+            >
+              <Menu size={20} strokeWidth={2.5} />
             </button>
-            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
-              <h2 className="text-[17px] lg:text-[18px] font-black text-slate-800 hidden sm:block whitespace-nowrap">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-[14px] sm:text-[17px] lg:text-[18px] font-black text-slate-800 truncate max-w-[160px] xs:max-w-[220px] sm:max-w-none">
                 {activePage === 'profile' ? 'ប្រវត្តិរូបអ្នកប្រើប្រាស់' : (() => {
                   for (const item of navItems) {
                     if (item.id === activePage) return item.label;
@@ -412,11 +416,10 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
                   return 'គ្រប់គ្រងប្រព័ន្ធ';
                 })()}
               </h2>
-             
             </div>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4 relative" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-1.5 sm:gap-4 relative" onClick={e => e.stopPropagation()}>
             
             {/* Backup Button (Super Admin Only) */}
             {superAdmin && (
@@ -512,9 +515,75 @@ export default function AdminLayout({ session, onLogout, onUpdateSession }) {
         </header>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6 lg:p-10 custom-scrollbar relative">
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-10 pb-24 lg:pb-10 custom-scrollbar relative">
           {renderPage()}
         </div>
+
+        {/* Mobile Bottom Navigation Bar (Teacher & Admin quick access) */}
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-lg border-t border-slate-200/80 px-2 py-1.5 shadow-[0_-4px_20px_rgba(0,0,0,0.04)] flex items-center justify-around">
+          <button
+            type="button"
+            onClick={() => setActivePage('dashboard')}
+            className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition-all cursor-pointer ${
+              activePage === 'dashboard' ? 'text-indigo-600 font-black' : 'text-slate-400 hover:text-slate-600 font-bold'
+            }`}
+          >
+            <div className={`p-1 rounded-lg ${activePage === 'dashboard' ? 'bg-indigo-50 text-indigo-600' : ''}`}>
+              <LayoutDashboard size={19} strokeWidth={activePage === 'dashboard' ? 2.5 : 2} />
+            </div>
+            <span className="text-[10px] leading-none">ផ្ទាំងគ្រប់គ្រង</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePage('student_attendance')}
+            className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition-all cursor-pointer ${
+              activePage === 'student_attendance' ? 'text-indigo-600 font-black' : 'text-slate-400 hover:text-slate-600 font-bold'
+            }`}
+          >
+            <div className={`p-1 rounded-lg ${activePage === 'student_attendance' ? 'bg-indigo-50 text-indigo-600' : ''}`}>
+              <FileText size={19} strokeWidth={activePage === 'student_attendance' ? 2.5 : 2} />
+            </div>
+            <span className="text-[10px] leading-none">អវត្តមាន</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePage('student_tracking')}
+            className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition-all cursor-pointer ${
+              activePage === 'student_tracking' ? 'text-indigo-600 font-black' : 'text-slate-400 hover:text-slate-600 font-bold'
+            }`}
+          >
+            <div className={`p-1 rounded-lg ${activePage === 'student_tracking' ? 'bg-indigo-50 text-indigo-600' : ''}`}>
+              <ShieldAlert size={19} strokeWidth={activePage === 'student_tracking' ? 2.5 : 2} />
+            </div>
+            <span className="text-[10px] leading-none">វិន័យ</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActivePage(teacherMode ? 'teacher-invitation-letters' : 'invitation-letters')}
+            className={`flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition-all cursor-pointer ${
+              activePage === 'invitation-letters' || activePage === 'teacher-invitation-letters' ? 'text-indigo-600 font-black' : 'text-slate-400 hover:text-slate-600 font-bold'
+            }`}
+          >
+            <div className={`p-1 rounded-lg ${activePage === 'invitation-letters' || activePage === 'teacher-invitation-letters' ? 'bg-indigo-50 text-indigo-600' : ''}`}>
+              <Mail size={19} strokeWidth={activePage === 'invitation-letters' || activePage === 'teacher-invitation-letters' ? 2.5 : 2} />
+            </div>
+            <span className="text-[10px] leading-none">លិខិតកោះហៅ</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="flex flex-col items-center gap-1 py-1 px-2 rounded-xl transition-all text-slate-400 hover:text-slate-700 font-bold cursor-pointer"
+          >
+            <div className="p-1 rounded-lg">
+              <Menu size={19} strokeWidth={2} />
+            </div>
+            <span className="text-[10px] leading-none">ម៉ឺនុយ</span>
+          </button>
+        </nav>
       </main>
     </div>
   )

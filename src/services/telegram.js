@@ -532,12 +532,16 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   const isUpdate = Boolean(payload && payload.isUpdate);
   const updateTag = isUpdate ? ' [កែប្រែ]' : '';
 
-  // Build hashtags for easy Telegram filtering (e.g. #ថ្នាក់ទី10 #ថ្នាក់10A)
+  // Build hashtags for easy Telegram filtering (e.g. #Class12 #Class12H)
+  // Note: Telegram's hashtag parser does not support Khmer subjoining consonants (Coeng U+17D2 '្').
+  // A hashtag like '#ថ្នាក់ទី12' breaks into '#ថ' (blue link) + '្នាក់ទី12' (plain text).
+  // Using standard '#Class12 #Class12H' ensures Telegram displays complete, beautiful, clickable blue hashtags.
   const gradeMatch = cleanClass.match(/\d+/);
   const gradeNum = gradeMatch ? gradeMatch[0] : '';
-  const classTag = `#ថ្នាក់${cleanClass.replace(/\s+/g, '')}`;
-  const gradeTag = gradeNum ? `#ថ្នាក់ទី${gradeNum}` : '';
-  const hashtagsLine = [gradeTag, classTag].filter(Boolean).join(' ');
+  const rawClassTag = cleanClass.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const classTag = rawClassTag ? `#Class${rawClassTag}` : '';
+  const gradeTag = gradeNum ? `#Class${gradeNum}` : '';
+  const hashtagsLine = [...new Set([gradeTag, classTag])].filter(Boolean).join(' ');
 
   const message = [
     `🏫 <b>${escapeTelegramHtml(schoolName)}   អវត្តមានសិស្សតាមម៉ោង${updateTag}</b>`,
@@ -985,7 +989,7 @@ export async function dispatchDailySummaryNotification({
     '━━━━━━━━━━━━━━━━━━━━',
     `<i>🤖 ប្រព័ន្ធគ្រប់គ្រងវត្តមាន${escapeTelegramHtml(schoolName)}</i>`,
     ' ',
-    '#របាយការណ៍ប្រចាំថ្ងៃ'
+    '#DailyReport #របាយការណ៍'
   ].filter(Boolean).join('\n');
 
   // Dispatch to recipients

@@ -143,61 +143,61 @@ export default function AdminDashboard({ session }) {
       </div>
       
       {/* Top Stats - Focused on Absences and Leaves */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
-          <div className="flex items-center gap-3 mb-4 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center">
-              <Users size={20} strokeWidth={2.5} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
+        <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-20 sm:w-24 h-20 sm:h-24 bg-blue-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
+          <div className="flex items-center gap-2 sm:gap-3 mb-2.5 sm:mb-4 relative z-10">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-50 text-blue-500 flex items-center justify-center shrink-0">
+              <Users size={17} strokeWidth={2.5} className="sm:w-5 sm:h-5" />
             </div>
-            <div className="text-[14px] font-bold text-slate-500">សិស្សសរុប</div>
+            <div className="text-[12px] sm:text-[14px] font-bold text-slate-500 truncate">សិស្សសរុប</div>
           </div>
-          <div className="text-4xl font-black text-slate-800 relative z-10">{data?.totalStudents ?? 0}</div>
+          <div className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-800 relative z-10">{data?.totalStudents ?? 0}</div>
         </div>
         
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-rose-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-rose-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
-          <div className="flex items-center gap-3 mb-4 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center">
-              <AlertCircle size={20} strokeWidth={2.5} />
+        <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-rose-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-20 sm:w-24 h-20 sm:h-24 bg-rose-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
+          <div className="flex items-center gap-2 sm:gap-3 mb-2.5 sm:mb-4 relative z-10">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-rose-50 text-rose-500 flex items-center justify-center shrink-0">
+              <AlertCircle size={17} strokeWidth={2.5} className="sm:w-5 sm:h-5" />
             </div>
-            <div className="text-[14px] font-bold text-slate-500">អវត្តមានសរុប</div>
+            <div className="text-[12px] sm:text-[14px] font-bold text-slate-500 truncate">អវត្តមានសរុប</div>
           </div>
-          <div className="text-4xl font-black text-rose-500 relative z-10">{data?.totalAbsent ?? 0}</div>
+          <div className="text-2xl sm:text-3xl lg:text-4xl font-black text-rose-500 relative z-10">{data?.totalAbsent ?? 0}</div>
         </div>
 
-        <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-amber-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
-          <div className="flex items-center gap-3 mb-4 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center">
-              <FileText size={20} strokeWidth={2.5} />
+        <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-amber-100 flex flex-col justify-center relative overflow-hidden group hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-20 sm:w-24 h-20 sm:h-24 bg-amber-500/5 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
+          <div className="flex items-center gap-2 sm:gap-3 mb-2.5 sm:mb-4 relative z-10">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
+              <FileText size={17} strokeWidth={2.5} className="sm:w-5 sm:h-5" />
             </div>
-            <div className="text-[14px] font-bold text-slate-500">ច្បាប់សរុប</div>
+            <div className="text-[12px] sm:text-[14px] font-bold text-slate-500 truncate">ច្បាប់សរុប</div>
           </div>
-          <div className="text-4xl font-black text-amber-500 relative z-10">{data?.totalLeave ?? 0}</div>
+          <div className="text-2xl sm:text-3xl lg:text-4xl font-black text-amber-500 relative z-10">{data?.totalLeave ?? 0}</div>
         </div>
 
-        <div className="bg-indigo-600 rounded-[24px] p-6 shadow-[0_8px_30px_rgba(99,102,241,0.2)] flex flex-col justify-center relative overflow-hidden group text-white hover:-translate-y-1 transition-transform">
-          <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
+        <div className="bg-indigo-600 rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 shadow-[0_8px_30px_rgba(99,102,241,0.2)] flex flex-col justify-center relative overflow-hidden group text-white hover:-translate-y-1 transition-transform">
+          <div className="absolute -right-4 -top-4 w-20 sm:w-24 h-20 sm:h-24 bg-white/10 rounded-full transition-transform group-hover:scale-150 duration-500"></div>
           <div className="absolute bottom-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl"></div>
-          <div className="flex items-center gap-3 mb-4 relative z-10">
-            <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
-              <TrendingUp size={20} strokeWidth={2.5} className="text-white" />
+          <div className="flex items-center gap-2 sm:gap-3 mb-2.5 sm:mb-4 relative z-10">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0">
+              <TrendingUp size={17} strokeWidth={2.5} className="text-white sm:w-5 sm:h-5" />
             </div>
-            <div className="text-[14px] font-bold text-indigo-100">អត្រាវត្តមានរួម</div>
+            <div className="text-[12px] sm:text-[14px] font-bold text-indigo-100 truncate">អត្រាវត្តមានរួម</div>
           </div>
-          <div className="text-4xl font-black text-white relative z-10">{data?.globalRate ?? 100}%</div>
+          <div className="text-2xl sm:text-3xl lg:text-4xl font-black text-white relative z-10">{data?.globalRate ?? 100}%</div>
         </div>
       </div>
 
       {/* Row 1: Weekly & Monthly Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Weekly Trend (Area Chart) */}
-        <div className="bg-white rounded-[24px] p-6 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col h-full">
-          <h3 className="text-[16px] lg:text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-            <CalendarDays size={20} className="text-rose-500" /> និន្នាការអវត្តមានប្រចាំសប្តាហ៍
+        <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col h-full">
+          <h3 className="text-[14px] sm:text-[16px] lg:text-lg font-black text-slate-800 mb-4 sm:mb-6 flex items-center gap-2">
+            <CalendarDays size={18} className="text-rose-500" /> និន្នាការអវត្តមានប្រចាំសប្តាហ៍
           </h3>
-          <div className="h-[260px] w-full mt-auto">
+          <div className="h-[210px] sm:h-[260px] w-full mt-auto">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data?.weeklyTrend} margin={{ top: 15, right: 10, left: -25, bottom: 0 }}>
                 <defs>
@@ -207,8 +207,8 @@ export default function AdminDashboard({ session }) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 13, fontWeight: 700 }} dy={10}/>
-                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 13, fontWeight: 700 }}/>
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }} dy={10}/>
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }}/>
                 <Tooltip 
                   cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)', padding: '12px 16px' }}
@@ -216,23 +216,23 @@ export default function AdminDashboard({ session }) {
                   itemStyle={{ fontWeight: 'bold', color: '#f43f5e', fontSize: '16px' }}
                   formatter={(value) => [value, 'អវត្តមាន']}
                 />
-                <Area type="monotone" dataKey="absent" stroke="#f43f5e" strokeWidth={4} fillOpacity={1} fill="url(#colorWeeklyAbsent)" activeDot={{ r: 7, fill: '#f43f5e', stroke: '#fff', strokeWidth: 2, boxShadow: '0 0 10px rgba(244,63,94,0.5)' }}/>
+                <Area type="monotone" dataKey="absent" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorWeeklyAbsent)" activeDot={{ r: 6, fill: '#f43f5e', stroke: '#fff', strokeWidth: 2 }}/>
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Monthly Trend (Bar Chart) */}
-        <div className="bg-white rounded-[24px] p-6 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col h-full">
-          <h3 className="text-[16px] lg:text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-            <BarChart3 size={20} className="text-indigo-500" /> ទិន្នន័យអវត្តមានប្រចាំខែ
+        <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col h-full">
+          <h3 className="text-[14px] sm:text-[16px] lg:text-lg font-black text-slate-800 mb-4 sm:mb-6 flex items-center gap-2">
+            <BarChart3 size={18} className="text-indigo-500" /> ទិន្នន័យអវត្តមានប្រចាំខែ
           </h3>
-          <div className="h-[260px] w-full mt-auto">
+          <div className="h-[210px] sm:h-[260px] w-full mt-auto">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data?.monthlyTrend} margin={{ top: 15, right: 10, left: -25, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 13, fontWeight: 700 }} dy={10}/>
-                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 13, fontWeight: 700 }}/>
+                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 11, fontWeight: 700 }} dy={10}/>
+                <YAxis allowDecimals={false} axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 700 }}/>
                 <Tooltip 
                   cursor={{ fill: '#f8fafc' }}
                   contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)', padding: '12px 16px' }}
@@ -240,22 +240,22 @@ export default function AdminDashboard({ session }) {
                   itemStyle={{ fontWeight: 'bold', color: '#6366f1', fontSize: '16px' }}
                   formatter={(value) => [value, 'អវត្តមាន']}
                 />
-                <Bar dataKey="absent" fill="#6366f1" radius={[8, 8, 8, 8]} barSize={28} />
+                <Bar dataKey="absent" fill="#6366f1" radius={[6, 6, 6, 6]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
       </div>
 
-      {/* Row 2: Grade & Class Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Row 2: Grade & Class Charts (Hidden on Mobile) */}
+      <div className="hidden sm:grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         
         {/* Grade Trend (Pie/Donut Chart) */}
-        <div className="bg-white rounded-[24px] p-6 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col h-full">
-          <h3 className="text-[16px] lg:text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-            <PieChartIcon size={20} className="text-amber-500" /> អវត្តមានប្រចាំកម្រិតថ្នាក់ (Grade)
+        <div className="bg-white rounded-[20px] sm:rounded-[24px] p-4 sm:p-6 lg:p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 flex flex-col h-full">
+          <h3 className="text-[14px] sm:text-[16px] lg:text-lg font-black text-slate-800 mb-4 sm:mb-6 flex items-center gap-2">
+            <PieChartIcon size={18} className="text-amber-500" /> អវត្តមានប្រចាំកម្រិតថ្នាក់ (Grade)
           </h3>
-          <div className="h-[260px] w-full mt-auto relative">
+          <div className="h-[220px] sm:h-[260px] w-full mt-auto relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie

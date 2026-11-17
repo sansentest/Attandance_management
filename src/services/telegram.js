@@ -536,9 +536,11 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   // Note: Telegram's hashtag parser does not support Khmer subjoining consonants (Coeng U+17D2 '្').
   // A hashtag like '#ថ្នាក់ទី12' breaks into '#ថ' (blue link) + '្នាក់ទី12' (plain text).
   // Using standard '#Class12 #Class12H' ensures Telegram displays complete, beautiful, clickable blue hashtags.
-  const gradeMatch = cleanClass.match(/\d+/);
+  const khToArMap = { '០': '0', '១': '1', '២': '2', '៣': '3', '៤': '4', '៥': '5', '៦': '6', '៧': '7', '៨': '8', '៩': '9' };
+  const normalizedClass = String(cleanClass || '').replace(/[០-៩]/g, d => khToArMap[d] || d);
+  const gradeMatch = normalizedClass.match(/\d+/);
   const gradeNum = gradeMatch ? gradeMatch[0] : '';
-  const rawClassTag = cleanClass.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const rawClassTag = normalizedClass.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   const classTag = rawClassTag ? `#Class${rawClassTag}` : '';
   const gradeTag = gradeNum ? `#Class${gradeNum}` : '';
   const hashtagsLine = [...new Set([gradeTag, classTag])].filter(Boolean).join(' ');

@@ -503,18 +503,17 @@ function StudentDetailPage({ student, onBack, onUpdateRecords, initialMonth = 'A
         </button>
       </div>
 
-      {/* ── Mobile Stats View ── */}
-      <div className="sm:hidden flex flex-col gap-2.5">
-        {/* Student Profile Card */}
+      {/* ── Mobile Student Profile Card (Metric cards hidden on mobile per request) ── */}
+      <div className="sm:hidden">
         <div className="bg-white rounded-2xl p-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-indigo-100 flex items-center justify-between relative overflow-hidden">
           <div className="absolute -right-4 -top-4 w-20 h-20 bg-indigo-500/5 rounded-full" />
           <div className="relative z-10 flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-base shadow-sm shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-base shadow-sm shrink-0">
               {student.name.charAt(0)}
             </div>
             <div className="min-w-0">
               <p className="text-[14px] font-black text-slate-800 leading-tight truncate">{student.name}</p>
-              <p className="text-[11px] font-bold text-slate-500 mt-1 flex items-center gap-1.5">
+              <p className="text-[11px] font-bold text-slate-500 mt-0.5 flex items-center gap-1.5">
                 <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">#{student.studentId}</span>
                 <span>•</span>
                 <span>ថ្នាក់ {student.class}</span>
@@ -524,39 +523,6 @@ function StudentDetailPage({ student, onBack, onUpdateRecords, initialMonth = 'A
           <div className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border relative z-10 ${colorMap[statusInfo.color].badge}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${colorMap[statusInfo.color].dot} ${colorMap[statusInfo.color].pulse ? 'animate-pulse' : ''}`} />
             {statusInfo.label}
-          </div>
-        </div>
-
-        {/* 3 Metric Cards in 1 Row */}
-        <div className="grid grid-cols-3 gap-2">
-          {/* Total */}
-          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-slate-100 flex flex-col items-center justify-center text-center">
-            <span className="text-[10px] font-bold text-slate-400">អវត្តមានសរុប</span>
-            <div className="flex items-baseline gap-0.5 mt-1">
-              <span className="text-lg font-black text-slate-800">{totalCount}</span>
-              <span className="text-[10px] font-bold text-slate-400">ថ្ងៃ</span>
-            </div>
-            <span className="text-[9.5px] font-mono font-bold text-indigo-500 mt-0.5">({totalSessions}h)</span>
-          </div>
-
-          {/* Leave */}
-          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-amber-100 flex flex-col items-center justify-center text-center">
-            <span className="text-[10px] font-bold text-amber-600">មានច្បាប់</span>
-            <div className="flex items-baseline gap-0.5 mt-1">
-              <span className="text-lg font-black text-amber-500">{leaveCount}</span>
-              <span className="text-[10px] font-bold text-amber-600/70">ថ្ងៃ</span>
-            </div>
-            <span className="text-[9px] font-medium text-slate-400 mt-0.5 truncate max-w-[80px]">សុំច្បាប់</span>
-          </div>
-
-          {/* Absent */}
-          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-rose-100 flex flex-col items-center justify-center text-center">
-            <span className="text-[10px] font-bold text-rose-600">គ្មានច្បាប់</span>
-            <div className="flex items-baseline gap-0.5 mt-1">
-              <span className="text-lg font-black text-rose-500">{absentCount}</span>
-              <span className="text-[10px] font-bold text-rose-600/70">ថ្ងៃ</span>
-            </div>
-            <span className="text-[9px] font-medium text-slate-400 mt-0.5 truncate max-w-[80px]">អវត្តមាន</span>
           </div>
         </div>
       </div>

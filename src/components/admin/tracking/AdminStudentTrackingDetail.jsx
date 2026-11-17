@@ -207,13 +207,12 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
         </div>
       )}
 
-      {/* ── Mobile Stats View ── */}
-      <div className="sm:hidden flex flex-col gap-2.5">
-        {/* Student Profile Card */}
+      {/* ── Mobile Student Profile Card (Metric cards hidden on mobile per request) ── */}
+      <div className="sm:hidden">
         <div className="bg-white rounded-2xl p-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-indigo-100 flex items-center justify-between relative overflow-hidden">
           <div className="absolute -right-4 -top-4 w-20 h-20 bg-indigo-500/5 rounded-full" />
           <div className="relative z-10 flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-base shadow-sm shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-base shadow-sm shrink-0">
               {student.name.charAt(0)}
             </div>
             <div className="min-w-0">
@@ -238,48 +237,6 @@ export default function AdminStudentTrackingDetail({ student, onBack, threshold,
           <div className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border relative z-10 ${statusInfo.badge}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dot} ${statusInfo.pulse ? 'animate-pulse' : ''}`} />
             {statusInfo.label}
-          </div>
-        </div>
-
-        {/* 3 Metric Cards in 1 Row */}
-        <div className="grid grid-cols-3 gap-2">
-          {/* Card 1: គ្មានច្បាប់ */}
-          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-rose-100 flex flex-col items-center justify-center text-center">
-            <span className="text-[10px] font-bold text-rose-600">គ្មានច្បាប់</span>
-            <div className="flex items-baseline gap-0.5 mt-1">
-              <span className="text-lg font-black text-rose-500">{student.absent}</span>
-              <span className="text-[10px] font-bold text-slate-400">/{threshold}</span>
-            </div>
-            <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden mt-1">
-              <div
-                className={`h-full rounded-full ${
-                  status === 'CRITICAL' ? 'bg-rose-500' : status === 'WARNING' ? 'bg-amber-500' : 'bg-emerald-500'
-                }`}
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Card 2: មានច្បាប់ */}
-          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-amber-100 flex flex-col items-center justify-center text-center">
-            <span className="text-[10px] font-bold text-amber-600">មានច្បាប់</span>
-            <div className="flex items-baseline gap-0.5 mt-1">
-              <span className="text-lg font-black text-amber-500">{student.leave}</span>
-              <span className="text-[10px] font-bold text-amber-600/70">ថ្ងៃ</span>
-            </div>
-            <span className="text-[9px] font-medium text-slate-400 mt-0.5">សុំអនុញ្ញាត</span>
-          </div>
-
-          {/* Card 3: ម៉ោងសរុប */}
-          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-slate-100 flex flex-col items-center justify-center text-center">
-            <span className="text-[10px] font-bold text-slate-400">ម៉ោងសរុប</span>
-            <div className="flex items-baseline gap-0.5 mt-1">
-              <span className="text-lg font-black text-slate-800">
-                {student.totalHours !== undefined ? student.totalHours : ((student.absentHours || 0) + (student.leaveHours || 0) || student.records?.length || 0)}
-              </span>
-              <span className="text-[10px] font-bold text-slate-400">h</span>
-            </div>
-            <span className="text-[9px] font-mono text-indigo-500 font-bold mt-0.5">{student.records?.length || 0} លើក</span>
           </div>
         </div>
       </div>

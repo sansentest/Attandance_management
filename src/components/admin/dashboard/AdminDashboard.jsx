@@ -6,8 +6,10 @@ import {
   getTeacherScopeClass,
   getScopedDashboardCacheKey
 } from '../../../utils/accessControl'
-import { Users, AlertCircle, FileText, TrendingUp, CalendarDays, BarChart3, PieChart as PieChartIcon, BarChart2, RefreshCw, CheckCircle2, GraduationCap } from 'lucide-react'
+import { Users, AlertCircle, FileText, TrendingUp, CalendarDays, BarChart3, PieChart as PieChartIcon, BarChart2, RefreshCw, CheckCircle2, GraduationCap, Send } from 'lucide-react'
 import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { triggerDailySummary, isDailySummarySentToday } from '../../../services/dailySummaryScheduler'
+import { getCambodiaNowParts } from '../../../services/telegram'
 
 export default function AdminDashboard({ session }) {
   const teacherMode = isTeacher(session)
@@ -41,6 +43,44 @@ export default function AdminDashboard({ session }) {
     }
   })
   const [toast, setToast] = useState(null)
+  const [summarySentToday, setSummarySentToday] = useState(false)
+  const [isSendingSummary, setIsSendingSummary] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    const checkSent = async () => {
+      const today = getCambodiaNowParts().date
+      const sent = await isDailySummarySentToday(today)
+      if (mounted) setSummarySentToday(sent)
+    }
+    checkSent()
+    const onSent = () => { if (mounted) setSummarySentToday(true) }
+    window.addEventListener('school_daily_summary_sent', onSent)
+    return () => {
+      mounted = false
+      window.removeEventListener('school_daily_summary_sent', onSent)
+    }
+  }, [])
+
+  const handleSendDailySummaryNow = async () => {
+    setIsSendingSummary(true)
+    try {
+      const today = getCambodiaNowParts().date
+      const res = await triggerDailySummary(today, true)
+      if (res && res.success) {
+        setSummarySentToday(true)
+        setToast({ type: 'success', message: `បានផ្ញើរបាយការណ៍សង្ខេបវត្តមានប្រចាំថ្ងៃទៅ Telegram (${res.count} ក្រុម) ជោគជ័យ!` })
+      } else {
+        setToast({ type: 'error', message: res.error || 'បរាជ័យក្នុងការផ្ញើរបាយការណ៍សង្ខេប' })
+      }
+      setTimeout(() => setToast(null), 4000)
+    } catch (err) {
+      setToast({ type: 'error', message: 'កំហុសពេលផ្ញើ: ' + err.message })
+      setTimeout(() => setToast(null), 4000)
+    } finally {
+      setIsSendingSummary(false)
+    }
+  }
 
   const loadData = useCallback(async (force = false) => {
     if (force) setIsRefreshing(true)
@@ -123,23 +163,42 @@ export default function AdminDashboard({ session }) {
       )}
 
      
-      {/* Top Sync / Refresh Bar (Manual Firebase Fetch to save Quota) */}
+      {/* Top Sync / Refresh Bar (Manual Firebase Fetch & Telegram Daily Summary) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white rounded-[20px] px-5 py-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-slate-100">
         <div className="flex items-center gap-2.5 text-[12px] sm:text-[13px] font-bold text-slate-500">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
           <span>{formatLastSynced(lastSynced)}</span>
         </div>
 
-        <button
-          type="button"
-          onClick={() => loadData(true)}
-          disabled={isRefreshing}
-          className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-indigo-200 py-2 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 disabled:opacity-60 cursor-pointer shrink-0"
-          title="ចុចដើម្បីទាញយកទិន្នន័យស្ថិតិថ្មីបំផុតពី Cloud Firebase"
-        >
-          <RefreshCw size={15} strokeWidth={2.3} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
-          <span>{isRefreshing ? 'កំពុងទាញទិន្នន័យ...' : 'ទាញទិន្នន័យថ្មី'}</span>
-        </button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          {!teacherMode && (
+            <button
+              type="button"
+              onClick={handleSendDailySummaryNow}
+              disabled={isSendingSummary}
+              className={`flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl font-bold text-[12.5px] transition-all shadow-xs cursor-pointer border ${
+                summarySentToday
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+              } disabled:opacity-60`}
+              title="ផ្ញើរបាយការណ៍សង្ខេបវត្តមានប្រចាំថ្ងៃទៅកាន់ Telegram Channel"
+            >
+              <Send size={14} className={isSendingSummary ? 'animate-pulse' : ''} />
+              <span>{isSendingSummary ? 'កំពុងផ្ញើ...' : summarySentToday ? 'របាយការណ៍ម៉ោង ៥ (ផ្ញើរួច)' : 'ផ្ញើរបាយការណ៍ម៉ោង ៥'}</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={() => loadData(true)}
+            disabled={isRefreshing}
+            className="flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-indigo-200 py-2 px-4 rounded-xl font-bold text-[13px] transition-all shadow-xs hover:shadow hover:-translate-y-0.5 disabled:opacity-60 cursor-pointer shrink-0"
+            title="ចុចដើម្បីទាញយកទិន្នន័យស្ថិតិថ្មីបំផុតពី Cloud Firebase"
+          >
+            <RefreshCw size={15} strokeWidth={2.3} className={`text-indigo-600 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isRefreshing ? 'កំពុងទាញទិន្នន័យ...' : 'ទាញទិន្នន័យថ្មី'}</span>
+          </button>
+        </div>
       </div>
       
       {/* Top Stats - Focused on Absences and Leaves */}

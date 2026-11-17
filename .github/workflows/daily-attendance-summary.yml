@@ -2,14 +2,16 @@ name: Daily Attendance Telegram Summary
 
 on:
   schedule:
-    # 5:15 PM, 5:30 PM, 5:45 PM, 6:00 PM, 6:20 PM Cambodia Time (UTC+7) = 10:15, 10:30, 10:45, 11:00, 11:20 UTC
-    # Staggered schedule gives teachers 15-30 minutes after 5:00 PM bell to submit all classes.
-    # Progressive Sync sends initial report at 5:15 PM, then automatically updates if late classes submit!
-    - cron: '15 10 * * *'
-    - cron: '30 10 * * *'
-    - cron: '45 10 * * *'
-    - cron: '0 11 * * *'
-    - cron: '20 11 * * *'
+    # Off-peak minutes (5:08 PM, 5:23 PM, 5:38 PM, 5:53 PM, 6:12 PM, 6:33 PM, 7:03 PM Cambodia Time / UTC+7)
+    # Using non-standard minutes avoids GitHub Actions standard (:00, :15, :30, :45) job queue congestion!
+    # Progressive Sync sends initial report around 5:10 PM, then automatically updates if late classes submit!
+    - cron: '8 10 * * *'
+    - cron: '23 10 * * *'
+    - cron: '38 10 * * *'
+    - cron: '53 10 * * *'
+    - cron: '12 11 * * *'
+    - cron: '33 11 * * *'
+    - cron: '3 12 * * *'
   workflow_dispatch:
     inputs:
       force:

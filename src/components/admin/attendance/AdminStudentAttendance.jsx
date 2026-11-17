@@ -358,11 +358,11 @@ function StudentDetailPage({ student, onBack, onUpdateRecords, initialMonth = 'A
 
   // Build unique subject options from records
   const subjectOpts = [
-    { id: 'ALL', label: 'គ្រប់មុខវិជ្ជា' },
+    { id: 'ALL', label: 'គ្រប់មុខវិជ្ជា', shortLabel: 'គ្រប់មុខ' },
     ...([...new Set(allRecords.map(r => r.subject))].map(s => ({ id: s, label: s })))
   ]
   const statusOpts = [
-    { id: 'ALL', label: 'គ្រប់ស្ថានភាព' },
+    { id: 'ALL', label: 'គ្រប់ស្ថានភាព', shortLabel: 'ទាំងអស់' },
     { id: 'ABSENT', label: 'គ្មានច្បាប់' },
     { id: 'LEAVE', label: 'មានច្បាប់' },
   ]
@@ -503,8 +503,66 @@ function StudentDetailPage({ student, onBack, onUpdateRecords, initialMonth = 'A
         </button>
       </div>
 
-      {/* ── Stats Cards (Dynamic Real-Time Synced) ── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-5">
+      {/* ── Mobile Stats View ── */}
+      <div className="sm:hidden flex flex-col gap-2.5">
+        {/* Student Profile Card */}
+        <div className="bg-white rounded-2xl p-3.5 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-indigo-100 flex items-center justify-between relative overflow-hidden">
+          <div className="absolute -right-4 -top-4 w-20 h-20 bg-indigo-500/5 rounded-full" />
+          <div className="relative z-10 flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white font-black text-base shadow-sm shrink-0">
+              {student.name.charAt(0)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[14px] font-black text-slate-800 leading-tight truncate">{student.name}</p>
+              <p className="text-[11px] font-bold text-slate-500 mt-1 flex items-center gap-1.5">
+                <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-[10px]">#{student.studentId}</span>
+                <span>•</span>
+                <span>ថ្នាក់ {student.class}</span>
+              </p>
+            </div>
+          </div>
+          <div className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-bold border relative z-10 ${colorMap[statusInfo.color].badge}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${colorMap[statusInfo.color].dot} ${colorMap[statusInfo.color].pulse ? 'animate-pulse' : ''}`} />
+            {statusInfo.label}
+          </div>
+        </div>
+
+        {/* 3 Metric Cards in 1 Row */}
+        <div className="grid grid-cols-3 gap-2">
+          {/* Total */}
+          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-slate-100 flex flex-col items-center justify-center text-center">
+            <span className="text-[10px] font-bold text-slate-400">អវត្តមានសរុប</span>
+            <div className="flex items-baseline gap-0.5 mt-1">
+              <span className="text-lg font-black text-slate-800">{totalCount}</span>
+              <span className="text-[10px] font-bold text-slate-400">ថ្ងៃ</span>
+            </div>
+            <span className="text-[9.5px] font-mono font-bold text-indigo-500 mt-0.5">({totalSessions}h)</span>
+          </div>
+
+          {/* Leave */}
+          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-amber-100 flex flex-col items-center justify-center text-center">
+            <span className="text-[10px] font-bold text-amber-600">មានច្បាប់</span>
+            <div className="flex items-baseline gap-0.5 mt-1">
+              <span className="text-lg font-black text-amber-500">{leaveCount}</span>
+              <span className="text-[10px] font-bold text-amber-600/70">ថ្ងៃ</span>
+            </div>
+            <span className="text-[9px] font-medium text-slate-400 mt-0.5 truncate max-w-[80px]">សុំច្បាប់</span>
+          </div>
+
+          {/* Absent */}
+          <div className="bg-white rounded-2xl p-2.5 shadow-xs border border-rose-100 flex flex-col items-center justify-center text-center">
+            <span className="text-[10px] font-bold text-rose-600">គ្មានច្បាប់</span>
+            <div className="flex items-baseline gap-0.5 mt-1">
+              <span className="text-lg font-black text-rose-500">{absentCount}</span>
+              <span className="text-[10px] font-bold text-rose-600/70">ថ្ងៃ</span>
+            </div>
+            <span className="text-[9px] font-medium text-slate-400 mt-0.5 truncate max-w-[80px]">អវត្តមាន</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Desktop Stats Cards (Unchanged) ── */}
+      <div className="hidden sm:grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-5">
 
         {/* Identity Card */}
         <div className="col-span-2 sm:col-span-1 bg-white rounded-2xl sm:rounded-[24px] p-4 sm:p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-indigo-100 flex flex-col justify-between relative overflow-hidden group hover:-translate-y-1 transition-transform">
@@ -821,32 +879,50 @@ function StudentDetailPage({ student, onBack, onUpdateRecords, initialMonth = 'A
           </table>
         </div>
 
-        {/* Mobile View - Absence Records Cards */}
-        <div className="md:hidden divide-y divide-slate-100">
+        {/* Mobile View - Absence Records Cards (Clean Touch Cards) */}
+        <div className="md:hidden p-3 flex flex-col gap-2.5 bg-slate-50/40">
           {paginatedRecords.map((rec, idx) => {
             const isSelected = selectedIds.includes(rec.id)
             return (
-              <div key={rec.id || idx} className={`p-4 transition-colors ${isSelected ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
+              <div
+                key={rec.id || idx}
+                className={`p-3.5 rounded-2xl bg-white border transition-all ${
+                  isSelected
+                    ? 'border-indigo-300 ring-2 ring-indigo-100 shadow-sm'
+                    : 'border-slate-200/70 shadow-xs'
+                }`}
+              >
+                {/* Header: Checkbox + Subject + Status */}
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-start gap-2.5 min-w-0">
                     <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => handleToggleSelectRow(rec.id)}
-                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer accent-indigo-600"
+                      className="w-4 h-4 mt-0.5 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer accent-indigo-600 shrink-0"
                     />
-                    <div>
-                      <p className="text-[13.5px] font-black text-indigo-600 flex items-center gap-1.5">
-                        <BookOpen size={13} />
-                        <span>{rec.subject}</span>
-                      </p>
-                      <p className="text-[11.5px] font-medium text-slate-500 flex items-center gap-1.5 mt-0.5">
-                        <Calendar size={12} className="text-slate-400" />
-                        <span>{rec.date}</span>
-                        {rec.time && <span>• {rec.time}</span>}
-                      </p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                          <BookOpen size={12} />
+                        </div>
+                        <p className="text-[13.5px] font-black text-slate-800 truncate">{rec.subject}</p>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500 mt-1">
+                        <span className="flex items-center gap-1 font-mono">
+                          <Calendar size={11} className="text-slate-400" />
+                          {rec.date}
+                        </span>
+                        {rec.time && (
+                          <span className="flex items-center gap-1">
+                            <Clock size={11} className="text-slate-400" />
+                            {rec.time}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
+
                   {rec.status === 'ABSENT' ? (
                     <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-rose-50 text-rose-600 border border-rose-100 shrink-0">
                       <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
@@ -860,31 +936,33 @@ function StudentDetailPage({ student, onBack, onUpdateRecords, initialMonth = 'A
                   )}
                 </div>
 
-                <div className="mt-2.5 bg-slate-50/80 rounded-xl p-2.5 border border-slate-100 flex items-center justify-between text-[11.5px]">
-                  <div className="text-slate-600 truncate max-w-[200px]">
-                    <span className="text-slate-400">គ្រូ:</span> <span className="font-semibold">{rec.teacher || '—'}</span>
+                {/* Details Strip: Teacher, Reason & Actions */}
+                <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11.5px]">
+                  <div className="text-slate-600 min-w-0 pr-2">
+                    <span className="text-slate-400 font-medium">គ្រូ:</span>{' '}
+                    <span className="font-bold text-slate-700">{rec.teacher || '—'}</span>
                     {rec.reason && (
                       <span className="block text-slate-500 text-[11px] mt-0.5 truncate">
-                        <span className="text-slate-400">ហេតុផល:</span> {rec.reason}
+                        <span className="text-slate-400 font-medium">ហេតុផល:</span> {rec.reason}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleOpenEdit(rec)}
-                      className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all"
+                      className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg border border-slate-200/60 transition-all cursor-pointer"
                       title="កែសម្រួល"
                     >
-                      <Edit size={14} />
+                      <Edit size={13} />
                     </button>
                     <button
                       type="button"
                       onClick={() => setDeleteModal({ open: true, type: 'single', record: rec, count: 1 })}
-                      className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all"
+                      className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-slate-200/60 transition-all cursor-pointer"
                       title="លុប"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={13} />
                     </button>
                   </div>
                 </div>

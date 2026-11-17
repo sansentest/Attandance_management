@@ -540,7 +540,7 @@ export async function dispatchAttendanceNotification({ payload, bots = [], globa
   const normalizedClass = String(cleanClass || '').replace(/[០-៩]/g, d => khToArMap[d] || d);
   const gradeMatch = normalizedClass.match(/\d+/);
   const gradeNum = gradeMatch ? gradeMatch[0] : '';
-  const rawClassTag = normalizedClass.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const rawClassTag = normalizedClass.replace(/[^a-zA-Z0-9\u1780-\u17A2]/g, '').toUpperCase();
   const classTag = rawClassTag ? `#Class${rawClassTag}` : '';
   const gradeTag = gradeNum ? `#Class${gradeNum}` : '';
   const hashtagsLine = [...new Set([gradeTag, classTag])].filter(Boolean).join(' ');

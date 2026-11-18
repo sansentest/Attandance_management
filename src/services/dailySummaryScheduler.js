@@ -10,12 +10,31 @@ import {
 } from './telegram'
 import { api } from '../utils/api'
 
+// In-memory concurrency lock to prevent overlapping dispatches
+let isDispatchInProgress = false;
+
 /**
  * Trigger the Daily Summary dispatch either manually or automatically
  */
 export async function triggerDailySummary(customDate, manual = false) {
-  const today = customDate || getCambodiaNowParts().date
-  
+  const today = customDate || getCambodiaNowParts().date;
+
+  // Strict duplicate guard for automated runs: Never dispatch if already sent today
+  if (!manual) {
+    const alreadySent = await isDailySummarySentToday(today);
+    if (alreadySent) {
+      console.log(`[DailySummaryScheduler] Daily summary for ${today} was already sent today. Skipping auto-dispatch.`);
+      return { success: true, alreadySent: true, count: 0 };
+    }
+  }
+
+  // Prevent concurrent dispatch executions
+  if (isDispatchInProgress) {
+    console.log('[DailySummaryScheduler] Dispatch already in progress, skipping duplicate call.');
+    return { success: false, inProgress: true };
+  }
+
+  isDispatchInProgress = true;
   try {
     // 1. Fetch attendance records, students, classes, bots, tokens, discipline tracking, and submitted classes
     // ALWAYS force fresh cloud data so the summary is 100% accurate and never uses stale local cache!
@@ -80,33 +99,38 @@ export async function triggerDailySummary(customDate, manual = false) {
   } catch (err) {
     console.error('[DailySummaryScheduler] Error triggering daily summary:', err);
     return { success: false, error: err.message || 'បរាជ័យក្នុងការផ្ញើរបាយការណ៍សង្ខេបប្រចាំថ្ងៃ' };
+  } finally {
+    isDispatchInProgress = false;
   }
 }
 
 /**
- * Check if today's 5:00 PM summary has already been sent and is complete
+ * Check if today's 5:00 PM summary has already been sent
  */
 export async function isDailySummarySentToday(date) {
   const targetDate = date || getCambodiaNowParts().date;
+
+  // 1. Check local storage first (fastest)
   try {
     const raw = localStorage.getItem(`school_daily_summary_sent_${targetDate}`);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (isValidDailySummaryLogEntry(parsed) && parsed.isComplete) return true;
-      if (!isValidDailySummaryLogEntry(parsed)) {
-        localStorage.removeItem(`school_daily_summary_sent_${targetDate}`);
+      if (isValidDailySummaryLogEntry(parsed)) {
+        return true;
       }
+      localStorage.removeItem(`school_daily_summary_sent_${targetDate}`);
     }
   } catch {}
 
-  // Check Firestore (e.g. sent by GitHub Actions Cloud Cron or another administrator)
+  // 2. Check Firestore (cloud source of truth across all devices/runners)
   try {
     const res = await api('telegram.getDailySummaryLog');
     if (res && res.success && res.data) {
       const dayEntry = res.data[`sent_${targetDate}`];
       const validDayEntry = dayEntry ? isValidDailySummaryLogEntry(dayEntry) : false;
-      const lastSentValid = res.data.lastSentDate === targetDate && (!dayEntry || validDayEntry);
-      if ((validDayEntry && dayEntry?.isComplete) || (!dayEntry && lastSentValid)) {
+      const isSentToday = Boolean(validDayEntry || res.data.lastSentDate === targetDate);
+
+      if (isSentToday) {
         try {
           const logData = dayEntry || { timestamp: new Date().toISOString() };
           localStorage.setItem(`school_daily_summary_sent_${targetDate}`, JSON.stringify(logData));

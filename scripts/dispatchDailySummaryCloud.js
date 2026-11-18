@@ -119,27 +119,10 @@ async function run() {
   console.log(`   - Telegram Bots: ${bots.length}`);
   console.log(`   - Global Tokens: ${globalTokens.length}`);
 
-  // Progressive Sync Guard: Avoid duplicate spam, but allow update if more classes submitted
+  // Strict Duplicate Guard: Once sent today (by Cloud or Browser), NEVER send again!
   if (priorEntry && !forceRun) {
-    const prevSubmittedCount = Number(priorEntry.submittedCount) || 0;
-    const prevRecordsCount = Number(priorEntry.recordsCount) || 0;
-    const prevComplete = Boolean(priorEntry.isComplete);
-
-    const hasNewClasses = currentSubmittedCount > prevSubmittedCount;
-    const hasSignificantNewRecords = currentRecordsCount >= prevRecordsCount + 3;
-
-    if (prevComplete && !hasNewClasses && !hasSignificantNewRecords) {
-      console.log(`ℹ️ [Daily Summary Cloud] Summary for ${today} is ALREADY COMPLETE (${prevSubmittedCount} classes). Exiting to prevent duplicate.`);
-      process.exit(0);
-    }
-
-    if (!hasNewClasses && !hasSignificantNewRecords) {
-      console.log(`ℹ️ [Daily Summary Cloud] No newly submitted classes or records found since prior dispatch (${prevSubmittedCount} classes, ${prevRecordsCount} recs). Exiting.`);
-      process.exit(0);
-    }
-
-    console.log(`🔄 [Daily Summary Cloud] Detected new submissions (${prevSubmittedCount} -> ${currentSubmittedCount} classes, ${prevRecordsCount} -> ${currentRecordsCount} recs). Sending progressive update!`);
-    isProgressiveUpdate = true;
+    console.log(`ℹ️ [Daily Summary Cloud] Summary for ${today} was ALREADY sent at ${priorEntry.timestamp || priorEntry.source}. Exiting to prevent duplicate.`);
+    process.exit(0);
   }
 
   if (bots.length === 0) {

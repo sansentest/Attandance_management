@@ -422,7 +422,7 @@ export async function getDailyReportFromFirestore(className = '12A', date = null
 
     Object.keys(studentRecordsMap).forEach(name => {
       const recs = studentRecordsMap[name];
-      const hasUnexcused = recs.some(r => r.status === 'ABSENT');
+      const hasUnexcused = recs.some(r => r.status === 'ABSENT' || r.status === 'DROPOUT');
       const hasLeave = recs.some(r => r.status === 'LEAVE');
 
       if (hasUnexcused) {
@@ -876,7 +876,7 @@ export function buildDashboardStats(allStudentsList = [], records = [], scopeCla
   let todayAbsent = 0;
   let todayLeave = 0;
   Object.values(todayStudentMap).forEach((recs) => {
-    const hasUnexcused = recs.some((r) => r.status === 'ABSENT');
+    const hasUnexcused = recs.some((r) => r.status === 'ABSENT' || r.status === 'DROPOUT');
     const hasLeave = recs.some((r) => r.status === 'LEAVE');
     if (hasUnexcused) {
       todayAbsent++;
@@ -1263,12 +1263,17 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
       });
     });
 
+    const normKey = (str) => String(str || '').replace(/[\s\u200B]+/g, ' ').trim().toLowerCase();
+
     const studentRecordsMap = new Map();
     records.forEach(rec => {
       const keys = [];
       if (rec.studentId) keys.push(String(rec.studentId).toLowerCase().trim());
       if (rec.id) keys.push(String(rec.id).toLowerCase().trim());
-      if (rec.name) keys.push(String(rec.name).toLowerCase().trim());
+      if (rec.name) {
+        keys.push(String(rec.name).toLowerCase().trim());
+        keys.push(normKey(rec.name));
+      }
 
       keys.forEach(k => {
         if (!studentRecordsMap.has(k)) {
@@ -1282,26 +1287,38 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
     const processedKeys = new Set();
 
     students.forEach(student => {
-      const sIdKey = String(student.id || student.studentId).toLowerCase().trim();
+      const sIdKey = student.id ? String(student.id).toLowerCase().trim() : '';
+      const sNumKey = student.studentId ? String(student.studentId).toLowerCase().trim() : '';
       const sNameKey = String(student.name).toLowerCase().trim();
-      processedKeys.add(sIdKey);
-      processedKeys.add(sNameKey);
+      const sNormNameKey = normKey(student.name);
+
+      if (sIdKey) processedKeys.add(sIdKey);
+      if (sNumKey) processedKeys.add(sNumKey);
+      if (sNameKey) processedKeys.add(sNameKey);
+      if (sNormNameKey) processedKeys.add(sNormNameKey);
 
       const matchingRecs = new Map();
-      (studentRecordsMap.get(sIdKey) || []).forEach(r => matchingRecs.set(r.id, r));
-      (studentRecordsMap.get(sNameKey) || []).forEach(r => matchingRecs.set(r.id, r));
+      if (sIdKey) (studentRecordsMap.get(sIdKey) || []).forEach(r => matchingRecs.set(r.id, r));
+      if (sNumKey) (studentRecordsMap.get(sNumKey) || []).forEach(r => matchingRecs.set(r.id, r));
+      if (sNameKey) (studentRecordsMap.get(sNameKey) || []).forEach(r => matchingRecs.set(r.id, r));
+      if (sNormNameKey) (studentRecordsMap.get(sNormNameKey) || []).forEach(r => matchingRecs.set(r.id, r));
 
       const recList = Array.from(matchingRecs.values()).sort((a, b) => {
         return (b.date || '').localeCompare(a.date || '');
       });
 
       // Find resolutions for this student (sorted by most recent first)
-      const sResolutions = (resolutionsMap.get(sIdKey) || resolutionsMap.get(sNameKey) || [])
-        .sort((a, b) => {
-          const tA = getTimestampMillis(a.createdAt) || (a.resolvedDate ? new Date(a.resolvedDate).getTime() : 0);
-          const tB = getTimestampMillis(b.createdAt) || (b.resolvedDate ? new Date(b.resolvedDate).getTime() : 0);
-          return tB - tA;
-        });
+      const sResolutions = (
+        (sIdKey ? resolutionsMap.get(sIdKey) : null) ||
+        (sNumKey ? resolutionsMap.get(sNumKey) : null) ||
+        resolutionsMap.get(sNameKey) ||
+        resolutionsMap.get(sNormNameKey) ||
+        []
+      ).sort((a, b) => {
+        const tA = getTimestampMillis(a.createdAt) || (a.resolvedDate ? new Date(a.resolvedDate).getTime() : 0);
+        const tB = getTimestampMillis(b.createdAt) || (b.resolvedDate ? new Date(b.resolvedDate).getTime() : 0);
+        return tB - tA;
+      });
       const lastResolution = sResolutions[0] || null;
       const cycleNumber = sResolutions.length + 1;
 
@@ -1347,7 +1364,7 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
       });
 
       dateMap.forEach(dayRecs => {
-        const hasUnexcused = dayRecs.some(r => r.status === 'ABSENT' || !r.status || r.status === 'LATE');
+        const hasUnexcused = dayRecs.some(r => r.status === 'ABSENT' || !r.status || r.status === 'LATE' || r.status === 'DROPOUT');
         const hasLeave = dayRecs.some(r => r.status === 'LEAVE');
 
         if (hasUnexcused) {
@@ -1380,7 +1397,7 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
       });
 
       cycleDateMap.forEach(dayRecs => {
-        const hasUnexcused = dayRecs.some(r => r.status === 'ABSENT' || !r.status || r.status === 'LATE');
+        const hasUnexcused = dayRecs.some(r => r.status === 'ABSENT' || !r.status || r.status === 'LATE' || r.status === 'DROPOUT');
         const hasLeave = dayRecs.some(r => r.status === 'LEAVE');
 
         if (hasUnexcused) {
@@ -1425,15 +1442,20 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
     // Check if any student in attendance records is missing from students collection
     records.forEach(r => {
       const sNameKey = String(r.name).toLowerCase().trim();
+      const sNormNameKey = normKey(r.name);
       const sIdKey = String(r.studentId || r.id).toLowerCase().trim();
-      if (!processedKeys.has(sNameKey) && !processedKeys.has(sIdKey)) {
+      if (!processedKeys.has(sNameKey) && !processedKeys.has(sNormNameKey) && !processedKeys.has(sIdKey)) {
         processedKeys.add(sNameKey);
+        processedKeys.add(sNormNameKey);
         processedKeys.add(sIdKey);
 
         const matched = new Map();
         (studentRecordsMap.get(sNameKey) || []).forEach(m => matched.set(m.id, m));
+        (studentRecordsMap.get(sNormNameKey) || []).forEach(m => matched.set(m.id, m));
         (studentRecordsMap.get(sIdKey) || []).forEach(m => matched.set(m.id, m));
-        const matchingRecs = Array.from(matched.values());
+        const matchingRecs = Array.from(matched.values()).sort((a, b) => {
+          return (b.date || '').localeCompare(a.date || '');
+        });
 
         const dayMap = new Map();
         let absentHours = 0;
@@ -1452,7 +1474,7 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
         let absentDays = 0;
         let leaveDays = 0;
         dayMap.forEach(dayRecs => {
-          const hasUnexcused = dayRecs.some(m => m.status === 'ABSENT' || !m.status || m.status === 'LATE');
+          const hasUnexcused = dayRecs.some(m => m.status === 'ABSENT' || !m.status || m.status === 'LATE' || m.status === 'DROPOUT');
           const hasLeave = dayRecs.some(m => m.status === 'LEAVE');
 
           if (hasUnexcused) {
@@ -1466,10 +1488,11 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
           id: r.studentId || r.id,
           studentId: r.studentId || r.id,
           name: r.name,
-          gender: 'M',
+          gender: r.gender || 'M',
           class: r.class || '12A',
-          phone: '',
+          phone: r.phone || '',
           parentPhone: r.parentPhone || '',
+          parentName: r.parentName || '',
           leave: leaveDays,
           absent: absentDays,
           totalAbsent: absentDays,
@@ -1480,7 +1503,8 @@ export async function getStudentDisciplineTrackingFromFirestore(force = false) {
           cycle: 1,
           resolutions: [],
           lastResolution: null,
-          records: matchingRecs
+          records: matchingRecs,
+          cycleRecords: matchingRecs
         });
       }
     });

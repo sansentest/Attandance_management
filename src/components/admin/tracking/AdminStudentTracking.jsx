@@ -201,9 +201,9 @@ export default function AdminStudentTracking({ onNavigate, session }) {
 
   const statusFilterOptions = [
     { id: 'HAS_ABSENCE', label: 'សិស្សមានអវត្តមាន (លំនាំដើម)', shortLabel: 'មានអវត្តមាន' },
-    { id: 'CRITICAL', label: 'ត្រូវហៅអាណាព្យាបាល (Critical)', shortLabel: 'គ្រោះថ្នាក់' },
-    { id: 'WARNING', label: 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន (Warning)', shortLabel: 'ប្រុងប្រយ័ត្ន' },
-    { id: 'NORMAL', label: 'ធម្មតា (Normal)', shortLabel: 'ធម្មតា' },
+    { id: 'CRITICAL', label: 'ត្រូវហៅអាណាព្យាបាល (Critical ≥១៥ ថ្ងៃ)', shortLabel: 'គ្រោះថ្នាក់' },
+    { id: 'WARNING', label: 'ស្ថិតក្នុងការប្រុងប្រយ័ត្ន (Warning ៨–១៤ ថ្ងៃ)', shortLabel: 'ប្រុងប្រយ័ត្ន' },
+    { id: 'NORMAL', label: 'ធម្មតា (Normal <៨ ថ្ងៃ)', shortLabel: 'ធម្មតា' },
     { id: 'ALL', label: 'សិស្សទាំងអស់ (All Students)', shortLabel: 'ទាំងអស់' },
   ]
 
@@ -230,8 +230,12 @@ export default function AdminStudentTracking({ onNavigate, session }) {
 
   const getStudentStatus = (student) => {
     const limit = getThreshold(student.class)
-    if (student.absent >= limit) return 'CRITICAL' // Needs parent call
-    if (student.absent >= limit - 1) return 'WARNING' // Close to limit
+    const absentDays = Number(student.absent) || 0
+    // Aligns with AdminStudentAttendance (≥15 Critical / ត្រូវហៅអាណាព្យាបាល, 8–14 Warning / ប្រុងប្រយ័ត្ន)
+    const criticalLimit = Math.min(limit, 15)
+    const warningLimit = Math.max(5, Math.round(limit * 0.4)) // 8 days for default limit 20
+    if (absentDays >= limit || absentDays >= criticalLimit) return 'CRITICAL'
+    if (absentDays >= warningLimit) return 'WARNING'
     return 'NORMAL'
   }
 
@@ -362,7 +366,7 @@ export default function AdminStudentTracking({ onNavigate, session }) {
             <div className="text-[14px] font-bold text-amber-600">ស្ថិតក្នុងការប្រុងប្រយ័ត្ន</div>
           </div>
           <div className="text-3xl font-black text-amber-500 relative z-10">{totalWarning}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់ (ជិតដល់កម្រិតកំណត់)</div>
+          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់ (អវត្តមាន ៨–១៤ ថ្ងៃ)</div>
         </div>
 
         {/* Card 3: Critical */}
@@ -375,7 +379,7 @@ export default function AdminStudentTracking({ onNavigate, session }) {
             <div className="text-[14px] font-bold text-rose-600">ត្រូវហៅអាណាព្យាបាល</div>
           </div>
           <div className="text-3xl font-black text-rose-500 relative z-10">{totalCritical}</div>
-          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់ (លើសកម្រិតកំណត់)</div>
+          <div className="text-[12px] font-medium text-slate-400 mt-1 relative z-10">នាក់ (អវត្តមាន ≥១៥ ថ្ងៃ)</div>
         </div>
       </div>
 
